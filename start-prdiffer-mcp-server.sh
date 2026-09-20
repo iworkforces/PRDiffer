@@ -1,182 +1,301 @@
 #!/bin/bash
 
+set -euo pipefail
+
 # PRDiffer MCP Server Startup Script
-# This script starts the PRDiffer MCP server with configurable options
 #
 # Usage:
 #   ./start-prdiffer-mcp-server.sh [OPTIONS]
 #
 # Options:
-#   --transport MODE    Transport mode: http, sse, stdio, streamable-http (default: http)
-#   --port PORT         Port number for HTTP/SSE transports (default: 9102)
-#   --verbose           Enable verbose/debug output
-#   --help              Show this help message
+#   --transport MODE    Transport: http, sse, stdio, or streamable-http
+#                       (default: TRANSPORT or http)
+#   --port PORT         ASCII decimal port from 1 through 65535
+#                       (default: PORT or 9102; validated but omitted for stdio)
+#   --verbose, -v       Enable debug output on stderr
+#   --help, -h          Show this help message
 #
 # Environment Variables:
-#   TRANSPORT              Transport mode (overrides --transport)
-#   PORT                   Port number (overrides --port)
+#   TRANSPORT              Default transport; command-line options take precedence
+#   PORT                   Default port; command-line options take precedence
 #   GITHUB_TOKEN           GitHub personal access token (one provider token is required)
 #   GITLAB_TOKEN           GitLab personal access token (one provider token is required)
 #   GITLAB_ALLOWED_HOSTS   Comma-separated GitLab host allowlist (default: gitlab.com)
-#                          e.g. gitlab.com,gitlab.example.com
-#   MAX_FILES_ALLOWED      Max selected files for full-context PR/MR diffs (default: 50
-#                          from settings.toml app.max_files_allowed; positive integer)
-#   MAX_TOTAL_CHARS        Aggregate public-diff char budget; exceeding it fails closed
-#                          with E5020 RESPONSE_SIZE_LIMIT (default: 600000 from
-#                          settings.toml diff.max_total_chars; positive integer)
-#   GITHUB_IGNORE_PATTERNS Comma-separated ignore globs for GitHub PR file filtering
-#                          (replaces settings.toml github.ignore_patterns when set)
-#   PID_FILE               Custom PID file location (default: .prdiffer-server.pid)
+#   MAX_FILES_ALLOWED      Selected-file limit (default: settings.toml value 50)
+#   MAX_TOTAL_CHARS        Aggregate diff budget (default: settings.toml value 600000)
+#   GITHUB_IGNORE_PATTERNS Comma-separated GitHub ignore globs
+#   PID_FILE               PID file location (default: .prdiffer-server.pid)
+#   ENV_FILE               Trusted shell environment file (default: project .env)
 #
-# Configuration:
-#   Copy .env.example to .env and fill in tokens / allowlist / limits / ignore list.
-#   This script sources .env automatically before starting the server.
+# Provisioning:
+#   Install uv and run `uv sync --frozen` before using this launcher.
+#   The launcher requires pyproject.toml, uv.lock, and prdiffer/server.py. It does
+#   not install uv, download Python, update the lockfile, or sync dependencies.
 
-set -euo pipefail
-
-# Global variables
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Allow tests to point at an isolated env file (or empty path to skip loading).
-ENV_FILE="${ENV_FILE:-$SCRIPT_DIR/.env}"
-SERVER_PID=""
-VERBOSE=false
-TRANSPORT="${TRANSPORT:-http}"
-PORT="${PORT:-9102}"
-PID_FILE="${PID_FILE:-.prdiffer-server.pid}"
 
-# Colors for output (must be defined before shutdown_server)
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-PURPLE='\033[0;35m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+TRANSPORT_SELECTION="http"
+AMBIENT_TRANSPORT_SET=false
+if [[ -n "${TRANSPORT+x}" ]]; then
+    AMBIENT_TRANSPORT_SET=true
+    TRANSPORT_SELECTION="$TRANSPORT"
+fi
 
-# Logging function with verbose support
-log_info() {
-    echo -e "${BLUE}ℹ️  $*${NC}"
+PORT_SELECTION="9102"
+AMBIENT_PORT_SET=false
+if [[ -n "${PORT+x}" ]]; then
+    AMBIENT_PORT_SET=true
+    PORT_SELECTION="$PORT"
+fi
+
+VERBOSE_SELECTION=false
+SHOW_HELP=false
+
+show_help() {
+    cat >&2 <<'EOF'
+Usage:
+  ./start-prdiffer-mcp-server.sh [OPTIONS]
+
+Options:
+  --transport MODE    Transport: http, sse, stdio, or streamable-http
+                      (default: TRANSPORT or http)
+  --port PORT         ASCII decimal port from 1 through 65535
+                      (default: PORT or 9102; validated but omitted for stdio)
+  --verbose, -v       Enable debug output on stderr
+  --help, -h          Show this help message
+
+The launcher requires a provisioned uv project. It never installs uv, downloads
+Python, updates uv.lock, or syncs dependencies.
+EOF
 }
 
-log_success() {
-    echo -e "${GREEN}✅ $*${NC}"
+usage_error() {
+    printf 'Error: %s\n' "$1" >&2
+    printf 'Run %s --help for usage.\n' "$0" >&2
+    exit 2
 }
 
-log_warning() {
-    echo -e "${YELLOW}⚠️  $*${NC}"
-}
-
-log_error() {
-    echo -e "${RED}❌ $*${NC}"
-}
-
-log_debug() {
-    if [[ "$VERBOSE" == true ]]; then
-        echo -e "${CYAN}[DEBUG] $*${NC}"
-    fi
-}
-
-# Cleanup function for graceful shutdown
-cleanup() {
-    local exit_code=$?
-
-    # Only shutdown server if we started it
-    if [[ -n "$SERVER_PID" ]]; then
-        echo ""
-        log_warning "Shutting down PRDiffer MCP Server gracefully..."
-
-        if kill -0 "$SERVER_PID" 2>/dev/null; then
-            # Send SIGTERM first for graceful shutdown
-            kill -TERM "$SERVER_PID" 2>/dev/null || true
-
-            # Wait up to 10 seconds for graceful shutdown
-            local count=0
-            while [[ $count -lt 10 ]] && kill -0 "$SERVER_PID" 2>/dev/null; do
-                sleep 1
-                count=$((count + 1))
-            done
-
-            # If still running, force kill
-            if kill -0 "$SERVER_PID" 2>/dev/null; then
-                log_error "Force stopping server..."
-                kill -KILL "$SERVER_PID" 2>/dev/null || true
-            fi
-        fi
-
-        log_success "Server stopped successfully"
-    fi
-
-    # Clean up PID file
-    if [[ -f "$PID_FILE" ]]; then
-        rm -f "$PID_FILE"
-        log_debug "Removed PID file: $PID_FILE"
-    fi
-
-    exit $exit_code
-}
-
-# Parse command-line arguments
 parse_arguments() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --transport)
-                TRANSPORT="$2"
+                if [[ $# -lt 2 ]]; then
+                    usage_error "--transport requires an operand"
+                fi
+                if [[ "$2" == --* ]]; then
+                    usage_error "--transport requires an operand"
+                fi
+                if ! validate_transport "$2"; then
+                    usage_error "unsupported transport: $2"
+                fi
+                TRANSPORT_SELECTION="$2"
                 shift 2
                 ;;
             --port)
-                PORT="$2"
+                if [[ $# -lt 2 ]]; then
+                    usage_error "--port requires an operand"
+                fi
+                if [[ "$2" == --* ]]; then
+                    usage_error "--port requires an operand"
+                fi
+                if ! validate_port "$2"; then
+                    usage_error "port must be an ASCII decimal value from 1 through 65535: $2"
+                fi
+                PORT_SELECTION="$2"
                 shift 2
                 ;;
             --verbose|-v)
-                VERBOSE=true
+                VERBOSE_SELECTION=true
                 shift
                 ;;
             --help|-h)
-                show_help
-                exit 0
+                SHOW_HELP=true
+                shift
+                ;;
+            --*)
+                usage_error "unknown option: $1"
                 ;;
             *)
-                log_error "Unknown option: $1"
-                show_help
-                exit 1
+                usage_error "positional arguments are not supported: $1"
                 ;;
         esac
     done
 }
 
-# Show help message
-show_help() {
-    sed -n '/^# Usage:/,/^$/p' "$0" | sed 's/^# //g' | sed 's/^#//g'
+validate_transport() {
+    case "$1" in
+        http|sse|stdio|streamable-http)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
 }
 
-# Check for existing server instance
-check_existing_server() {
-    if [[ -f "$PID_FILE" ]]; then
-        local existing_pid
-        existing_pid=$(cat "$PID_FILE" 2>/dev/null || echo "")
+validate_port() {
+    local candidate="$1"
+    local normalized
 
-        if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null; then
-            log_warning "Server is already running with PID: $existing_pid"
-            read -p "Do you want to stop the existing server and start a new one? [y/N] " -n 1 -r
-            echo
-            if [[ $REPLY =~ ^[Yy]$ ]]; then
-                log_info "Stopping existing server..."
-                kill -TERM "$existing_pid" 2>/dev/null || true
-                sleep 2
-                if kill -0 "$existing_pid" 2>/dev/null; then
-                    kill -KILL "$existing_pid" 2>/dev/null || true
-                fi
-                rm -f "$PID_FILE"
-            else
-                log_info "Exiting. Use 'kill $existing_pid' to stop the existing server."
-                exit 0
-            fi
-        else
-            # Stale PID file, remove it
-            rm -f "$PID_FILE"
-            log_debug "Removed stale PID file"
-        fi
+    case "$candidate" in
+        ""|*[!0123456789]*)
+            return 1
+            ;;
+    esac
+
+    normalized="$candidate"
+    while [[ "${#normalized}" -gt 1 && "${normalized#0}" != "$normalized" ]]; do
+        normalized="${normalized#0}"
+    done
+
+    if [[ "${#normalized}" -gt 5 ]]; then
+        return 1
     fi
+
+    [[ "$normalized" -ge 1 && "$normalized" -le 65535 ]]
+}
+
+if [[ "$AMBIENT_TRANSPORT_SET" == true ]] && ! validate_transport "$TRANSPORT_SELECTION"; then
+    usage_error "unsupported ambient TRANSPORT: $TRANSPORT_SELECTION"
+fi
+if [[ "$AMBIENT_PORT_SET" == true ]] && ! validate_port "$PORT_SELECTION"; then
+    usage_error "ambient PORT must be an ASCII decimal value from 1 through 65535: $PORT_SELECTION"
+fi
+
+parse_arguments "$@"
+
+if ! validate_transport "$TRANSPORT_SELECTION"; then
+    usage_error "unsupported transport: $TRANSPORT_SELECTION"
+fi
+if ! validate_port "$PORT_SELECTION"; then
+    usage_error "port must be an ASCII decimal value from 1 through 65535: $PORT_SELECTION"
+fi
+
+SELECTED_TRANSPORT="$TRANSPORT_SELECTION"
+SELECTED_PORT="$PORT_SELECTION"
+SELECTED_VERBOSE="$VERBOSE_SELECTION"
+
+if [[ "$SHOW_HELP" == true ]]; then
+    show_help
+    exit 0
+fi
+
+for required_file in pyproject.toml uv.lock prdiffer/server.py; do
+    if [[ ! -f "$SCRIPT_DIR/$required_file" ]]; then
+        printf 'Error: required project file not found: %s\n' "$SCRIPT_DIR/$required_file" >&2
+        exit 1
+    fi
+done
+
+if ! command -v uv >/dev/null 2>&1; then
+    printf 'Error: uv is required; install it and provision the project before launching.\n' >&2
+    exit 1
+fi
+
+ENV_FILE="${ENV_FILE:-$SCRIPT_DIR/.env}"
+PID_FILE="${PID_FILE:-.prdiffer-server.pid}"
+SERVER_PID=""
+SERVER_REAPED=false
+PID_FILE_OWNED=false
+CLEANUP_STARTED=false
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+log_info() {
+    printf '%b\n' "${BLUE}[INFO] $*${NC}" >&2
+}
+
+log_success() {
+    printf '%b\n' "${GREEN}[OK] $*${NC}" >&2
+}
+
+log_warning() {
+    printf '%b\n' "${YELLOW}[WARN] $*${NC}" >&2
+}
+
+log_error() {
+    printf '%b\n' "${RED}[ERROR] $*${NC}" >&2
+}
+
+log_debug() {
+    if [[ "$SELECTED_VERBOSE" == true ]]; then
+        printf '%b\n' "${CYAN}[DEBUG] $*${NC}" >&2
+    fi
+}
+
+is_valid_pid() {
+    local candidate="$1"
+    local normalized
+
+    case "$candidate" in
+        ""|*[!0123456789]*)
+            return 1
+            ;;
+    esac
+
+    normalized="$candidate"
+    while [[ "${#normalized}" -gt 1 && "${normalized#0}" != "$normalized" ]]; do
+        normalized="${normalized#0}"
+    done
+    [[ "$normalized" != "0" && "${#normalized}" -le 10 && "$normalized" -le 2147483647 ]]
+}
+
+# shellcheck disable=SC2329
+remove_owned_pid_file() {
+    local recorded_pid=""
+
+    if [[ "$PID_FILE_OWNED" != true || ! -f "$PID_FILE" ]]; then
+        return
+    fi
+    IFS= read -r recorded_pid < "$PID_FILE" || true
+    if [[ "$recorded_pid" == "$SERVER_PID" ]]; then
+        rm -f "$PID_FILE"
+        log_debug "Removed owned PID file: $PID_FILE"
+    else
+        log_warning "Leaving PID file that no longer belongs to this launcher: $PID_FILE"
+    fi
+}
+
+# shellcheck disable=SC2329
+cleanup() {
+    local exit_code=$?
+    local count=0
+
+    trap - EXIT INT TERM
+    if [[ "$CLEANUP_STARTED" == true ]]; then
+        return "$exit_code"
+    fi
+    CLEANUP_STARTED=true
+
+    if is_valid_pid "$SERVER_PID" && [[ "$SERVER_REAPED" != true ]]; then
+        if kill -0 "$SERVER_PID" 2>/dev/null; then
+            log_warning "Shutting down PRDiffer MCP Server gracefully..."
+            kill -TERM "$SERVER_PID" 2>/dev/null || true
+            while [[ $count -lt 10 ]] && kill -0 "$SERVER_PID" 2>/dev/null; do
+                sleep 1
+                count=$((count + 1))
+            done
+            if kill -0 "$SERVER_PID" 2>/dev/null; then
+                log_error "Force stopping server after 10 seconds..."
+                kill -KILL "$SERVER_PID" 2>/dev/null || true
+            fi
+        fi
+        wait "$SERVER_PID" 2>/dev/null || true
+        SERVER_REAPED=true
+    fi
+
+    remove_owned_pid_file
+    return "$exit_code"
+}
+
+# shellcheck disable=SC2329
+handle_signal() {
+    exit "$1"
 }
 
 load_env_file() {
@@ -186,46 +305,74 @@ load_env_file() {
         # shellcheck source=/dev/null
         source "$ENV_FILE"
         set +a
-        log_debug "Loaded .env (GITLAB_ALLOWED_HOSTS=${GITLAB_ALLOWED_HOSTS:-<unset>}, MAX_FILES_ALLOWED=${MAX_FILES_ALLOWED:-<unset>}, MAX_TOTAL_CHARS=${MAX_TOTAL_CHARS:-<unset>}, GITHUB_IGNORE_PATTERNS=${GITHUB_IGNORE_PATTERNS:-<unset, use settings.toml>})"
+    fi
+
+    TRANSPORT="$SELECTED_TRANSPORT"
+    PORT="$SELECTED_PORT"
+}
+
+check_existing_server() {
+    local existing_pid=""
+    local reply=""
+
+    if [[ ! -f "$PID_FILE" ]]; then
+        return
+    fi
+
+    existing_pid=$(cat "$PID_FILE" 2>/dev/null || true)
+    if is_valid_pid "$existing_pid" && kill -0 "$existing_pid" 2>/dev/null; then
+        log_warning "Server is already running with PID: $existing_pid"
+        printf 'Do you want to stop the existing server and start a new one? [y/N] ' >&2
+        if IFS= read -r -n 1 reply; then
+            printf '\n' >&2
+        else
+            reply=""
+            printf '\n' >&2
+        fi
+        if [[ "$reply" == "y" || "$reply" == "Y" ]]; then
+            log_info "Stopping existing server..."
+            kill -TERM "$existing_pid" 2>/dev/null || true
+            sleep 2
+            if kill -0 "$existing_pid" 2>/dev/null; then
+                kill -KILL "$existing_pid" 2>/dev/null || true
+            fi
+            rm -f "$PID_FILE"
+        else
+            log_info "Exiting. Use 'kill $existing_pid' to stop the existing server."
+            exit 0
+        fi
+    else
+        rm -f "$PID_FILE"
+        log_debug "Removed stale or malformed PID file"
     fi
 }
 
-# Health check for the server
 health_check() {
     local max_attempts=30
     local attempt=0
-    local http_port="$PORT"
 
     log_info "Waiting for server to start..."
-
     while [[ $attempt -lt $max_attempts ]]; do
-        if kill -0 "$SERVER_PID" 2>/dev/null; then
-            # For HTTP-based transports, check if the server is responding on the port
-            if [[ "$TRANSPORT" == "http" || "$TRANSPORT" == "sse" || "$TRANSPORT" == "streamable-http" ]]; then
-                # Check if something is listening on the port
-                if command -v nc &> /dev/null; then
-                    if nc -z localhost "$http_port" 2>/dev/null; then
-                        log_success "Server is running on port $http_port"
-                        return 0
-                    fi
-                elif command -v lsof &> /dev/null; then
-                    if lsof -i ":$http_port" &>/dev/null; then
-                        log_success "Server is running on port $http_port"
-                        return 0
-                    fi
-                else
-                    # Fallback: just verify process is running
-                    log_success "Server process is running (PID: $SERVER_PID)"
-                    return 0
-                fi
-            else
-                # For stdio, just check if process is running
-                log_success "Server process is running (PID: $SERVER_PID)"
-                return 0
-            fi
-        else
+        if ! kill -0 "$SERVER_PID" 2>/dev/null; then
             log_error "Server process exited unexpectedly"
             return 1
+        fi
+
+        if [[ "$SELECTED_TRANSPORT" == "stdio" ]]; then
+            log_success "Server process is running (PID: $SERVER_PID)"
+            return 0
+        fi
+        if command -v nc >/dev/null 2>&1 && nc -z localhost "$SELECTED_PORT" 2>/dev/null; then
+            log_success "Server is running on port $SELECTED_PORT"
+            return 0
+        fi
+        if ! command -v nc >/dev/null 2>&1 && command -v lsof >/dev/null 2>&1 && lsof -i ":$SELECTED_PORT" >/dev/null 2>&1; then
+            log_success "Server is running on port $SELECTED_PORT"
+            return 0
+        fi
+        if ! command -v nc >/dev/null 2>&1 && ! command -v lsof >/dev/null 2>&1; then
+            log_success "Server process is running (PID: $SERVER_PID)"
+            return 0
         fi
 
         attempt=$((attempt + 1))
@@ -236,202 +383,88 @@ health_check() {
     return 0
 }
 
-# Set up signal handlers
-trap cleanup EXIT INT TERM
+render_command() {
+    local argument
+    local escaped
+    local rendered=""
 
-# Parse arguments
-parse_arguments "$@"
+    for argument in "${SERVER_CMD[@]}"; do
+        printf -v escaped '%q' "$argument"
+        rendered="${rendered}${rendered:+ }${escaped}"
+    done
+    printf '%s' "$rendered"
+}
 
-# Display startup banner
-echo -e "${BLUE}🚀 PRDiffer MCP Server${NC}"
-echo -e "${BLUE}================================${NC}"
-echo ""
+trap cleanup EXIT
+trap 'handle_signal 130' INT
+trap 'handle_signal 143' TERM
 
-# Enable verbose output
-if [[ "$VERBOSE" == true ]]; then
-    log_debug "Verbose mode enabled"
-    log_debug "Transport: $TRANSPORT"
-    log_debug "Port: $PORT"
-    log_debug "PID File: $PID_FILE"
-fi
+printf '%b\n' "${BLUE}PRDiffer MCP Server${NC}" >&2
+printf '%b\n\n' "${BLUE}=====================${NC}" >&2
 
-# Check for existing server
-check_existing_server
-
-# Load .env file
 load_env_file
 
-# Check if uv is installed, install if not present
-if ! command -v uv &> /dev/null; then
-    log_warning "uv is not installed, installing automatically..."
-
-    # Detect OS and install uv accordingly
-    case "$OSTYPE" in
-        linux-gnu*)
-            log_info "Installing uv for Linux..."
-            curl -LsSf https://astral.sh/uv/install.sh | sh
-            # shellcheck source=/dev/null
-            source "$HOME/.cargo/env"
-            ;;
-        darwin*)
-            log_info "Installing uv for macOS..."
-            if command -v brew &> /dev/null; then
-                brew install uv
-            else
-                curl -LsSf https://astral.sh/uv/install.sh | sh
-                # shellcheck source=/dev/null
-                source "$HOME/.cargo/env"
-            fi
-            ;;
-        *)
-            log_error "Automatic installation not supported for this OS"
-            log_info "Please install uv manually: https://docs.astral.sh/uv/getting-started/installation/"
-            exit 1
-            ;;
-    esac
-
-    # Verify installation
-    if ! command -v uv &> /dev/null; then
-        log_error "uv installation failed"
-        log_info "Please install uv manually: https://docs.astral.sh/uv/getting-started/installation/"
-        exit 1
-    fi
-
-    log_success "uv installed successfully"
-else
-    log_success "uv is available"
-fi
-
-log_info "uv version: $(uv --version)"
-log_info "Python version: $(uv run python --version 2>&1)"
-echo ""
-
-# Check if we're in the correct directory
-if [[ ! -f "prdiffer/server.py" ]]; then
-    log_error "prdiffer/server.py not found"
-    log_info "Please run this script from the PRDiffer project root directory"
-    exit 1
-fi
-
-log_success "Found prdiffer/server.py"
-echo ""
-
-# Check if pyproject.toml exists
-if [[ ! -f "pyproject.toml" ]]; then
-    log_warning "pyproject.toml not found"
-    log_info "Make sure dependencies are properly configured"
-fi
-
-# Install dependencies
-log_info "Installing dependencies..."
-log_debug "Command: uv sync"
-if uv sync; then
-    log_success "Dependencies installed successfully"
-else
-    log_error "Failed to install dependencies"
-    exit 1
-fi
-echo ""
-
-# Check if either provider token environment variable is set
-log_info "Checking provider authentication..."
 if [[ -z "${GITHUB_TOKEN:-}" && -z "${GITLAB_TOKEN:-}" ]]; then
     log_error "Either GITHUB_TOKEN or GITLAB_TOKEN environment variable must be set"
-    echo ""
-    echo -e "${YELLOW}GitHub or GitLab authentication is required to run PRDiffer MCP Server.${NC}"
-    echo ""
-    echo -e "${CYAN}Set a token for either provider using one of these options:${NC}"
-    echo ""
-    echo -e "${PURPLE}Option 1: Set environment variable${NC}"
-    echo -e "  export GITHUB_TOKEN=\"your_github_personal_access_token\""
-    echo -e "  export GITLAB_TOKEN=\"your_gitlab_personal_access_token\""
-    echo ""
-    echo -e "${PURPLE}Option 2: Copy .env.example to .env${NC}"
-    echo -e "  cp .env.example .env"
-    echo -e "  # then edit .env: GITHUB_TOKEN / GITLAB_TOKEN / GITLAB_ALLOWED_HOSTS / MAX_FILES_ALLOWED / MAX_TOTAL_CHARS"
-    echo ""
-    echo -e "${CYAN}Generate a personal access token in your selected provider account, then set its environment variable.${NC}"
-    echo ""
-    echo -e "${YELLOW}For more information, see the Authentication section in README.md${NC}"
-    echo ""
+    printf '%b\n' "${YELLOW}See the Authentication section in README.md.${NC}" >&2
     exit 1
-else
-    log_success "A provider authentication token is set"
 fi
 
-# Surface GitLab host allowlist when GitLab is configured (env overrides settings.toml)
-if [[ -n "${GITLAB_TOKEN:-}" ]]; then
-    if [[ -n "${GITLAB_ALLOWED_HOSTS:-}" ]]; then
-        log_info "GitLab allowed hosts (GITLAB_ALLOWED_HOSTS): ${GITLAB_ALLOWED_HOSTS}"
-    else
-        log_info "GitLab allowed hosts: settings.toml gitlab.allowed_hosts (default gitlab.com)"
-        log_debug "Set GITLAB_ALLOWED_HOSTS=gitlab.com,your.gitlab.host for custom instances"
-    fi
+check_existing_server
+
+UV_RUN=(
+    uv run
+    --project "$SCRIPT_DIR"
+    --frozen
+    --no-sync
+    --no-python-downloads
+    --no-env-file
+)
+
+if ! PYTHON_VERSION=$("${UV_RUN[@]}" python --version 2>&1); then
+    log_error "The provisioned project Python environment is unavailable"
+    exit 1
+fi
+log_info "Python version: $PYTHON_VERSION"
+
+SERVER_CMD=(
+    "${UV_RUN[@]}"
+    python "$SCRIPT_DIR/prdiffer/server.py"
+    --transport "$SELECTED_TRANSPORT"
+)
+if [[ "$SELECTED_TRANSPORT" != "stdio" ]]; then
+    SERVER_CMD+=(--port "$SELECTED_PORT")
 fi
 
-# Surface selected-file admission limit (env overrides settings.toml app.max_files_allowed)
-if [[ -n "${MAX_FILES_ALLOWED:-}" ]]; then
-    log_info "Max files allowed (MAX_FILES_ALLOWED): ${MAX_FILES_ALLOWED}"
-else
-    log_info "Max files allowed: settings.toml app.max_files_allowed (default 50)"
-    log_debug "Set MAX_FILES_ALLOWED=N to raise/lower the full-diff selected-file admission limit"
-fi
-
-# Surface aggregate RESPONSE_SIZE_LIMIT budget (env overrides settings.toml diff.max_total_chars)
-if [[ -n "${MAX_TOTAL_CHARS:-}" ]]; then
-    log_info "Max total diff chars (MAX_TOTAL_CHARS / RESPONSE_SIZE_LIMIT): ${MAX_TOTAL_CHARS}"
-else
-    log_info "Max total diff chars: settings.toml diff.max_total_chars (default 600000)"
-    log_debug "Set MAX_TOTAL_CHARS=N to raise/lower the E5020 RESPONSE_SIZE_LIMIT aggregate budget"
-fi
-
-# Surface GitHub ignore patterns when overridden via env
-if [[ -n "${GITHUB_TOKEN:-}" ]]; then
-    if [[ -n "${GITHUB_IGNORE_PATTERNS:-}" ]]; then
-        log_info "GitHub ignore patterns (GITHUB_IGNORE_PATTERNS): ${GITHUB_IGNORE_PATTERNS}"
-    else
-        log_info "GitHub ignore patterns: settings.toml github.ignore_patterns"
-        log_debug "Set GITHUB_IGNORE_PATTERNS=*.lock,node_modules/ to replace the default ignore list"
-    fi
-fi
-echo ""
-
-# Build server command
-SERVER_CMD="uv run python prdiffer/server.py"
-
-# Add transport and port for non-stdio modes
-if [[ "$TRANSPORT" != "stdio" ]]; then
-    SERVER_CMD="$SERVER_CMD --transport $TRANSPORT"
-    if [[ -n "$PORT" ]]; then
-        SERVER_CMD="$SERVER_CMD --port $PORT"
-    fi
-fi
-
-# Display startup information
 log_info "Starting PRDiffer MCP Server..."
-log_debug "Command: $SERVER_CMD"
-echo ""
-
-# Start the server
+log_debug "Command: $(render_command)"
 log_info "Press Ctrl+C to stop the server gracefully"
-echo ""
 
-# Start the server in the background and capture its PID
-eval "$SERVER_CMD" &
+"${SERVER_CMD[@]}" <&0 &
 SERVER_PID=$!
-
-# Save PID to file
-echo "$SERVER_PID" > "$PID_FILE"
+if ! printf '%s\n' "$SERVER_PID" > "$PID_FILE"; then
+    log_error "Unable to write PID file: $PID_FILE"
+    exit 1
+fi
+PID_FILE_OWNED=true
 log_debug "Saved PID ($SERVER_PID) to $PID_FILE"
 
-# Wait briefly to ensure server started
 sleep 1
-
-# Perform health check
 if ! health_check; then
-    cleanup
-    exit 1
+    set +e
+    wait "$SERVER_PID"
+    CHILD_STATUS=$?
+    set -e
+    SERVER_REAPED=true
+    if [[ $CHILD_STATUS -eq 0 ]]; then
+        CHILD_STATUS=1
+    fi
+    exit "$CHILD_STATUS"
 fi
 
-# Wait for the server process to complete
-wait $SERVER_PID
+set +e
+wait "$SERVER_PID"
+CHILD_STATUS=$?
+set -e
+SERVER_REAPED=true
+exit "$CHILD_STATUS"

@@ -1,6 +1,6 @@
 # PRDiffer
 
-[![Python Version](https://img.shields.io/badge/python-3.14+-blue.svg)](https://www.python.org/downloads/)
+[![Python Version](https://img.shields.io/badge/python-3.14.4%2B-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![PR Quality](https://github.com/iWorkforces/PRDiffer/actions/workflows/pr-quality.yml/badge.svg)](https://github.com/iWorkforces/PRDiffer/actions/workflows/pr-quality.yml)
 
@@ -25,9 +25,9 @@ PRDiffer is an MCP server that extracts and analyzes GitHub PR diffs, providing 
 
 ### Prerequisites
 
-- Python 3.14 or higher
-- `uv` package manager (recommended) or pip
-- GitHub Personal Access Token (for authenticated requests)
+- Python 3.14.4 or higher
+- [`uv`](https://docs.astral.sh/uv/getting-started/installation/) (required by the launcher)
+- GitHub or GitLab Personal Access Token (for authenticated requests)
 
 ### Installation
 
@@ -36,12 +36,14 @@ PRDiffer is an MCP server that extracts and analyzes GitHub PR diffs, providing 
 git clone https://github.com/iWorkforces/PRDiffer.git
 cd PRDiffer
 
-# Install dependencies with uv (recommended)
-uv install
-
-# Or with pip
-pip install -e .
+# Provision the locked project environment
+uv sync --frozen
 ```
+
+The launcher uses the already-provisioned project without changing it. It does
+not install `uv`, download Python, update `uv.lock`, or sync dependencies. Run
+`uv sync --frozen` again after dependency or lockfile changes before restarting
+the launcher.
 
 ### Basic Usage
 
@@ -222,4 +224,3 @@ Configure via `gitlab.*` settings (`timeout`, `max_retries`, `max_concurrent`,
 `mcp.pr_diff_request_timeout_seconds`. Override file admission and the
 aggregate `RESPONSE_SIZE_LIMIT` budget at runtime with `MAX_FILES_ALLOWED` and
 `MAX_TOTAL_CHARS` in `.env` (see `.env.example` / `start-prdiffer-mcp-server.sh`).
-
