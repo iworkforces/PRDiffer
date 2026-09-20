@@ -3,7 +3,7 @@
 **Generated:** 2026-08-07
 **Commit:** d4b78ea
 **Branch:** develop
-**Version:** 0.6.4
+**Version:** 0.6.5
 
 ## OVERVIEW
 Python 3.14.4+ MCP server for GitHub/GitLab PR (merge request) analysis with Clean Architecture (Domain → Application → Infrastructure). FastMCP 3.x, Pydantic v2 (application boundary), anyio async. **296** Python files (**146** src + **150** tests), **44** AGENTS.md files. **~2565** test defs across **134** `test_*.py` files.
