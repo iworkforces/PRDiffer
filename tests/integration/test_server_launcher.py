@@ -8,6 +8,7 @@ import pytest
 
 
 LAUNCHER = Path(__file__).resolve().parents[2] / "start-prdiffer-mcp-server.sh"
+pytestmark = pytest.mark.integration
 
 
 def immutable_prefix(project: LauncherProject) -> list[str]:
