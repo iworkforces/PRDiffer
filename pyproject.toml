@@ -1,6 +1,6 @@
 [project]
 name = "prdiffer"
-version = "0.6.5"
+version = "1.0.0"
 description = "PRDiffer Is A MCP Server For GitHub PR/GitLab MR Review Process With Full Contexts"
 readme = "README.md"
 license = { text = "MIT" }
@@ -18,10 +18,10 @@ classifiers = [
     "Topic :: Software Development :: Version Control :: Git",
 ]
 dependencies = [
-    "fastmcp>=4.0.5",
+    "fastmcp>=4.0.9",
     "pydantic>=2.13.5",
     "fastapi[standard]>=0.141.1",
-    "uvicorn[standard]>=0.53.0",
+    "uvicorn[standard]>=0.54.0",
     "pygithub>=2.10.0",
     "asyncer>=0.0.18",
     "anyio>=4.15.1",
@@ -30,7 +30,7 @@ dependencies = [
     "mcp>=2.2.0",
     "uvloop>=0.22.1",
     "httptools>=0.8.0",
-    "starlette>=1.6.0",
+    "starlette>=1.7.0",
     "httpx[http2]>=0.28.1",
     "jinja2>=3.1.6",
     "python-multipart>=0.0.32",
@@ -42,7 +42,7 @@ dependencies = [
     "aiohttp>=3.14.3",
     "aiodns>=4.0.4",
     "httpx-aiohttp>=0.2.0",
-    "pyjwt>=2.14.0",
+    "pyjwt>=2.15.0",
     "python-gitlab>=8.5.0",
 ]
 
@@ -64,12 +64,12 @@ packages = ["prdiffer"]
 
 [dependency-groups]
 dev = [
-    "ruff>=0.16.8",
+    "ruff>=0.16.9",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
     "pytest-xdist>=3.8.0",
-    "ty>=0.0.82",
+    "ty>=0.0.84",
     "vulture>=2.16",
     "pyright>=1.1.414",
 ]
