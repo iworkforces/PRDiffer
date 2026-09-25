@@ -44,6 +44,12 @@ class MockCacheService(CacheServiceInterface):
     async def invalidate(self, cache_key: str):
         pass
 
+    async def invalidate_github_pr(self, owner: str, repo: str, pr_number: int) -> None:
+        pass
+
+    async def invalidate_github_repository(self, owner: str, repo: str) -> None:
+        pass
+
     def get_etag(self, cache_key: str):
         return None
 
@@ -81,6 +87,12 @@ class MockRepositoryCacheService(RepositoryCacheServiceInterface):
 
     def invalidate(self, cache_key: str) -> bool:
         return True
+
+    def invalidate_github_pr(self, owner: str, repo: str, pr_number: int) -> None:
+        pass
+
+    def invalidate_github_repository(self, owner: str, repo: str) -> None:
+        pass
 
 
 class MockRepository(PRDiffRepositoryInterface):

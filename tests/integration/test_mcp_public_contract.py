@@ -89,6 +89,12 @@ class RecordingCache(CacheServiceInterface):
     async def invalidate(self, cache_key: str) -> None:
         return None
 
+    async def invalidate_github_pr(self, owner: str, repo: str, pr_number: int) -> None:
+        return None
+
+    async def invalidate_github_repository(self, owner: str, repo: str) -> None:
+        return None
+
     def get_etag(self, cache_key: str) -> str | None:
         return None
 
@@ -328,6 +334,12 @@ class StubRepositoryCache(RepositoryCacheServiceInterface):
 
     def invalidate(self, cache_key: str) -> bool:
         return False
+
+    def invalidate_github_pr(self, owner: str, repo: str, pr_number: int) -> None:
+        return None
+
+    def invalidate_github_repository(self, owner: str, repo: str) -> None:
+        return None
 
 
 class StubLogger(LoggerServiceInterface):
