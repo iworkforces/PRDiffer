@@ -79,9 +79,10 @@ Review the pull request identified by `$1`. `$1` is the sole argument and is
    present, `status`, `stats`, and complete full-context `diff`. Do not
    partition, sample, truncate, or omit files, statuses, or file types.
 4. In the same assistant turn, launch exactly five independent `Agent` tool
-   calls using the built-in read-only `Explore` subagent. Do not launch them
-   sequentially. Give all five the same immutable snapshot. Assign exactly one
-   of these lens names and bounded responsibilities to each reviewer:
+   calls, explicitly selecting the read-only `Oracle` agent for each call.
+   Do not launch them sequentially. Give all five the same immutable snapshot.
+   Assign exactly one of these lens names and bounded responsibilities to each
+   reviewer:
 
    a. `correctness, architecture, contracts, and domain invariants`: Review
       functional behavior, control and data flow, architectural boundaries,
@@ -110,7 +111,7 @@ Review the pull request identified by `$1`. `$1` is the sole argument and is
    The five backticked strings above are the exact assigned `reviewer_lens`
    values.
 
-   Each `Agent` prompt must require the reviewer to:
+   Each `Oracle` reviewer prompt must require the reviewer to:
 
    - Review every snapshot file first to last, including the complete
      full-context `diff`, not merely hunks or changed lines.
@@ -156,8 +157,11 @@ Review the pull request identified by `$1`. `$1` is the sole argument and is
      top-level keys are `reviewer_lens`, `reviewed_files`, and `candidates`.
      `reviewer_lens` must match the assigned lens. Return `candidates: []` when
      there are no findings. The coverage manifest must show every reviewed
-     snapshot file in provider order. Every candidate must be anchored to a
-     contiguous range of newly added code lines on the new side of the diff.
+     snapshot file in provider order, with exactly the keys `path`,
+     `previous_path`, and `status` for each entry; `previous_path` is null when
+     absent from the snapshot. Each value must match its snapshot entry. Every
+     candidate must be anchored to a contiguous range of newly added code lines
+     on the new side of the diff.
      Both `start_line` and `end_line` must be new-file line numbers whose diff
      lines are marked `+`. Do not anchor a candidate to unchanged context,
      removed lines, old-side line numbers, or arbitrary full-file lines. Treat
@@ -207,15 +211,16 @@ Review the pull request identified by `$1`. `$1` is the sole argument and is
    otherwise check its complete response against this contract and correct any
    violation. It must not return the response until the YAML shape, exact
    labels, label counts and order, blank lines, and evidence sequence all pass.
-5. Wait for all five `Agent` results. Parse each complete reviewer response under
-   the universal two-phase YAML policy before accessing any field. Validate its
-   exact top-level, candidate, and evidence key sets against the YAML schema
-   above, and require every evidence path to be a snapshot path or a
+5. Wait for all five `Oracle` reviewer results. Parse each complete reviewer
+   response under the universal two-phase YAML policy before accessing any field.
+   Validate its exact top-level, candidate, and evidence key sets against the
+   YAML schema above, and require every evidence path to be a snapshot path or a
    parent-selected confined context path. If any reviewer fails, returns malformed
    data, adds text outside the YAML document, violates the exact `issue_content`
    label contract, returns `evidence` as anything other than a non-empty sequence
-   of the required mappings, or has a coverage manifest that omits a snapshot file
-   or changes its provider order, stop before reading or writing the report.
+   of the required mappings, or has a coverage manifest that differs from the
+   snapshot in entry count, order, keys, or values, stop before reading or writing
+   the report.
 6. The parent is the sole report reader and writer. It must independently review
    every `result.files` entry from first line through last line of the complete
    full-context `diff`, using only parent-selected confined LSP and local-source
@@ -335,8 +340,7 @@ Review the pull request identified by `$1`. `$1` is the sole argument and is
     these keys:
 
     ```yaml
-    - relevant_file: |
-        path/to/file
+    - relevant_file: "path/to/file"
       issue_header: |
         Short actionable title
       issue_content: |
@@ -388,7 +392,7 @@ Review the pull request identified by `$1`. `$1` is the sole argument and is
 
 12. If Step 10 or the empty-report branch of Step 11 published a report,
     no-follow verify and read the just-published regular object, then parse it
-    under the universal YAML policy before running LSP diagnostics. Otherwise,
+    under the universal YAML policy. Otherwise,
     a valid existing report was preserved with zero writes; retain its verified
     identity and bytes and do not reopen it merely for this step. Complete the
     unconditional exactly-once guard-release path only after this verification or
