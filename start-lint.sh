@@ -1,15 +1,10 @@
 #!/bin/bash
 
-# CCProxy - Code Linting Script
-# This script uses ruff to scan and fix all Python files for linting issues
-#
-# Prerequisite: ruff must be available in your environment.
-# Recommended:
-#   uv add --dev ruff    # project-local dev dependency
-#   # or
-#   uv tool install ruff # or pip install ruff in your venv
-
 set -e
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd -- "$SCRIPT_DIR"
+RUN_RUFF=(uv run --project "$SCRIPT_DIR" --frozen --no-sync --no-python-downloads ruff)
 
 # Colors for output
 RED='\033[0;31m'
@@ -32,122 +27,21 @@ echo ""
 # Function to check if uv is installed
 check_uv() {
     if ! command -v uv &> /dev/null; then
-        echo -e "${YELLOW}📦 uv not found, installing...${NC}"
-
-        # Install uv using the official installer
-        if command -v curl &> /dev/null; then
-            echo -e "${CYAN}Installing uv via curl...${NC}"
-            curl -LsSf https://astral.sh/uv/install.sh | sh
-        elif command -v wget &> /dev/null; then
-            echo -e "${CYAN}Installing uv via wget...${NC}"
-            wget -qO- https://astral.sh/uv/install.sh | sh
-        else
-            echo -e "${RED}❌ Neither curl nor wget found. Please install uv manually${NC}"
-            echo -e "${YELLOW}Visit: https://docs.astral.sh/uv/getting-started/installation/${NC}"
-            exit 1
-        fi
-
-        # Source the shell profile to make uv available
-        if [ -f "$HOME/.bashrc" ]; then
-            source "$HOME/.bashrc"
-        elif [ -f "$HOME/.zshrc" ]; then
-            source "$HOME/.zshrc"
-        fi
-
-        # Add uv to PATH for this session if not already available
-        if ! command -v uv &> /dev/null && [ -f "$HOME/.cargo/bin/uv" ]; then
-            export PATH="$HOME/.cargo/bin:$PATH"
-        fi
-
-        # Verify installation
-        if ! command -v uv &> /dev/null; then
-            echo -e "${RED}❌ Failed to install uv${NC}"
-            echo -e "${YELLOW}Please install uv manually: https://docs.astral.sh/uv/getting-started/installation/${NC}"
-            exit 1
-        fi
+        echo -e "${RED}❌ uv is required. Install it from https://docs.astral.sh/uv/getting-started/installation/${NC}" >&2
+        exit 1
     fi
-
-    echo -e "${GREEN}✅ uv is available${NC}"
-    echo -e "${CYAN}Version: $(uv --version)${NC}"
 }
 
-# Function to check if ruff is installed (prefer project-local via uv)
 check_ruff() {
-    # uv run finds project-local ruff even when it is not on PATH
-    if command -v uv &> /dev/null && uv run ruff --version &> /dev/null; then
+    local version
+    if version=$("${RUN_RUFF[@]}" --version 2>/dev/null); then
         echo -e "${GREEN}✅ ruff is available${NC}"
-        echo -e "${CYAN}Version: $(uv run ruff --version)${NC}"
+        echo -e "${CYAN}Version: $version${NC}"
         return 0
     fi
 
-    if command -v ruff &> /dev/null; then
-        echo -e "${GREEN}✅ ruff is available${NC}"
-        echo -e "${CYAN}Version: $(ruff --version)${NC}"
-        return 0
-    fi
-
-    echo -e "${YELLOW}📦 ruff not found, installing...${NC}"
-
-    # Prefer uv project/venv install so subsequent `uv run ruff` works
-    if command -v uv &> /dev/null; then
-        echo -e "${CYAN}Installing ruff via uv...${NC}"
-        uv pip install ruff
-    elif [[ "$VIRTUAL_ENV" != "" ]]; then
-        echo -e "${GREEN}✅ Using active virtual environment${NC}"
-        pip install ruff
-    elif [ -d "$VENV_DIR" ]; then
-        echo -e "${YELLOW}🔧 Activating virtual environment...${NC}"
-        source "$VENV_DIR/bin/activate"
-        pip install ruff
-    else
-        echo -e "${YELLOW}🔧 Installing ruff globally...${NC}"
-        pip install --user ruff
-    fi
-
-    # Verify via uv run first, then bare ruff on PATH
-    if command -v uv &> /dev/null && uv run ruff --version &> /dev/null; then
-        echo -e "${GREEN}✅ ruff is available${NC}"
-        echo -e "${CYAN}Version: $(uv run ruff --version)${NC}"
-        return 0
-    fi
-    if command -v ruff &> /dev/null; then
-        echo -e "${GREEN}✅ ruff is available${NC}"
-        echo -e "${CYAN}Version: $(ruff --version)${NC}"
-        return 0
-    fi
-
-    echo -e "${RED}❌ Failed to install ruff${NC}"
-    echo -e "${YELLOW}Please install ruff manually: uv add --dev ruff${NC}"
+    echo -e "${RED}❌ ruff is unavailable in the project environment. Run uv sync --frozen --group dev in $SCRIPT_DIR, then retry.${NC}" >&2
     exit 1
-}
-
-# Function to upgrade ruff to latest version
-upgrade_ruff() {
-    echo -e "${BLUE}🔄 Upgrading ruff to latest version...${NC}"
-
-    # Use uv to upgrade ruff if available, otherwise fall back to pip
-    if command -v uv &> /dev/null; then
-        echo -e "${CYAN}Upgrading ruff via uv...${NC}"
-        uv pip install --upgrade ruff
-    elif [[ "$VIRTUAL_ENV" != "" ]]; then
-        echo -e "${GREEN}✅ Using active virtual environment${NC}"
-        pip install --upgrade ruff
-    elif [ -d "$VENV_DIR" ]; then
-        echo -e "${YELLOW}🔧 Activating virtual environment...${NC}"
-        source "$VENV_DIR/bin/activate"
-        pip install --upgrade ruff
-    else
-        echo -e "${YELLOW}🔧 Upgrading ruff globally...${NC}"
-        pip install --user --upgrade ruff
-    fi
-
-    echo -e "${GREEN}✅ ruff upgraded to latest version${NC}"
-    if command -v uv &> /dev/null; then
-        echo -e "${CYAN}Version: $(uv run ruff --version)${NC}"
-    else
-        echo -e "${CYAN}Version: $(ruff --version)${NC}"
-    fi
-    echo ""
 }
 
 # Function to find Python files
@@ -201,14 +95,7 @@ run_check() {
     echo -e "${BLUE}🔍 Running ruff check (dry run)...${NC}"
     echo ""
 
-    # Run ruff check with detailed output
-    if command -v uv &> /dev/null; then
-        RUN_RUFF="uv run ruff"
-    else
-        RUN_RUFF="ruff"
-    fi
-
-    if $RUN_RUFF check . --output-format=full; then
+    if "${RUN_RUFF[@]}" check . --output-format=full; then
         echo ""
         echo -e "${GREEN}✅ No linting issues found!${NC}"
         return 0
@@ -226,12 +113,12 @@ run_check_stats() {
 
     # Get statistics by rule
     echo -e "${CYAN}Issues by rule:${NC}"
-    ${RUN_RUFF:-ruff} check . --output-format=concise | cut -d: -f4 | cut -d' ' -f2 | sort | uniq -c | sort -nr || true
+    "${RUN_RUFF[@]}" check . --output-format=concise | cut -d: -f4 | cut -d' ' -f2 | sort | uniq -c | sort -nr || true
     echo ""
 
     # Get statistics by file
     echo -e "${CYAN}Files with issues:${NC}"
-    ${RUN_RUFF:-ruff} check . --output-format=concise | cut -d: -f1 | sort | uniq -c | sort -nr | head -10 || true
+    "${RUN_RUFF[@]}" check . --output-format=concise | cut -d: -f1 | sort | uniq -c | sort -nr | head -10 || true
     echo ""
 }
 
@@ -241,7 +128,7 @@ run_fix() {
     echo ""
 
     # Run ruff with --fix flag
-    if $RUN_RUFF check . --fix; then
+    if "${RUN_RUFF[@]}" check . --fix; then
         echo ""
         echo -e "${GREEN}✅ Automatic fixes applied successfully${NC}"
     else
@@ -249,13 +136,14 @@ run_fix() {
         echo -e "${YELLOW}⚠️  Some issues were fixed, but manual fixes may be needed${NC}"
     fi
 
-    # Show remaining issues
-    echo ""
-    echo -e "${BLUE}🔍 Checking for remaining issues...${NC}"
-    if $RUN_RUFF check . --output-format=concise; then
-        echo -e "${GREEN}✅ All fixable issues have been resolved${NC}"
-    else
-        echo -e "${YELLOW}⚠️  Some issues require manual attention${NC}"
+    if [ "${1:-}" != "final-check-follows" ]; then
+        echo ""
+        echo -e "${BLUE}🔍 Checking for remaining issues...${NC}"
+        if "${RUN_RUFF[@]}" check . --output-format=concise; then
+            echo -e "${GREEN}✅ All fixable issues have been resolved${NC}"
+        else
+            echo -e "${YELLOW}⚠️  Some issues require manual attention${NC}"
+        fi
     fi
 }
 
@@ -303,11 +191,7 @@ run_format() {
     echo ""
 
     # Run ruff format (ignore failures, whitespace will be stripped anyway)
-    if command -v uv &> /dev/null; then
-        uv run ruff format . || true
-    else
-        ruff format . || true
-    fi
+    "${RUN_RUFF[@]}" format . || true
 
     # Remove trailing whitespace in all Python files
     find_python_files
@@ -369,31 +253,10 @@ show_help() {
 # Function to install/upgrade ruff
 install_ruff() {
     echo -e "${BLUE}📦 Installing/upgrading ruff...${NC}"
-
-    # Use uv if available, otherwise fall back to pip
-    if command -v uv &> /dev/null; then
-        echo -e "${CYAN}Installing ruff via uv...${NC}"
-        uv pip install --upgrade ruff
-    elif [[ "$VIRTUAL_ENV" != "" ]]; then
-        echo -e "${GREEN}✅ Using active virtual environment${NC}"
-        pip install --upgrade ruff
-    elif [ -d "$VENV_DIR" ]; then
-        echo -e "${YELLOW}🔧 Activating virtual environment...${NC}"
-        source "$VENV_DIR/bin/activate"
-        pip install --upgrade ruff
-    else
-        echo -e "${YELLOW}🔧 Installing ruff globally...${NC}"
-        pip install --user --upgrade ruff
-    fi
+    uv pip install --python "$SCRIPT_DIR/.venv/bin/python" --upgrade ruff
 
     echo -e "${GREEN}✅ ruff installation completed${NC}"
-    if command -v uv &> /dev/null && uv run ruff --version &> /dev/null; then
-        echo -e "${CYAN}Version: $(uv run ruff --version)${NC}"
-    elif command -v ruff &> /dev/null; then
-        echo -e "${CYAN}Version: $(ruff --version)${NC}"
-    else
-        echo -e "${YELLOW}⚠️  ruff installed but not yet resolvable; try: uv run ruff --version${NC}"
-    fi
+    check_ruff
 }
 
 # Function to list files
@@ -475,8 +338,6 @@ main() {
     # Execute main workflow
     check_uv
     check_ruff
-    upgrade_ruff
-    find_python_files
     show_config
 
     case $ACTION in
@@ -521,7 +382,7 @@ main() {
 
             # Step 2: Fix
             echo -e "${BLUE}Step 2: Apply fixes${NC}"
-            run_fix
+            run_fix final-check-follows
             echo ""
 
             # Step 3: Format
@@ -531,16 +392,19 @@ main() {
 
             # Step 4: Final check
             echo -e "${BLUE}Step 4: Final verification${NC}"
+            final_status=0
             if run_check; then
                 echo -e "${GREEN}🎉 Complete linting workflow finished successfully${NC}"
             else
                 echo -e "${YELLOW}⚠️  Some issues may require manual attention${NC}"
+                final_status=1
             fi
 
             if [ "$SHOW_STATS" = true ]; then
                 echo ""
                 run_check_stats
             fi
+            return "$final_status"
             ;;
     esac
 }

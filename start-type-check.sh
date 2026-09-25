@@ -4,6 +4,9 @@
 # This script uses ty (Astral's fast Python type checker) to perform static type checking
 
 set -e
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd -- "$SCRIPT_DIR"
+TY_COMMAND=(uv run --project "$SCRIPT_DIR" --frozen --no-sync --no-python-downloads ty)
 
 # Colors for output
 RED='\033[0;31m'
@@ -24,39 +27,8 @@ echo ""
 # Function to check if uv is installed
 check_uv() {
     if ! command -v uv &> /dev/null; then
-        echo -e "${YELLOW}📦 uv not found, installing...${NC}"
-
-        # Install uv using the official installer
-        if command -v curl &> /dev/null; then
-            echo -e "${CYAN}Installing uv via curl...${NC}"
-            curl -LsSf https://astral.sh/uv/install.sh | sh
-        elif command -v wget &> /dev/null; then
-            echo -e "${CYAN}Installing uv via wget...${NC}"
-            wget -qO- https://astral.sh/uv/install.sh | sh
-        else
-            echo -e "${RED}❌ Neither curl nor wget found. Please install uv manually${NC}"
-            echo -e "${YELLOW}Visit: https://docs.astral.sh/uv/getting-started/installation/${NC}"
-            exit 1
-        fi
-
-        # Source the shell profile to make uv available
-        if [ -f "$HOME/.bashrc" ]; then
-            source "$HOME/.bashrc"
-        elif [ -f "$HOME/.zshrc" ]; then
-            source "$HOME/.zshrc"
-        fi
-
-        # Add uv to PATH for this session if not already available
-        if ! command -v uv &> /dev/null && [ -f "$HOME/.cargo/bin/uv" ]; then
-            export PATH="$HOME/.cargo/bin:$PATH"
-        fi
-
-        # Verify installation
-        if ! command -v uv &> /dev/null; then
-            echo -e "${RED}❌ Failed to install uv${NC}"
-            echo -e "${YELLOW}Please install uv manually: https://docs.astral.sh/uv/getting-started/installation/${NC}"
-            exit 1
-        fi
+        echo -e "${RED}❌ uv is required. Install it from https://docs.astral.sh/uv/getting-started/installation/${NC}" >&2
+        return 1
     fi
 
     echo -e "${GREEN}✅ uv is available${NC}"
@@ -65,34 +37,15 @@ check_uv() {
 
 # Function to check if ty is installed
 check_ty() {
-    if ! uv run ty version &> /dev/null; then
-        echo -e "${YELLOW}📦 ty not found, installing...${NC}"
-        echo -e "${CYAN}Installing ty via uv...${NC}"
-        uv add --dev ty
-
-        # Verify installation
-        if ! uv run ty version &> /dev/null; then
-            echo -e "${RED}❌ Failed to install ty${NC}"
-            echo -e "${YELLOW}Please install ty manually: uv add --dev ty${NC}"
-            exit 1
-        fi
+    local version
+    if ! version=$("${TY_COMMAND[@]}" version 2>&1); then
+        echo -e "${RED}❌ ty is unavailable in the project environment: $version${NC}" >&2
+        echo -e "${YELLOW}Provision it with uv sync --frozen --group dev in $SCRIPT_DIR${NC}" >&2
+        return 1
     fi
 
     echo -e "${GREEN}✅ ty is available${NC}"
-    echo -e "${CYAN}Version: $(uv run ty version)${NC}"
-}
-
-# Function to upgrade ty to latest version
-upgrade_ty() {
-    echo -e "${BLUE}🔄 Checking for ty updates...${NC}"
-    # Use uv pip to upgrade without modifying pyproject.toml
-    if uv pip install --upgrade ty --quiet 2>/dev/null; then
-        echo -e "${GREEN}✅ ty is up to date${NC}"
-    else
-        echo -e "${YELLOW}⚠️  Could not check for updates, continuing with installed version${NC}"
-    fi
-    echo -e "${CYAN}Version: $(uv run ty version)${NC}"
-    echo ""
+    echo -e "${CYAN}Version: $version${NC}"
 }
 
 # Function to show ty configuration
@@ -119,7 +72,7 @@ run_type_check() {
     echo ""
 
     # Run ty with detailed output
-    if uv run ty check; then
+    if "${TY_COMMAND[@]}" check; then
         echo ""
         echo -e "${GREEN}✅ No type errors found!${NC}"
         return 0
@@ -136,7 +89,7 @@ run_type_check_strict() {
     echo ""
 
     # Run ty with --error-on-warning flag
-    if uv run ty check --error-on-warning; then
+    if "${TY_COMMAND[@]}" check --error-on-warning; then
         echo ""
         echo -e "${GREEN}✅ No type errors or warnings found!${NC}"
         return 0
@@ -155,7 +108,7 @@ show_stats() {
     # Get statistics by running ty and counting errors
     echo -e "${CYAN}Running type check for statistics...${NC}"
     local output
-    output=$(uv run ty check 2>&1) || true
+    output=$("${TY_COMMAND[@]}" check 2>&1) || true
 
     # Count errors by type
     echo -e "${CYAN}Error summary:${NC}"
@@ -174,7 +127,7 @@ run_watch() {
     echo -e "${CYAN}Press Ctrl+C to stop watching${NC}"
     echo ""
 
-    uv run ty check --watch
+    "${TY_COMMAND[@]}" check --watch
 }
 
 # Function to show detailed help
@@ -205,7 +158,7 @@ install_ty() {
     uv pip install --upgrade ty
 
     echo -e "${GREEN}✅ ty installation completed${NC}"
-    echo -e "${CYAN}Version: $(uv run ty version)${NC}"
+    check_ty
 }
 
 # Main execution
@@ -258,7 +211,6 @@ main() {
     # Execute main workflow
     check_uv
     check_ty
-    upgrade_ty
     show_config
 
     case $ACTION in
