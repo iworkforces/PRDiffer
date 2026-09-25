@@ -6,17 +6,21 @@ This directory contains git hooks for the PRDiffer project.
 
 ### pre-push
 
-Runs validation checks before allowing a push to the remote repository:
+Provision the development environment from the repository root before running the hook:
 
-1. **Type Checking**: Runs `./start-type-check.sh`
+```bash
+uv sync --frozen --group dev
+```
+
+The hook runs read-only validation checks before allowing a push:
+
+1. **Type Checking**: Runs `./start-type-check.sh --check`
    - Uses ty for static type checking
-   - Ensures all Python code is properly typed
 
-2. **Linting**: Runs `./start-lint.sh --all`
+2. **Linting**: Runs `./start-lint.sh --check`
    - Checks code style with ruff
-   - Applies automatic fixes
-   - Formats code
-   - Ensures code quality standards
+
+Neither check applies fixes or formats code. The check wrappers use the already-provisioned environment without syncing dependencies or downloading Python.
 
 If either check fails, the push is blocked.
 
