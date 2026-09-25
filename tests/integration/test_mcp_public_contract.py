@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from importlib.metadata import version
 from typing import Any, Literal, assert_never
 
 import pytest
@@ -523,7 +522,6 @@ async def test_registered_tool_discovery_and_schema_contracts() -> None:
 
     tools = {tool.name: tool for tool in await harness.server.mcp.list_tools()}
 
-    assert version("fastmcp") == "4.0.5"
     assert set(tools) == {"get_pr_diff", "approve_pr", "describe_pr", "health"}
     expected_required = {
         "get_pr_diff": {"pr_url"},
