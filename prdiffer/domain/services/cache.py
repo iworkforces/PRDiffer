@@ -74,6 +74,16 @@ class CacheServiceInterface(ABC):
         pass
 
     @abstractmethod
+    async def invalidate_github_pr(self, owner: str, repo: str, pr_number: int) -> None:
+        """Invalidate GitHub strict snapshots and legacy entries for one PR."""
+        pass
+
+    @abstractmethod
+    async def invalidate_github_repository(self, owner: str, repo: str) -> None:
+        """Invalidate GitHub strict snapshots and legacy entries for a repository."""
+        pass
+
+    @abstractmethod
     def get_etag(self, cache_key: str) -> str | None:
         """Get stored ETag for a cache key."""
         pass

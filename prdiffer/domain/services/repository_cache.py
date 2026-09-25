@@ -105,3 +105,13 @@ class RepositoryCacheServiceInterface(ABC):
             bool: True if invalidated successfully, False if not found
         """
         pass
+
+    @abstractmethod
+    def invalidate_github_pr(self, owner: str, repo: str, pr_number: int) -> None:
+        """Remove the cached GitHub repository instance for one PR, if present."""
+        pass
+
+    @abstractmethod
+    def invalidate_github_repository(self, owner: str, repo: str) -> None:
+        """Remove all cached GitHub PR instances for a repository."""
+        pass

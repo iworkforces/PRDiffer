@@ -82,28 +82,36 @@ class WebhookHandler:
             )
             return {"status": "error", "message": "Invalid payload format"}
 
-        repository = payload.get("repository", {})
-        repository_full_name = repository.get("full_name", "")
-        number = payload.get("number")
-        action = payload.get("action")
-        cache_key = None
-
-        if not repository_full_name:
+        repository = payload.get("repository") if isinstance(payload, dict) else None
+        repository_full_name = repository.get("full_name") if isinstance(repository, dict) else None
+        repository_parts = repository_full_name.split("/") if isinstance(repository_full_name, str) else []
+        if (
+            len(repository_parts) != 2
+            or any(not part or any(char.isspace() for char in part) for part in repository_parts)
+        ):
             self._logger.warning(
-                "Webhook payload missing repository information",
+                "Webhook payload has invalid repository information",
                 github_event=github_event,
             )
             return {"status": "error", "message": "Missing repository info"}
 
+        owner, repo = repository_parts
+        cache_key = None
         if github_event == "pull_request":
+            action = payload.get("action")
             if action in ["opened", "synchronize", "reopened"]:
+                number = payload.get("number")
+                if type(number) is not int or number <= 0:
+                    self._logger.warning("Webhook payload has invalid PR number", github_event=github_event)
+                    return {"status": "error", "message": "Invalid PR number"}
                 cache_key = f"{repository_full_name}/pr/{number}"
                 self._logger.info(
                     "Invalidating cache on PR updated",
                     cache_key=cache_key,
                     github_event=github_event,
                 )
-                self._repository_cache_service.invalidate(cache_key)
+                await self._cache_service.invalidate_github_pr(owner, repo, number)
+                self._repository_cache_service.invalidate_github_pr(owner, repo, number)
         elif github_event == "push":
             cache_key = repository_full_name
             self._logger.info(
@@ -111,8 +119,8 @@ class WebhookHandler:
                 cache_key=cache_key,
                 github_event=github_event,
             )
-            self._repository_cache_service.invalidate(cache_key)
-            await self._cache_service.invalidate(repository_full_name)
+            await self._cache_service.invalidate_github_repository(owner, repo)
+            self._repository_cache_service.invalidate_github_repository(owner, repo)
 
         self._logger.info(
             "Webhook processed successfully",

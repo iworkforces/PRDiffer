@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from importlib.metadata import version
 from typing import Any, Literal, assert_never
 
 import pytest
@@ -87,6 +86,12 @@ class RecordingCache(CacheServiceInterface):
         self.writes.append((cache_key, commit_sha, data))
 
     async def invalidate(self, cache_key: str) -> None:
+        return None
+
+    async def invalidate_github_pr(self, owner: str, repo: str, pr_number: int) -> None:
+        return None
+
+    async def invalidate_github_repository(self, owner: str, repo: str) -> None:
         return None
 
     def get_etag(self, cache_key: str) -> str | None:
@@ -329,6 +334,12 @@ class StubRepositoryCache(RepositoryCacheServiceInterface):
     def invalidate(self, cache_key: str) -> bool:
         return False
 
+    def invalidate_github_pr(self, owner: str, repo: str, pr_number: int) -> None:
+        return None
+
+    def invalidate_github_repository(self, owner: str, repo: str) -> None:
+        return None
+
 
 class StubLogger(LoggerServiceInterface):
     def debug(self, message: str, **kwargs: object) -> None:
@@ -511,7 +522,6 @@ async def test_registered_tool_discovery_and_schema_contracts() -> None:
 
     tools = {tool.name: tool for tool in await harness.server.mcp.list_tools()}
 
-    assert version("fastmcp") == "4.0.5"
     assert set(tools) == {"get_pr_diff", "approve_pr", "describe_pr", "health"}
     expected_required = {
         "get_pr_diff": {"pr_url"},

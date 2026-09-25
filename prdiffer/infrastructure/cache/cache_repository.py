@@ -248,6 +248,17 @@ class RepositoryCacheService(RepositoryCacheServiceInterface):
             )
             return False
 
+    @with_lock()
+    def invalidate_github_pr(self, owner: str, repo: str, pr_number: int) -> None:
+        self._cache.pop(self._get_cache_key(owner, repo, pr_number), None)
+
+    @with_lock()
+    def invalidate_github_repository(self, owner: str, repo: str) -> None:
+        repo_key = (owner.lower(), repo.lower())
+        for cache_key in tuple(self._cache):
+            if cache_key[:2] == repo_key:
+                del self._cache[cache_key]
+
 
 _repository_cache_service: RepositoryCacheService | None = None
 

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # PRDiffer - Pre-Push Git Hook
-# This hook runs type checking and linting before allowing a push
+# This hook runs read-only type and lint checks before allowing a push
 
 # Colors for output
 RED='\033[0;31m'
@@ -10,7 +10,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}🔒 Pre-Push Hook: Running validation checks...${NC}"
+echo -e "${BLUE}🔒 Pre-Push Hook: Running read-only validation checks...${NC}"
 echo -e "${BLUE}===========================================${NC}"
 echo ""
 
@@ -24,11 +24,11 @@ cd "$REPO_ROOT" || exit 1
 echo -e "${BLUE}Step 1/2: Running type check...${NC}"
 echo ""
 
-if ! ./start-type-check.sh; then
+if ! ./start-type-check.sh --check; then
     echo ""
     echo -e "${RED}❌ Type checking failed!${NC}"
     echo -e "${YELLOW}💡 Please fix type errors before pushing${NC}"
-    echo -e "${YELLOW}💡 Run: ./start-type-check.sh${NC}"
+    echo -e "${YELLOW}💡 Recheck with: ./start-type-check.sh --check${NC}"
     exit 1
 fi
 
@@ -37,14 +37,14 @@ echo -e "${GREEN}✅ Type checking passed${NC}"
 echo ""
 
 # Step 2: Run linting
-echo -e "${BLUE}Step 2/2: Running linting (check, fix, format)...${NC}"
+echo -e "${BLUE}Step 2/2: Running lint check (no fixes or formatting)...${NC}"
 echo ""
 
-if ! ./start-lint.sh --all; then
+if ! ./start-lint.sh --check; then
     echo ""
     echo -e "${RED}❌ Linting failed!${NC}"
     echo -e "${YELLOW}💡 Please fix linting issues before pushing${NC}"
-    echo -e "${YELLOW}💡 Run: ./start-lint.sh --all${NC}"
+    echo -e "${YELLOW}💡 Recheck with: ./start-lint.sh --check${NC}"
     exit 1
 fi
 

@@ -234,3 +234,4 @@ start-oc-zai.sh
 /.cocoindex_code/
 .omo/
 .tmp/
+*junit.xml

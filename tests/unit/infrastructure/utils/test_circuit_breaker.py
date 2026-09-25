@@ -5,6 +5,13 @@ failure handling, and recovery mechanisms.
 """
 
 import time
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
+from types import SimpleNamespace
+from typing import Iterator
+
+import anyio
 from unittest.mock import Mock
 import pytest
 
@@ -16,6 +23,8 @@ from prdiffer.infrastructure.utils.circuit_breaker_core import (
 from prdiffer.infrastructure.utils.circuit_breaker_registry import (
     get_global_circuit_breaker_registry,
 )
+from prdiffer.infrastructure.utils.circuit_breaker.core import CircuitBreaker as ShimCircuitBreaker
+import prdiffer.infrastructure.utils.circuit_breaker_core as core
 
 
 @pytest.mark.unit
@@ -248,6 +257,102 @@ class TestCircuitBreakerAsyncMethods:
         await breaker.record_failure_async()
         assert breaker.failure_count == 3
         assert breaker.state == CircuitState.OPEN
+
+    @pytest.mark.asyncio
+    @pytest.mark.thread_safety
+    async def test_async_admission_waits_for_sync_lock_without_blocking_loop(self, monkeypatch):
+        breaker = CircuitBreaker(failure_threshold=1)
+        lock = breaker._sync_lock
+        held = threading.Event()
+        release = threading.Event()
+        attempted = anyio.Event()
+        progress = anyio.Event()
+        finished = anyio.Event()
+        result: list[bool] = []
+
+        def hold_lock() -> None:
+            with lock:
+                held.set()
+                release.wait(timeout=3)
+
+        @contextmanager
+        def observed_lock() -> Iterator[None]:
+            anyio.from_thread.run_sync(attempted.set)
+            anyio.from_thread.run_sync(progress.set)
+            with lock:
+                yield
+
+        async def admit() -> None:
+            result.append(await breaker.can_execute_async())
+            finished.set()
+            progress.set()
+
+        worker = threading.Thread(target=hold_lock)
+        worker.start()
+        try:
+            with anyio.fail_after(2):
+                assert await anyio.to_thread.run_sync(held.wait, 2)
+                monkeypatch.setattr(breaker, "_sync_lock", observed_lock())
+                async with anyio.create_task_group() as group:
+                    group.start_soon(admit)
+                    await progress.wait()
+                    assert attempted.is_set()
+                    assert not finished.is_set()
+                    release.set()
+            assert result == [True]
+        finally:
+            release.set()
+            worker.join(timeout=3)
+
+    @pytest.mark.thread_safety
+    def test_mixed_threads_and_independent_loops_share_failure_and_recovery(self, monkeypatch):
+        clock = [100.0]
+        monkeypatch.setattr(core, "time", SimpleNamespace(time=lambda: clock[0]))
+        breaker = CircuitBreaker(failure_threshold=12, timeout=10)
+        barrier = threading.Barrier(3)
+
+        def sync_worker() -> None:
+            barrier.wait(timeout=2)
+            for _ in range(4):
+                breaker.record_failure()
+
+        async def async_worker() -> None:
+            await anyio.to_thread.run_sync(barrier.wait, 2)
+            for _ in range(4):
+                await breaker.record_failure_async()
+
+        with ThreadPoolExecutor(max_workers=3) as workers:
+            futures = [workers.submit(sync_worker), workers.submit(anyio.run, async_worker), workers.submit(anyio.run, async_worker)]
+            for future in futures:
+                future.result(timeout=3)
+
+        assert breaker.get_stats()["failure_count"] == 12
+        assert breaker.state == CircuitState.OPEN
+        assert not anyio.run(breaker.can_execute_async)
+        clock[0] = 110.0
+        assert anyio.run(breaker.can_execute_async)
+        assert breaker.can_execute()
+        assert breaker.state == CircuitState.HALF_OPEN
+        breaker.record_failure()
+        assert not anyio.run(breaker.can_execute_async)
+        clock[0] = 120.0
+        assert breaker.can_execute()
+        anyio.run(breaker.record_success_async)
+        assert breaker.get_stats()["state"] == CircuitState.CLOSED.value
+        assert breaker.failure_count == 0
+
+    def test_logger_callback_can_inspect_breaker_during_transition(self):
+        logger = Mock()
+        breaker = CircuitBreaker(failure_threshold=1, logger=logger)
+        logger.warning.side_effect = lambda message: breaker.get_stats()
+
+        breaker.record_failure()
+
+        assert breaker.state == CircuitState.OPEN
+        logger.warning.assert_called_once()
+
+    def test_package_shim_uses_same_class(self):
+        assert ShimCircuitBreaker is CircuitBreaker
 
 
 @pytest.mark.unit
@@ -673,3 +778,30 @@ class TestGlobalCircuitBreakerRegistry:
         registry.record_failure("test_endpoint")
         assert registry.global_breaker.failure_count == 1
         assert endpoint_breaker.failure_count == 1
+
+    @pytest.mark.asyncio
+    async def test_mixed_registry_reset_clear_and_isolation(self):
+        registry = get_global_circuit_breaker_registry(default_failure_threshold=2, default_timeout=60)
+        endpoint = registry.get_breaker("one")
+        other = registry.get_breaker("other")
+
+        await registry.record_failure_async("one")
+        registry.record_failure("one")
+        assert endpoint.state == CircuitState.OPEN
+        assert other.state == CircuitState.CLOSED
+        assert await registry.can_execute_async("one") is False
+        assert registry.can_execute("other") is True
+
+        registry.global_breaker.record_failure()
+        await registry.global_breaker.record_failure_async()
+        assert not await registry.can_execute_async("other")
+        assert registry.get_open_breakers() == ["global", "one"]
+
+        registry.reset_all()
+        assert await registry.can_execute_async("one")
+        assert registry.get_all_stats()["one"]["failure_count"] == 0
+        assert registry.get_all_stats()["global"]["failure_count"] == 0
+        registry.clear_endpoint("one")
+        assert registry.get_breaker("one") is not endpoint
+        assert registry.get_breaker("other") is other
+        assert registry.global_breaker.state == CircuitState.CLOSED

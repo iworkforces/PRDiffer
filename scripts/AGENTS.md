@@ -19,7 +19,7 @@ scripts/
 | **Layer violations** | `analyze_dependencies.py` | `python3 scripts/analyze_dependencies.py --path prdiffer` |
 | **Full-diff baseline/post** | `bench_diff_generation.py` | Matrix `strict-v1`; baseline + post worker modes |
 | **Install hooks** | `setup-git-hooks.sh` | Copies into `.git/hooks/` |
-| **Pre-push gates** | `git-hooks/pre-push` | `./start-type-check.sh` then `./start-lint.sh --all` |
+| **Pre-push gates** | `git-hooks/pre-push` | `./start-type-check.sh --check` then `./start-lint.sh --check` (read-only) |
 
 ## FULL-DIFF BENCHMARK (`bench_diff_generation.py`)
 - **Matrix `strict-v1`** (seed `5020`, 1 warmup excluded from samples):

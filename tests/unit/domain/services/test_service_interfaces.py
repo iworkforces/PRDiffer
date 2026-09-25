@@ -308,6 +308,15 @@ class TestMockImplementationCompliance:
             def invalidate(self, cache_key: str):
                 self._data.pop(cache_key, None)
 
+            async def invalidate_github_pr(self, owner: str, repo: str, pr_number: int) -> None:
+                self.invalidate(self.get_cache_key(owner, repo, pr_number))
+
+            async def invalidate_github_repository(self, owner: str, repo: str) -> None:
+                prefix = f"{owner}/{repo}/pr/"
+                for key in tuple(self._data):
+                    if key.startswith(prefix):
+                        self.invalidate(key)
+
             def clear(self):
                 self._data.clear()
 
@@ -463,6 +472,15 @@ class TestMockImplementationCompliance:
             def invalidate(self, cache_key: str) -> bool:
                 key = cache_key
                 return self._cache.pop(key, None) is not None
+
+            def invalidate_github_pr(self, owner: str, repo: str, pr_number: int) -> None:
+                self.remove(owner, repo, pr_number)
+
+            def invalidate_github_repository(self, owner: str, repo: str) -> None:
+                prefix = f"{owner}/{repo}/"
+                for key in tuple(self._cache):
+                    if key.startswith(prefix):
+                        self.invalidate(key)
 
         mock = MockRepositoryCacheService()
         assert isinstance(mock, RepositoryCacheServiceInterface)
