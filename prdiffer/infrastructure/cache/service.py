@@ -7,6 +7,7 @@ from collections import OrderedDict
 from typing import Any, cast
 
 from prdiffer.domain.entities.pr_diff import PRDiff
+from prdiffer.domain.entities.pr_diff_cache import GITHUB_FULL_DIFF_CACHE_PREFIX_V3
 from prdiffer.domain.services.cache import CacheServiceInterface
 from prdiffer.domain.exceptions import ValidationError
 from prdiffer.domain.errors import E1010_INVALID_CONFIGURATION
@@ -34,6 +35,7 @@ class CacheService(CacheServiceInterface):
         self._cache_max_size = settings.get("cache.max_size", 1000)
 
         self._key_mapping: dict[str, str] = {}
+        self._entry_keys: dict[str, str] = {}
 
         self._cache_hits = 0
         self._cache_misses = 0
@@ -107,13 +109,14 @@ class CacheService(CacheServiceInterface):
             expired_keys: list[str] = []
 
             for key, entry in self.cache.items():
-                age = current_time - float(entry["timestamp"])
-                if age >= self._ttl:
+                timestamp = entry.get("timestamp")
+                if timestamp is not None and current_time - float(timestamp) >= self._ttl:
                     expired_keys.append(key)
 
             for key in expired_keys:
                 self.cache.pop(key)
                 self._key_mapping.pop(key, None)
+                self._entry_keys.pop(key, None)
                 self._cache_evictions_ttl += 1
 
             if expired_keys:
@@ -121,9 +124,9 @@ class CacheService(CacheServiceInterface):
 
         while len(self.cache) >= self._cache_max_size:
             evicted_key, _ = self.cache.popitem(last=False)
+            original_key = self._entry_keys.pop(evicted_key, evicted_key)
             self._key_mapping.pop(evicted_key, None)
             self._cache_evictions_size += 1
-            original_key = await self._get_original_key(evicted_key)
             self.logger.debug(f"Cache eviction (LRU): {original_key[:50]}... [size={len(self.cache)}/{self._cache_max_size}]")
 
     async def get(self, cache_key: str, current_commit_sha: str) -> PRDiff | None:
@@ -146,8 +149,8 @@ class CacheService(CacheServiceInterface):
                 self._cache_expirations += 1
                 self._cache_misses += 1
                 del self.cache[internal_key]
-                if self._use_hashed_keys and self._store_key_mapping:
-                    self._key_mapping.pop(internal_key, None)
+                self._key_mapping.pop(internal_key, None)
+                self._entry_keys.pop(internal_key, None)
                 self.logger.info(
                     "Cache entry expired (TTL)",
                     cache_key=cache_key,
@@ -204,8 +207,8 @@ class CacheService(CacheServiceInterface):
                 self._cache_expirations += 1
                 self._cache_misses += 1
                 del self.cache[internal_key]
-                if self._use_hashed_keys and self._store_key_mapping:
-                    self._key_mapping.pop(internal_key, None)
+                self._key_mapping.pop(internal_key, None)
+                self._entry_keys.pop(internal_key, None)
                 self.logger.info(
                     "Optimistic cache entry expired (TTL)",
                     cache_key=cache_key,
@@ -238,7 +241,7 @@ class CacheService(CacheServiceInterface):
 
     async def set(self, cache_key: str, commit_sha: str, data: PRDiff) -> None:
         """Cache PR diff data with associated commit SHA."""
-        internal_key, hash_display = await self._get_internal_key(cache_key, store_mapping=True)
+        internal_key, hash_display = await self._get_internal_key(cache_key)
 
         async with self._lock:
             if internal_key in self.cache:
@@ -251,6 +254,10 @@ class CacheService(CacheServiceInterface):
                 "data": data,
                 "timestamp": time.time(),
             }
+            if self._use_hashed_keys:
+                self._entry_keys[internal_key] = cache_key
+                if self._store_key_mapping:
+                    self._key_mapping[internal_key] = cache_key
         self.logger.info(
             "Cache set",
             cache_key=cache_key,
@@ -270,19 +277,53 @@ class CacheService(CacheServiceInterface):
         async with self._lock:
             if internal_key in self.cache:
                 del self.cache[internal_key]
-                if self._use_hashed_keys and self._store_key_mapping:
-                    self._key_mapping.pop(internal_key, None)
+                self._key_mapping.pop(internal_key, None)
+                self._entry_keys.pop(internal_key, None)
         self.logger.info(
             "Cache invalidated",
             cache_key=cache_key,
             hash=hash_display if self._use_hashed_keys else None,
         )
 
+    async def _invalidate_github_scope(self, owner: str, repo: str, pr_number: int | None) -> None:
+        owner_key, repo_key = owner.casefold(), repo.casefold()
+        async with self._lock:
+            for internal_key in list(self.cache):
+                original_key = self._entry_keys.get(internal_key, internal_key)
+                strict_parts = original_key.split(":")
+                legacy_parts = original_key.split("/")
+                if len(strict_parts) == 6 and strict_parts[0] == GITHUB_FULL_DIFF_CACHE_PREFIX_V3:
+                    entry_owner, entry_repo, entry_pr = strict_parts[1:4]
+                elif len(legacy_parts) == 4 and legacy_parts[2] == "pr":
+                    entry_owner, entry_repo, entry_pr = legacy_parts[0], legacy_parts[1], legacy_parts[3]
+                else:
+                    continue
+                if (
+                    entry_owner.casefold() == owner_key
+                    and entry_repo.casefold() == repo_key
+                    and entry_pr.isascii()
+                    and entry_pr.isdecimal()
+                    and (entry_pr == "0" or entry_pr[0] != "0")
+                    and (pr_number is None or entry_pr == str(pr_number))
+                ):
+                    del self.cache[internal_key]
+                    self._key_mapping.pop(internal_key, None)
+                    self._entry_keys.pop(internal_key, None)
+
+    async def invalidate_github_pr(self, owner: str, repo: str, pr_number: int) -> None:
+        """Evict all GitHub snapshots and the legacy entry for one PR."""
+        await self._invalidate_github_scope(owner, repo, pr_number)
+
+    async def invalidate_github_repository(self, owner: str, repo: str) -> None:
+        """Evict GitHub snapshots and legacy entries for one repository."""
+        await self._invalidate_github_scope(owner, repo, None)
+
     async def clear(self) -> None:
         """Clear all cached data and key mappings."""
         async with self._lock:
             self.cache.clear()
             self._key_mapping.clear()
+            self._entry_keys.clear()
         self.logger.info("Cache cleared")
 
     def set_etag(self, cache_key: str, etag: str) -> None:
