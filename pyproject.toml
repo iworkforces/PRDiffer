@@ -1,7 +1,7 @@
 [project]
 name = "prdiffer"
-version = "1.0.1"
-description = "PRDiffer Is A MCP Server For GitHub PR/GitLab MR Review Process With Full Contexts"
+version = "1.0.2"
+description = "PRDiffer Is A MCP Server For GitHub PR/GitLab MR Review Process With Full Contexts."
 readme = "README.md"
 license = { text = "MIT" }
 authors = [
@@ -18,7 +18,7 @@ classifiers = [
     "Topic :: Software Development :: Version Control :: Git",
 ]
 dependencies = [
-    "fastmcp>=4.0.9",
+    "fastmcp>=4.0.10",
     "pydantic>=2.13.5",
     "fastapi[standard]>=0.141.1",
     "uvicorn[standard]>=0.54.0",
