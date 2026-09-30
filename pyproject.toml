@@ -1,6 +1,6 @@
 [project]
 name = "prdiffer"
-version = "1.0.2"
+version = "1.0.3"
 description = "PRDiffer Is A MCP Server For GitHub PR/GitLab MR Review Process With Full Contexts."
 readme = "README.md"
 license = { text = "MIT" }
@@ -20,7 +20,7 @@ classifiers = [
 dependencies = [
     "fastmcp>=4.0.10",
     "pydantic>=2.13.5",
-    "fastapi[standard]>=0.141.1",
+    "fastapi[standard]>=0.142.2",
     "uvicorn[standard]>=0.54.0",
     "pygithub>=2.10.0",
     "asyncer>=0.0.18",
@@ -42,8 +42,8 @@ dependencies = [
     "aiohttp>=3.14.3",
     "aiodns>=4.0.4",
     "httpx-aiohttp>=0.2.0",
-    "pyjwt>=2.15.0",
-    "python-gitlab>=8.5.0",
+    "pyjwt>=2.15.1",
+    "python-gitlab>=8.6.0",
 ]
 
 [project.urls]
