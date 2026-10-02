@@ -86,7 +86,7 @@ class BaseUnifiedRetryHandler(LazyLoggerMixin, RetryServiceInterface):
         self._health_tracker: Any | None = None
 
         if self.circuit_breaker_enabled:
-            from prdiffer.infrastructure.utils.circuit_breaker.core import (
+            from prdiffer.infrastructure.utils.circuit_breaker_core import (
                 CircuitBreaker,
             )
 
@@ -147,7 +147,7 @@ class BaseUnifiedRetryHandler(LazyLoggerMixin, RetryServiceInterface):
     ) -> Any:
         if self._circuit_breaker and self.circuit_breaker_enabled:
             if not self._circuit_breaker.can_execute():
-                from prdiffer.infrastructure.utils.circuit_breaker.core import (
+                from prdiffer.infrastructure.utils.circuit_breaker_core import (
                     CircuitBreakerOpenException,
                 )
 

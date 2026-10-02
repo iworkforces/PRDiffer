@@ -7,7 +7,8 @@ providing better error handling and more informative error messages.
 from enum import StrEnum
 from typing import Any
 
-from .errors import E5001_INTERNAL_ERROR, E5020_FULL_DIFF_INCOMPLETE, E5022_PROVIDER_CAPABILITY_UNAVAILABLE, ErrorCode
+from .error_codes import E5001_INTERNAL_ERROR, E5020_FULL_DIFF_INCOMPLETE, E5022_PROVIDER_CAPABILITY_UNAVAILABLE
+from .errors import ErrorCode
 
 
 class PRDifferException(Exception):

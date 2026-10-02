@@ -412,7 +412,7 @@ class GitHubPRDiffService(CachingMixin, PRDiffServiceInterface):
         except FullDiffIncompleteError:
             raise
         except Exception as exc:
-            from prdiffer.domain.errors import E5003_DIFF_GENERATION_ERROR
+            from prdiffer.domain.error_codes import E5003_DIFF_GENERATION_ERROR
             from prdiffer.domain.exceptions import DiffGenerationError
 
             raise DiffGenerationError(

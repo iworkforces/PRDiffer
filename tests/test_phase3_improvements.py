@@ -266,13 +266,13 @@ class TestStructuredErrorCodes:
 
     def test_error_code_string_format(self):
         """Test error code string representation."""
-        from prdiffer.domain.errors import E1001_INVALID_URL
+        from prdiffer.domain.error_codes import E1001_INVALID_URL
 
         assert str(E1001_INVALID_URL) == "E1001_INVALID_URL"
 
     def test_error_code_to_dict(self):
         """Test error code conversion to dictionary."""
-        from prdiffer.domain.errors import E1001_INVALID_URL
+        from prdiffer.domain.error_codes import E1001_INVALID_URL
 
         result = E1001_INVALID_URL.to_dict()
 
@@ -284,12 +284,12 @@ class TestStructuredErrorCodes:
 
     def test_input_validation_errors(self):
         """Test input validation error codes."""
-        from prdiffer.domain.errors import (
+        from prdiffer.domain.errors import ErrorCategory
+        from prdiffer.domain.error_codes import (
             E1001_INVALID_URL,
             E1002_INVALID_REPOSITORY,
             E1003_INVALID_PR_NUMBER,
             E1004_SUSPICIOUS_INPUT,
-            ErrorCategory,
         )
 
         errors = [
@@ -305,11 +305,11 @@ class TestStructuredErrorCodes:
 
     def test_authentication_errors(self):
         """Test authentication error codes."""
-        from prdiffer.domain.errors import (
+        from prdiffer.domain.errors import ErrorCategory
+        from prdiffer.domain.error_codes import (
             E2001_AUTH_REQUIRED,
             E2002_AUTH_FAILED,
             E2003_INSUFFICIENT_PERMISSIONS,
-            ErrorCategory,
         )
 
         errors = [
@@ -324,10 +324,10 @@ class TestStructuredErrorCodes:
 
     def test_rate_limiting_errors(self):
         """Test rate limiting error codes."""
-        from prdiffer.domain.errors import (
+        from prdiffer.domain.errors import ErrorCategory
+        from prdiffer.domain.error_codes import (
             E3001_RATE_LIMITED,
             E3002_SECONDARY_RATE_LIMIT,
-            ErrorCategory,
         )
 
         errors = [E3001_RATE_LIMITED, E3002_SECONDARY_RATE_LIMIT]
@@ -338,11 +338,11 @@ class TestStructuredErrorCodes:
 
     def test_not_found_errors(self):
         """Test resource not found error codes."""
-        from prdiffer.domain.errors import (
+        from prdiffer.domain.errors import ErrorCategory
+        from prdiffer.domain.error_codes import (
             E4001_REPO_NOT_FOUND,
             E4002_PR_NOT_FOUND,
             E4003_FILE_NOT_FOUND,
-            ErrorCategory,
         )
 
         errors = [E4001_REPO_NOT_FOUND, E4002_PR_NOT_FOUND, E4003_FILE_NOT_FOUND]
@@ -353,11 +353,11 @@ class TestStructuredErrorCodes:
 
     def test_internal_errors(self):
         """Test internal server error codes."""
-        from prdiffer.domain.errors import (
+        from prdiffer.domain.errors import ErrorCategory
+        from prdiffer.domain.error_codes import (
             E5001_INTERNAL_ERROR,
             E5002_GITHUB_API_ERROR,
             E5003_DIFF_GENERATION_ERROR,
-            ErrorCategory,
         )
 
         errors = [
@@ -376,7 +376,8 @@ class TestMCPErrorException:
 
     def test_mcp_error_creation(self):
         """Test MCPError exception creation."""
-        from prdiffer.domain.errors import MCPError, E1001_INVALID_URL
+        from prdiffer.domain.errors import MCPError
+        from prdiffer.domain.error_codes import E1001_INVALID_URL
 
         error = MCPError(E1001_INVALID_URL)
 
@@ -386,7 +387,8 @@ class TestMCPErrorException:
 
     def test_mcp_error_with_detail(self):
         """Test MCPError with additional detail."""
-        from prdiffer.domain.errors import MCPError, E1001_INVALID_URL
+        from prdiffer.domain.errors import MCPError
+        from prdiffer.domain.error_codes import E1001_INVALID_URL
 
         error = MCPError(E1001_INVALID_URL, detail="URL missing protocol")
 
@@ -394,7 +396,8 @@ class TestMCPErrorException:
 
     def test_mcp_error_with_context(self):
         """Test MCPError with context information."""
-        from prdiffer.domain.errors import MCPError, E1001_INVALID_URL
+        from prdiffer.domain.errors import MCPError
+        from prdiffer.domain.error_codes import E1001_INVALID_URL
 
         error = MCPError(E1001_INVALID_URL, context={"provided_url": "invalid://url"})
 
@@ -402,7 +405,8 @@ class TestMCPErrorException:
 
     def test_mcp_error_to_dict(self):
         """Test MCPError conversion to dictionary."""
-        from prdiffer.domain.errors import MCPError, E1001_INVALID_URL
+        from prdiffer.domain.errors import MCPError
+        from prdiffer.domain.error_codes import E1001_INVALID_URL
 
         error = MCPError(E1001_INVALID_URL, detail="Missing protocol", context={"url": "test"})
 
@@ -423,6 +427,8 @@ class TestMCPErrorException:
             ResourceNotFoundError,
             InternalServerError,
             MCPError,
+        )
+        from prdiffer.domain.error_codes import (
             E1001_INVALID_URL,
             E2001_AUTH_REQUIRED,
             E3001_RATE_LIMITED,
@@ -455,8 +461,8 @@ class TestErrorHandlingUtilities:
 
     def test_get_error_for_exception_known_types(self):
         """Test mapping known exception types to error codes."""
-        from prdiffer.domain.errors import (
-            get_error_for_exception,
+        from prdiffer.domain.errors import get_error_for_exception
+        from prdiffer.domain.error_codes import (
             E1001_INVALID_URL,
             E5004_TIMEOUT_ERROR,
         )
@@ -475,10 +481,8 @@ class TestErrorHandlingUtilities:
 
     def test_get_error_for_exception_unknown_type(self):
         """Test mapping unknown exception types to internal error."""
-        from prdiffer.domain.errors import (
-            get_error_for_exception,
-            E5001_INTERNAL_ERROR,
-        )
+        from prdiffer.domain.errors import get_error_for_exception
+        from prdiffer.domain.error_codes import E5001_INTERNAL_ERROR
 
         class CustomError(Exception):
             pass
@@ -488,7 +492,8 @@ class TestErrorHandlingUtilities:
 
     def test_create_error_response_basic(self):
         """Test creating basic error response."""
-        from prdiffer.domain.errors import create_error_response, E1001_INVALID_URL
+        from prdiffer.domain.errors import create_error_response
+        from prdiffer.domain.error_codes import E1001_INVALID_URL
 
         response = create_error_response(E1001_INVALID_URL)
 
@@ -498,7 +503,8 @@ class TestErrorHandlingUtilities:
 
     def test_create_error_response_with_detail(self):
         """Test creating error response with detail."""
-        from prdiffer.domain.errors import create_error_response, E1001_INVALID_URL
+        from prdiffer.domain.errors import create_error_response
+        from prdiffer.domain.error_codes import E1001_INVALID_URL
 
         response = create_error_response(E1001_INVALID_URL, detail="Missing protocol in URL")
 
@@ -506,7 +512,8 @@ class TestErrorHandlingUtilities:
 
     def test_create_error_response_with_context(self):
         """Test creating error response with context."""
-        from prdiffer.domain.errors import create_error_response, E1001_INVALID_URL
+        from prdiffer.domain.errors import create_error_response
+        from prdiffer.domain.error_codes import E1001_INVALID_URL
 
         response = create_error_response(E1001_INVALID_URL, context={"provided_url": "invalid://url"})
 
@@ -573,9 +580,9 @@ class TestPhase3Integration:
         """Test complete error handling flow."""
         from prdiffer.domain.errors import (
             MCPError,
-            E1001_INVALID_URL,
             create_error_response,
         )
+        from prdiffer.domain.error_codes import E1001_INVALID_URL
 
         # Simulate error occurrence
         try:

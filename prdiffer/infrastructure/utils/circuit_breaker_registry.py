@@ -244,25 +244,6 @@ def get_global_circuit_breaker_registry(
     """
     global _global_circuit_breaker_registry
 
-    # Check if the variable was reset via backward-compat shim modules.
-    # Tests may do: ``import prdiffer.infrastructure.utils.circuit_breaker as m; m._global_circuit_breaker_registry = None``
-    # or: ``import prdiffer.infrastructure.utils.circuit_breaker.registry as m; m._global_circuit_breaker_registry = None``
-    import sys
-
-    shim_paths = [
-        "prdiffer.infrastructure.utils.circuit_breaker",
-        "prdiffer.infrastructure.utils.circuit_breaker.registry",
-    ]
-    for shim_path in shim_paths:
-        shim_module = sys.modules.get(shim_path)
-        if shim_module is not None:
-            try:
-                if _global_circuit_breaker_registry is not None and shim_module._global_circuit_breaker_registry is None:
-                    _global_circuit_breaker_registry = None
-                    break
-            except AttributeError:
-                pass
-
     if _global_circuit_breaker_registry is None:
         _global_circuit_breaker_registry = GlobalCircuitBreakerRegistry(
             default_failure_threshold=default_failure_threshold,

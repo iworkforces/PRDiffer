@@ -23,7 +23,6 @@ from prdiffer.infrastructure.utils.circuit_breaker_core import (
 from prdiffer.infrastructure.utils.circuit_breaker_registry import (
     get_global_circuit_breaker_registry,
 )
-from prdiffer.infrastructure.utils.circuit_breaker.core import CircuitBreaker as ShimCircuitBreaker
 import prdiffer.infrastructure.utils.circuit_breaker_core as core
 
 
@@ -350,9 +349,6 @@ class TestCircuitBreakerAsyncMethods:
 
         assert breaker.state == CircuitState.OPEN
         logger.warning.assert_called_once()
-
-    def test_package_shim_uses_same_class(self):
-        assert ShimCircuitBreaker is CircuitBreaker
 
 
 @pytest.mark.unit

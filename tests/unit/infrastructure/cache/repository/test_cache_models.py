@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from prdiffer.infrastructure.cache.repository.models import CacheEntry, with_lock
+from prdiffer.infrastructure.cache.cache_repository import CacheEntry, with_lock
 
 
 def _make_repo_mock() -> MagicMock:

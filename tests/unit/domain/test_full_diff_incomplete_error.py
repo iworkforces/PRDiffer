@@ -5,7 +5,6 @@ from __future__ import annotations
 import pytest
 
 from prdiffer.domain.error_codes import E5020_FULL_DIFF_INCOMPLETE
-from prdiffer.domain.errors import E5020_FULL_DIFF_INCOMPLETE as E5020_REEXPORT
 from prdiffer.domain.exceptions import (
     FullDiffIncompleteError,
     FullDiffIncompleteReason,
@@ -38,7 +37,6 @@ class TestE5020ErrorCode:
         assert E5020_FULL_DIFF_INCOMPLETE.code == "E5020"
         assert E5020_FULL_DIFF_INCOMPLETE.name == "FULL_DIFF_INCOMPLETE"
         assert str(E5020_FULL_DIFF_INCOMPLETE) == "E5020_FULL_DIFF_INCOMPLETE"
-        assert E5020_REEXPORT is E5020_FULL_DIFF_INCOMPLETE
 
     def test_unique_among_error_code_constants(self) -> None:
         import prdiffer.domain.error_codes as codes

@@ -30,7 +30,7 @@ from prdiffer.domain.entities.file_content import (
     FileContentUnavailableReason,
 )
 from prdiffer.domain.exceptions import PRDifferException
-from prdiffer.domain.errors import E5002_GITHUB_API_ERROR, E5009_CONFIGURATION_ERROR
+from prdiffer.domain.error_codes import E5002_GITHUB_API_ERROR, E5009_CONFIGURATION_ERROR
 from prdiffer.infrastructure.github.client_models import GITHUB_API_EXCEPTIONS
 from prdiffer.infrastructure.utils.parallel.executor import AsyncParallelExecutor
 from prdiffer.infrastructure.github.etag_adapter import ETagRequestAdapter

@@ -20,7 +20,7 @@ from prdiffer.domain.entities.pr_diff_cache import (
     StrictPRDiffCacheIdentity,
     github_full_diff_v3_identity,
 )
-from prdiffer.domain.errors import E5002_GITHUB_API_ERROR, E5004_TIMEOUT_ERROR, E5009_CONFIGURATION_ERROR
+from prdiffer.domain.error_codes import E5002_GITHUB_API_ERROR, E5004_TIMEOUT_ERROR, E5009_CONFIGURATION_ERROR
 from prdiffer.domain.exceptions import (
     FullDiffIncompleteError,
     FullDiffIncompleteReason,

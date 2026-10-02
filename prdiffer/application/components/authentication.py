@@ -25,7 +25,7 @@ from threading import RLock
 from prdiffer.domain.interfaces.protocols import AuthenticationProtocol
 from prdiffer.domain.interfaces.input_validation import InputValidatorProtocol
 from prdiffer.domain.exceptions import AuthenticationError
-from prdiffer.domain.errors import E2002_AUTH_FAILED
+from prdiffer.domain.error_codes import E2002_AUTH_FAILED
 from prdiffer.domain.services.logger import LoggerServiceInterface
 
 from prdiffer.application.components.jwt_handler import JWTHandlerMixin

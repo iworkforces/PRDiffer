@@ -19,7 +19,7 @@ from prdiffer.infrastructure.utils.rate_limit_parser import (
     extract_rate_limit_info,
 )
 from prdiffer.domain.exceptions import PRDifferException
-from prdiffer.domain.errors import E5001_INTERNAL_ERROR
+from prdiffer.domain.error_codes import E5001_INTERNAL_ERROR
 from typing import cast
 
 
@@ -61,7 +61,7 @@ class UnifiedRetryHandler(BaseUnifiedRetryHandler):
     ) -> T:
         if self._circuit_breaker and self.circuit_breaker_enabled:
             if not self._circuit_breaker.can_execute():
-                from prdiffer.infrastructure.utils.circuit_breaker.core import (
+                from prdiffer.infrastructure.utils.circuit_breaker_core import (
                     CircuitBreakerOpenException,
                 )
 

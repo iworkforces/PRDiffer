@@ -26,7 +26,7 @@ from prdiffer.domain.entities.file_diff_response import FileDiffResponse
 from prdiffer.domain.repositories.pr_diff_repository import PRDiffRepositoryInterface
 from prdiffer.domain.services.logger import LoggerServiceInterface, LogLevel
 from prdiffer.domain.exceptions import PRDifferException
-from prdiffer.domain.errors import E5009_CONFIGURATION_ERROR
+from prdiffer.domain.error_codes import E5009_CONFIGURATION_ERROR
 from prdiffer.domain.config.github_config import DEFAULT_MAX_TOTAL_CHARS
 from prdiffer.infrastructure.settings import SettingsService, get_settings_service
 from prdiffer.infrastructure.logging.console_logger import get_logger

@@ -8,7 +8,7 @@ from typing import Any, TypedDict
 
 from prdiffer.domain.entities.file_patch import EDIT_TYPE, FilePatchInfo
 from prdiffer.domain.entities.generated_file_diff import GeneratedFileDiff
-from prdiffer.domain.errors import E5003_DIFF_GENERATION_ERROR
+from prdiffer.domain.error_codes import E5003_DIFF_GENERATION_ERROR
 from prdiffer.domain.exceptions import (
     DiffGenerationError,
     FullDiffIncompleteError,

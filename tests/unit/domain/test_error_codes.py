@@ -22,7 +22,7 @@ from prdiffer.domain.exceptions import (
     ResourceError,
     SecurityError,
 )
-from prdiffer.domain.errors import (
+from prdiffer.domain.error_codes import (
     E1001_INVALID_URL,
     E1002_INVALID_REPOSITORY,
     E1003_INVALID_PR_NUMBER,

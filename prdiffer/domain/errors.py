@@ -3,9 +3,8 @@
 This module defines standardized error codes and custom exceptions
 for the MCP server. Error codes follow the format E{category}{number}_{NAME}.
 
-Error code constants are defined in error_codes.py and re-exported here
-via __getattr__ to avoid circular imports (error_codes.py imports
-ErrorCode and ErrorCategory from this module).
+Error code constants live in error_codes.py, which imports ErrorCode and
+ErrorCategory from this module; import constants from error_codes directly.
 
 Error Categories:
 - E1xxx: Input validation errors
@@ -187,22 +186,6 @@ def create_error_response(
 
     return response
 
-
-def __getattr__(name: str) -> Any:
-    """Lazy re-export of error code constants from error_codes module.
-
-    Uses PEP 562 module __getattr__ to provide backward-compatible access
-    to all error code constants while avoiding circular imports.
-    """
-    import prdiffer.domain.error_codes as _ec
-
-    value = getattr(_ec, name, _SENTINEL)
-    if value is not _SENTINEL:
-        return value
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
-_SENTINEL = object()
 
 __all__ = [
     "AuthenticationError",

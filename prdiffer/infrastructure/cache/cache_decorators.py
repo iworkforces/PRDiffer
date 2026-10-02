@@ -20,13 +20,11 @@ F = TypeVar("F", bound=Callable[..., Any])
 __all__ = [
     "CachingMixin",
     "cached_method",
-    "_make_hashable",
-    "_generate_cache_key",
 ]
 
 
 # ---------------------------------------------------------------------------
-# Cache key utilities (originally in decorators/utils.py)
+# Cache key utilities
 # ---------------------------------------------------------------------------
 
 
@@ -103,7 +101,7 @@ def _generate_cache_key(method_name: str, args: tuple[Any, ...], kwargs: dict[st
 
 
 # ---------------------------------------------------------------------------
-# CachingMixin and @cached_method (originally in decorators/decorators.py)
+# CachingMixin and @cached_method
 # ---------------------------------------------------------------------------
 
 

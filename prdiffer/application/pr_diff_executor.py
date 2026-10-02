@@ -1,7 +1,7 @@
 """Coalesced PR diff execution support for application request boundaries."""
 
 from prdiffer.domain.entities.pr_diff import PRDiff
-from prdiffer.domain.errors import E5002_GITHUB_API_ERROR
+from prdiffer.domain.error_codes import E5002_GITHUB_API_ERROR
 from prdiffer.domain.exceptions import GitHubAPIError
 from prdiffer.domain.interfaces.request_coalescing import RequestCoalescingProtocol
 from prdiffer.domain.services.cache import CacheServiceInterface

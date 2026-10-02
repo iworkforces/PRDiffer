@@ -4,14 +4,14 @@ from collections.abc import Callable
 
 import pytest
 from typing import cast, Any
-from prdiffer.infrastructure.security.input_validator import (
-    InputValidator,
+from prdiffer.infrastructure.security.input_validation_helpers import (
+    sanitize_string,
     validate_github_url,
     validate_repository_identifier,
-    sanitize_string,
     validate_token,
     validate_user_id,
 )
+from prdiffer.infrastructure.security.input_validator import InputValidator
 from prdiffer.domain.exceptions import (
     InvalidURLError,
     InvalidRepositoryError,

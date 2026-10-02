@@ -30,14 +30,6 @@ from prdiffer.infrastructure.security.sanitizer import (
 )
 from prdiffer.infrastructure.security.input_validation_helpers import (
     InputValidationHelpersMixin,
-    validate_github_url,
-    validate_repository_identifier,
-    sanitize_string,
-    validate_token,
-    validate_user_id,
-    validate_branch_name,
-    validate_pr_number,
-    validate_file_path,
 )
 
 
@@ -50,7 +42,8 @@ class InputValidator(InputValidationHelpersMixin):
 
     Example with custom patterns from settings:
         from prdiffer.infrastructure.settings import get_settings_service
-        from prdiffer.infrastructure.security.input_validator import InputValidator, SecurityPatterns
+        from prdiffer.infrastructure.security.injection_detector import SecurityPatterns
+        from prdiffer.infrastructure.security.input_validator import InputValidator
 
         settings = get_settings_service()
         patterns = SecurityPatterns.from_settings(settings)
@@ -305,22 +298,3 @@ class InputValidator(InputValidationHelpersMixin):
             )
 
         return file_path
-
-
-# Re-export the module-level singleton and convenience functions for backward compatibility
-_validator = InputValidator()
-
-# Re-export convenience functions so existing imports work
-__all__ = [
-    "InputValidator",
-    "SecurityPatterns",
-    "validate_github_url",
-    "validate_repository_identifier",
-    "sanitize_string",
-    "validate_token",
-    "validate_user_id",
-    "validate_branch_name",
-    "validate_pr_number",
-    "validate_file_path",
-    "_validator",
-]

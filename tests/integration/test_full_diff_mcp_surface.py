@@ -528,7 +528,7 @@ async def test_operational_rate_limit_not_remapped_to_e5020() -> None:
     import json
     from fastmcp.exceptions import ToolError
     from prdiffer.domain.exceptions import RateLimitError
-    from prdiffer.domain.errors import E3001_RATE_LIMITED
+    from prdiffer.domain.error_codes import E3001_RATE_LIMITED
 
     cache = RecordingCache()
     err = RateLimitError("slow down", retry_after=30, error_code=E3001_RATE_LIMITED)

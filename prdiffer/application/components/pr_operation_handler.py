@@ -18,7 +18,7 @@ from prdiffer.domain.exceptions import (
 )
 from prdiffer.domain.interfaces.input_validation import InputValidatorProtocol
 from prdiffer.application.utils.pr_url_parser import parse_pr_url
-from prdiffer.domain.errors import (
+from prdiffer.domain.error_codes import (
     E1001_INVALID_URL,
     E5002_GITHUB_API_ERROR,
 )

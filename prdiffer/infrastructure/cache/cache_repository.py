@@ -26,7 +26,7 @@ __all__ = [
 
 
 # ---------------------------------------------------------------------------
-# Models and utilities (originally in repository/models.py)
+# Models and utilities
 # ---------------------------------------------------------------------------
 
 
@@ -52,7 +52,7 @@ def with_lock(lock_attr: str = "_lock") -> Callable[[Callable[P, R]], Callable[P
 
 
 # ---------------------------------------------------------------------------
-# RepositoryCacheService (originally in repository/service.py)
+# RepositoryCacheService
 # ---------------------------------------------------------------------------
 
 

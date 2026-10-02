@@ -10,7 +10,7 @@ from prdiffer.domain.entities.pr_diff import PRDiff
 from prdiffer.domain.entities.pr_diff_cache import GITHUB_FULL_DIFF_CACHE_PREFIX_V3
 from prdiffer.domain.services.cache import CacheServiceInterface
 from prdiffer.domain.exceptions import ValidationError
-from prdiffer.domain.errors import E1010_INVALID_CONFIGURATION
+from prdiffer.domain.error_codes import E1010_INVALID_CONFIGURATION
 from prdiffer.infrastructure.logging.console_logger import get_logger
 
 

@@ -5,7 +5,7 @@ from typing import Any, TypeVar
 from threading import Lock
 from prdiffer.domain.services.logger import LoggerServiceInterface
 from prdiffer.domain.exceptions import PRDifferException, ConfigurationError
-from prdiffer.domain.errors import E5009_CONFIGURATION_ERROR
+from prdiffer.domain.error_codes import E5009_CONFIGURATION_ERROR
 
 
 T = TypeVar("T")

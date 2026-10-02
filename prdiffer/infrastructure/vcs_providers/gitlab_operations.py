@@ -32,15 +32,6 @@ from prdiffer.infrastructure.vcs_providers.gitlab_runtime import (
     map_gitlab_exception,
 )
 
-# Re-export for backward-compatible imports from gitlab_operations.
-__all__ = [
-    "GitLabDiffRecord",
-    "GitLabDiffRefs",
-    "GitLabDiffSnapshot",
-    "GitLabOperations",
-    "GitLabVersionSummary",
-]
-
 
 class GitLabOperations:
     """Execute isolated synchronous GitLab operations with a provided SDK client.

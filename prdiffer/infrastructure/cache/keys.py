@@ -2,7 +2,7 @@
 
 import hashlib
 from prdiffer.domain.exceptions import ValidationError
-from prdiffer.domain.errors import E1010_INVALID_CONFIGURATION
+from prdiffer.domain.error_codes import E1010_INVALID_CONFIGURATION
 
 
 class CacheKeyManager:

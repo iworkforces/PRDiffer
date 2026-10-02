@@ -37,7 +37,7 @@ from prdiffer.domain.exceptions import (
     ProviderCapabilityUnavailableError,
     RateLimitError,
 )
-from prdiffer.domain.errors import (
+from prdiffer.domain.error_codes import (
     E1001_INVALID_URL,
     E2002_AUTH_FAILED,
     E3001_RATE_LIMITED,

@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from prdiffer.infrastructure.logging.console_logger import get_logger
 from prdiffer.infrastructure.settings import get_settings_service
 from prdiffer.domain.exceptions import PRDifferException
-from prdiffer.domain.errors import E5001_INTERNAL_ERROR
+from prdiffer.domain.error_codes import E5001_INTERNAL_ERROR
 
 
 DEFAULT_MAX_WAITERS = 100

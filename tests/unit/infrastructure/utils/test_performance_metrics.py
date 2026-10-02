@@ -1,19 +1,6 @@
 import pytest
 
-from prdiffer.infrastructure.utils import performance as compatibility_performance
 from prdiffer.infrastructure.utils.metrics import performance as canonical_performance
-
-
-@pytest.mark.unit
-def test_compatibility_import_uses_canonical_metric_singleton() -> None:
-    # Given: both supported performance metric import paths
-    # When: each path resolves its global metric collector
-    compatibility_metrics = compatibility_performance.get_performance_metrics()
-    canonical_metrics = canonical_performance.get_performance_metrics()
-
-    # Then: both paths expose the same implementation and singleton state
-    assert compatibility_performance.PerformanceMetrics is canonical_performance.PerformanceMetrics
-    assert compatibility_metrics is canonical_metrics
 
 
 @pytest.mark.unit

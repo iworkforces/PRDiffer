@@ -12,7 +12,7 @@ from prdiffer.domain.entities.pr_diff_cache import (
     StrictPRDiffCacheIdentity,
     gitlab_full_diff_v1_identity,
 )
-from prdiffer.domain.errors import E5004_TIMEOUT_ERROR, E5009_CONFIGURATION_ERROR
+from prdiffer.domain.error_codes import E5004_TIMEOUT_ERROR, E5009_CONFIGURATION_ERROR
 from prdiffer.domain.exceptions import PRDifferException, TimeoutError as DomainTimeoutError
 from prdiffer.domain.interfaces.pr_diff_reader import PRDiffReadSessionInterface, PRDiffSnapshot
 from prdiffer.infrastructure.vcs_providers.gitlab_content import GitLabContentFetcher

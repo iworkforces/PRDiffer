@@ -7,7 +7,7 @@ import pytest
 
 from prdiffer.domain.entities.file_diff_response import FileDiffResponse, FileStats
 from prdiffer.domain.entities.file_patch import EDIT_TYPE
-from prdiffer.domain.errors import E5002_GITHUB_API_ERROR
+from prdiffer.domain.error_codes import E5002_GITHUB_API_ERROR
 from prdiffer.domain.exceptions import PRDifferException
 from prdiffer.infrastructure.vcs_providers.gitlab_models import GitLabDiffRecord
 from prdiffer.infrastructure.vcs_providers.gitlab_repository import GitLabVCSRepository

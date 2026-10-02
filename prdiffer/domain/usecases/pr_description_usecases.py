@@ -3,9 +3,7 @@
 from prdiffer.domain.repositories.pr_diff_repository import PRDiffRepositoryInterface
 from prdiffer.domain.services.logger import LoggerServiceInterface
 from prdiffer.domain.exceptions import ValidationError, InvalidURLError
-from prdiffer.domain.errors import (
-    E1001_INVALID_URL,
-)
+from prdiffer.domain.error_codes import E1001_INVALID_URL
 
 
 class UpdatePRDescriptionUseCase:

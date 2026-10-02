@@ -8,7 +8,7 @@ from prdiffer.domain.config.gitlab_config import GitLabConfig
 from prdiffer.domain.entities.file_diff_response import FileDiffResponse, FileStats
 from prdiffer.domain.entities.file_patch import EDIT_TYPE
 from prdiffer.domain.entities.pr_diff import PRDiff
-from prdiffer.domain.errors import E5002_GITHUB_API_ERROR
+from prdiffer.domain.error_codes import E5002_GITHUB_API_ERROR
 from prdiffer.domain.exceptions import PRDifferException
 from prdiffer.domain.interfaces.vcs_provider import VCSDiffRepositoryInterface
 from prdiffer.infrastructure.github.diff_generator import DiffGenerator
