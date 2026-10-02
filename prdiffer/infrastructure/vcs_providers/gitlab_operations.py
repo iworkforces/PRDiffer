@@ -117,7 +117,13 @@ class GitLabOperations:
                 raise mapped from None
             raise
 
-        fetched = GitLabVersionSummary.from_object(version)
+        try:
+            fetched = GitLabVersionSummary.from_object(version)
+        except ValueError as exc:
+            raise FullDiffIncompleteError(
+                FullDiffIncompleteReason.INVENTORY_TRUNCATED,
+                message=f"Fetched MR diff version metadata is malformed: {exc}",
+            ) from None
         if fetched.version_id != selected.version_id or not fetched.matches_refs(refs):
             raise FullDiffIncompleteError(
                 FullDiffIncompleteReason.INVENTORY_TRUNCATED,

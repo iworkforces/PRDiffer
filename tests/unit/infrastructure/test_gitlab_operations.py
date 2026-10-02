@@ -209,6 +209,17 @@ class TestSelectDiffSnapshot:
             select(client, "o/r", 1)
         assert exc.value.reason is FullDiffIncompleteReason.INVENTORY_TRUNCATED
 
+    def test_fetched_version_malformed_metadata_fails_closed(self) -> None:
+        refs = {"base_sha": "b", "start_sha": "s", "head_sha": "h"}
+        versions = [_version(7, "b", "s", "h")]
+        payload = _payload(7, "b", "s", "h")
+        payload["head_commit_sha"] = None
+        mr = FakeMergeRequests(diff_refs=refs, versions=versions, version_payloads={7: payload})
+        client = FakeGitLab(FakeProjects(FakeProject(mr)))
+        with pytest.raises(FullDiffIncompleteError) as exc:
+            select(client, "o/r", 1)
+        assert exc.value.reason is FullDiffIncompleteReason.INVENTORY_TRUNCATED
+
     def test_project_404_maps_e4001(self) -> None:
         err = gitlab_operations.gitlab.GitlabGetError("nf", response_code=404)
         client = FakeGitLab(FakeProjects(error=err))
