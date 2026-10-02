@@ -9,7 +9,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from prdiffer.domain.interfaces.input_validation import InputValidatorProtocol
 from prdiffer.domain.services.logger import LoggerServiceInterface
 
 
@@ -23,11 +22,9 @@ class APIKeyManagerMixin:
         - self._auth_enabled: bool
         - self._admin_api_key_hash: str | None
         - self._default_client_id: str
-        - self._input_validator: InputValidatorProtocol
     """
 
     # Type annotations for host class attributes used by this mixin
-    _input_validator: InputValidatorProtocol
     _logger: logging.Logger | LoggerServiceInterface
     _hashed_api_keys: set[str]
     _api_key_count: int
@@ -61,20 +58,6 @@ class APIKeyManagerMixin:
             return False
 
         return True
-
-    def validate_token(self, token: str) -> str:
-        """Validate a token format via the centralized input validator.
-
-        Args:
-            token: Token to validate
-
-        Returns:
-            str: Validated token
-
-        Raises:
-            InputSanitizationError: If token format is invalid
-        """
-        return self._input_validator.validate_token(token)
 
     def add_api_key(self, api_key: str) -> bool:
         """Add a new API key to the valid keys set.

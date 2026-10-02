@@ -159,34 +159,6 @@ async_parallel_executor.max_concurrent = 10  # Maximum concurrent async operatio
 async_parallel_executor.timeout = 30.0  # Default timeout for batch operations (seconds)
 async_parallel_executor.error_strategy = "ignore"  # Options: ignore, raise, collect, continue
 
-# Security pattern configuration (regex patterns for input validation)
-# NOTE: Patterns use TOML string escaping - backslashes must be doubled
-# Command injection patterns - shell metacharacters and command substitution
-security.command_injection_patterns = [
-    "[;&|`$]",  # Shell metacharacters (note: [ is literal char in regex)
-    "\\$\\(",  # Command substitution $(
-    "`",  # Backticks
-]
-
-# Path traversal patterns
-security.path_traversal_patterns = [
-    "\\.\\.",  # Parent directory (Unix)
-    "~/",  # Home directory (Unix)
-    "/etc/",  # System directories (Unix)
-    "/var/",
-    "/usr/",
-    "[a-zA-Z]:\\\\",  # Windows absolute paths like C:\
-    "\\.\\\\",  # Windows parent directory
-    "\\\\\\\\",  # UNC paths like \\server\share
-]
-
-# SQL injection patterns
-security.sql_injection_patterns = [
-    "(?:--|#|/\\*|\\*/)",  # SQL comments
-    "\\b(?:union|select|insert|update|delete|drop|create|alter)\\b",  # SQL keywords
-    "(?:exec|execute|xp_)",  # Stored procedures
-]
-
 # Logging settings
 logging.format = "simple"  # Options: simple, json, structured
 logging.json_pretty = false  # Pretty-print JSON output (development only)

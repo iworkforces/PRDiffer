@@ -328,27 +328,8 @@ class ContractValidator:
         assert url == GITLAB_URL
         return GITLAB_TARGET[:3]
 
-    def validate_repository_identifier(self, identifier: str) -> tuple[str, str]:
-        owner, repo = identifier.split("/", 1)
-        return owner, repo
-
     def sanitize_string(self, value: str, max_length: int = 1000) -> str:
         return value
-
-    def validate_pr_number(self, pr_number: int) -> int:
-        return pr_number
-
-    def validate_file_path(self, file_path: str) -> str:
-        return file_path
-
-    def validate_token(self, token: str) -> str:
-        return token
-
-    def validate_user_id(self, user_id: str) -> str:
-        return user_id
-
-    def validate_branch_name(self, branch: str) -> str:
-        return branch
 
     def sanitize_for_logging(self, value: str, max_length: int = 200) -> str:
         return value[:max_length]
