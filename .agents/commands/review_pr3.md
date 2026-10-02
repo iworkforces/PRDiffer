@@ -73,7 +73,7 @@ Review the pull request identified by `$1`. `$1` is the sole argument and is
    exactly `pr-{pr_number}-review-report.yml`. Form `report_path` only as that
    direct entry under `canonical_cwd`; reject any untrusted directory component
    and require its parent to be the authorized report parent.
-2. Call `prdiffer-mcp_get_pr_diff` with `pr_url` set to `canonical_pr_url`. If the
+2. Call `prdiffer-mcp_get_pr_diff` MCP tool with `pr_url` set to `canonical_pr_url`. If the
    fetch fails, is incomplete, or does not expose `result.files`, stop
    immediately without creating or changing the report.
 3. Create one immutable review snapshot from every `result.files` entry in
