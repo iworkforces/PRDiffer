@@ -235,34 +235,6 @@ class TestThreadSafeCircuitBreaker:
 
         assert len(errors) == 0
 
-    @pytest.mark.asyncio
-    async def test_async_record_success(self, circuit_breaker):
-        circuit_breaker.record_failure()
-        circuit_breaker.record_failure()
-
-        await circuit_breaker.record_success_async()
-
-        assert circuit_breaker.failure_count == 0
-
-    @pytest.mark.asyncio
-    async def test_async_record_failure(self, circuit_breaker):
-        await circuit_breaker.record_failure_async()
-        await circuit_breaker.record_failure_async()
-        await circuit_breaker.record_failure_async()
-
-        assert circuit_breaker.state == CircuitState.OPEN
-
-    @pytest.mark.asyncio
-    async def test_async_can_execute(self, circuit_breaker):
-        result = await circuit_breaker.can_execute_async()
-        assert result is True
-
-        for _ in range(3):
-            await circuit_breaker.record_failure_async()
-
-        result = await circuit_breaker.can_execute_async()
-        assert result is False
-
 
 class TestReDoSPatternFixes:
     def test_sql_keyword_detection_with_whitespace(self):

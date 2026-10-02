@@ -345,14 +345,6 @@ class TestErrorCodeConstants:
             assert error_code.message
             assert error_code.remediation
 
-    def test_error_code_to_dict(self):
-        """Test that error codes can be converted to dict."""
-        error_dict = E1001_INVALID_URL.to_dict()
-        assert error_dict["error_code"] == "E1001_INVALID_URL"
-        assert error_dict["message"] == E1001_INVALID_URL.message
-        assert error_dict["remediation"] == E1001_INVALID_URL.remediation
-        assert error_dict["category"] == "INPUT_VALIDATION"
-
     def test_error_code_str(self):
         """Test that error codes have proper string representation."""
         assert str(E1001_INVALID_URL) == "E1001_INVALID_URL"

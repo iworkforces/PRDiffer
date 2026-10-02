@@ -7,11 +7,8 @@ failure handling, and recovery mechanisms.
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
 from types import SimpleNamespace
-from typing import Iterator
 
-import anyio
 from unittest.mock import Mock
 import pytest
 
@@ -19,9 +16,6 @@ from prdiffer.infrastructure.utils.circuit_breaker_core import (
     CircuitBreaker,
     CircuitState,
     CircuitBreakerOpenException,
-)
-from prdiffer.infrastructure.utils.circuit_breaker_registry import (
-    get_global_circuit_breaker_registry,
 )
 import prdiffer.infrastructure.utils.circuit_breaker_core as core
 
@@ -199,144 +193,37 @@ class TestCircuitBreakerCanExecute:
 
 
 @pytest.mark.unit
-class TestCircuitBreakerAsyncMethods:
-    """Test suite for async methods of CircuitBreaker."""
-
-    @pytest.mark.asyncio
-    async def test_can_execute_async_when_closed(self):
-        """Test async can_execute returns True when circuit is CLOSED."""
-        breaker = CircuitBreaker()
-
-        assert await breaker.can_execute_async() is True
-        assert breaker.state == CircuitState.CLOSED
-
-    @pytest.mark.asyncio
-    async def test_can_execute_async_blocks_when_open(self):
-        """Test async can_execute returns False when circuit is OPEN."""
-        breaker = CircuitBreaker(failure_threshold=2, timeout=60.0)
-
-        # Open the circuit
-        await breaker.record_failure_async()
-        await breaker.record_failure_async()
-
-        assert await breaker.can_execute_async() is False
-        assert breaker.state == CircuitState.OPEN
-
-    @pytest.mark.asyncio
-    async def test_record_success_async(self):
-        """Test async record_success updates state correctly."""
-        breaker = CircuitBreaker(failure_threshold=2, timeout=60.0)
-
-        # Open circuit and wait for timeout
-        await breaker.record_failure_async()
-        await breaker.record_failure_async()
-        breaker._last_failure_time = time.time() - breaker.timeout - 1
-
-        # Trigger transition to HALF_OPEN
-        assert await breaker.can_execute_async() is True
-
-        # Record success
-        await breaker.record_success_async()
-
-        assert breaker.state == CircuitState.CLOSED
-        assert breaker.get_stats()["successful_calls"] == 0  # Reset on close
-
-    @pytest.mark.asyncio
-    async def test_record_failure_async(self):
-        """Test async record_failure increments failure count."""
-        breaker = CircuitBreaker(failure_threshold=3)
-
-        # Record failures asynchronously
-        await breaker.record_failure_async()
-        assert breaker.failure_count == 1
-
-        await breaker.record_failure_async()
-        assert breaker.failure_count == 2
-
-        await breaker.record_failure_async()
-        assert breaker.failure_count == 3
-        assert breaker.state == CircuitState.OPEN
-
-    @pytest.mark.asyncio
-    @pytest.mark.thread_safety
-    async def test_async_admission_waits_for_sync_lock_without_blocking_loop(self, monkeypatch):
-        breaker = CircuitBreaker(failure_threshold=1)
-        lock = breaker._sync_lock
-        held = threading.Event()
-        release = threading.Event()
-        attempted = anyio.Event()
-        progress = anyio.Event()
-        finished = anyio.Event()
-        result: list[bool] = []
-
-        def hold_lock() -> None:
-            with lock:
-                held.set()
-                release.wait(timeout=3)
-
-        @contextmanager
-        def observed_lock() -> Iterator[None]:
-            anyio.from_thread.run_sync(attempted.set)
-            anyio.from_thread.run_sync(progress.set)
-            with lock:
-                yield
-
-        async def admit() -> None:
-            result.append(await breaker.can_execute_async())
-            finished.set()
-            progress.set()
-
-        worker = threading.Thread(target=hold_lock)
-        worker.start()
-        try:
-            with anyio.fail_after(2):
-                assert await anyio.to_thread.run_sync(held.wait, 2)
-                monkeypatch.setattr(breaker, "_sync_lock", observed_lock())
-                async with anyio.create_task_group() as group:
-                    group.start_soon(admit)
-                    await progress.wait()
-                    assert attempted.is_set()
-                    assert not finished.is_set()
-                    release.set()
-            assert result == [True]
-        finally:
-            release.set()
-            worker.join(timeout=3)
+class TestCircuitBreakerThreadSafety:
+    """Test suite for concurrent use of CircuitBreaker from worker threads."""
 
     @pytest.mark.thread_safety
-    def test_mixed_threads_and_independent_loops_share_failure_and_recovery(self, monkeypatch):
+    def test_concurrent_threads_share_failure_and_recovery(self, monkeypatch):
         clock = [100.0]
         monkeypatch.setattr(core, "time", SimpleNamespace(time=lambda: clock[0]))
         breaker = CircuitBreaker(failure_threshold=12, timeout=10)
         barrier = threading.Barrier(3)
 
-        def sync_worker() -> None:
+        def worker() -> None:
             barrier.wait(timeout=2)
             for _ in range(4):
                 breaker.record_failure()
 
-        async def async_worker() -> None:
-            await anyio.to_thread.run_sync(barrier.wait, 2)
-            for _ in range(4):
-                await breaker.record_failure_async()
-
         with ThreadPoolExecutor(max_workers=3) as workers:
-            futures = [workers.submit(sync_worker), workers.submit(anyio.run, async_worker), workers.submit(anyio.run, async_worker)]
+            futures = [workers.submit(worker) for _ in range(3)]
             for future in futures:
                 future.result(timeout=3)
 
         assert breaker.get_stats()["failure_count"] == 12
         assert breaker.state == CircuitState.OPEN
-        assert not anyio.run(breaker.can_execute_async)
+        assert not breaker.can_execute()
         clock[0] = 110.0
-        assert anyio.run(breaker.can_execute_async)
         assert breaker.can_execute()
         assert breaker.state == CircuitState.HALF_OPEN
         breaker.record_failure()
-        assert not anyio.run(breaker.can_execute_async)
+        assert not breaker.can_execute()
         clock[0] = 120.0
         assert breaker.can_execute()
-        anyio.run(breaker.record_success_async)
+        breaker.record_success()
         assert breaker.get_stats()["state"] == CircuitState.CLOSED.value
         assert breaker.failure_count == 0
 
@@ -574,230 +461,3 @@ class TestCircuitBreakerFactoryFunctions:
         assert breaker.failure_threshold == 7
         assert breaker.timeout == 45.0
         assert breaker.state == CircuitState.CLOSED
-
-    def test_get_breaker_from_registry(self):
-        """Test getting a circuit breaker from the global registry."""
-        registry = get_global_circuit_breaker_registry()
-
-        breaker = registry.get_breaker("custom_endpoint")
-
-        assert breaker is not None
-        # Verify it's the same breaker from registry
-        assert breaker is registry.get_breaker("custom_endpoint")
-
-    def test_registry_returns_same_breaker_for_same_endpoint(self):
-        """Test that registry returns the same breaker for the same endpoint."""
-        registry = get_global_circuit_breaker_registry()
-
-        breaker1 = registry.get_breaker("endpoint1")
-        breaker2 = registry.get_breaker("endpoint1")
-
-        assert breaker1 is breaker2
-
-
-@pytest.mark.unit
-class TestGlobalCircuitBreakerRegistry:
-    """Test suite for GlobalCircuitBreakerRegistry."""
-
-    def setup_method(self):
-        """Reset the singleton before each test."""
-        # Clear the singleton instance to get fresh state
-        import prdiffer.infrastructure.utils.circuit_breaker_registry as cb_registry
-
-        cb_registry._global_circuit_breaker_registry = None
-        cb_registry.GlobalCircuitBreakerRegistry._instance = None
-        cb_registry.GlobalCircuitBreakerRegistry._initialized = False
-
-    def test_singleton_pattern(self):
-        """Test that get_global_circuit_breaker_registry returns singleton."""
-        registry1 = get_global_circuit_breaker_registry()
-        registry2 = get_global_circuit_breaker_registry()
-
-        assert registry1 is registry2
-
-    def test_registry_initialization(self):
-        """Test registry initializes with correct defaults."""
-        registry = get_global_circuit_breaker_registry(default_failure_threshold=10, default_timeout=30.0)
-
-        stats = registry.get_all_stats()
-        assert "global" in stats
-        # Global breaker uses default_failure_threshold * 2
-        assert stats["global"]["failure_threshold"] == 10 * 2
-        assert stats["global"]["timeout"] == 30.0
-
-    def test_get_breaker_creates_new_breaker(self):
-        """Test get_breaker creates new breaker for endpoint."""
-        registry = get_global_circuit_breaker_registry()
-
-        breaker1 = registry.get_breaker("github_api")
-        breaker2 = registry.get_breaker("github_api")
-
-        # Should return same instance for same endpoint
-        assert breaker1 is breaker2
-
-        # Different endpoint should return different instance
-        breaker3 = registry.get_breaker("repo_content")
-        assert breaker1 is not breaker3
-
-    def test_get_breaker_persists_across_calls(self):
-        """Test that get_breaker returns same instance across calls."""
-        registry = get_global_circuit_breaker_registry()
-
-        breaker1 = registry.get_breaker("endpoint1")
-        breaker2 = registry.get_breaker("endpoint1")
-
-        assert breaker1 is breaker2
-
-    def test_can_execute_with_endpoint(self):
-        """Test can_execute checks both global and endpoint breakers."""
-        registry = get_global_circuit_breaker_registry(default_failure_threshold=2)
-
-        # Both global and endpoint should allow execution initially
-        assert registry.can_execute("github_api") is True
-
-        # Open global breaker (needs 4 failures since threshold is 2*2=4)
-        for _ in range(4):
-            registry.global_breaker.record_failure()
-
-        # Should now be blocked
-        assert registry.can_execute("github_api") is False
-
-    def test_can_execute_without_endpoint(self):
-        """Test can_execute with no endpoint checks only global breaker."""
-        registry = get_global_circuit_breaker_registry(default_failure_threshold=2)
-
-        # Initially should allow execution
-        assert registry.can_execute() is True
-
-        # Open global breaker (needs 4 failures since threshold is 2*2=4)
-        for _ in range(4):
-            registry.global_breaker.record_failure()
-
-        # Should now be blocked
-        assert registry.can_execute() is False
-
-    def test_get_all_stats(self):
-        """Test get_all_stats returns statistics for all breakers."""
-        registry = get_global_circuit_breaker_registry()
-
-        # Create some state
-        registry.get_breaker("endpoint1").record_failure()
-        registry.get_breaker("endpoint2").record_failure()
-
-        stats = registry.get_all_stats()
-
-        assert "global" in stats
-        assert "endpoint1" in stats
-        assert "endpoint2" in stats
-
-    def test_get_open_breakers(self):
-        """Test get_open_breakers returns list of open endpoints."""
-        registry = get_global_circuit_breaker_registry(
-            default_failure_threshold=2  # Use lower threshold for testing
-        )
-
-        # Initially no open breakers
-        open_breakers = registry.get_open_breakers()
-        assert open_breakers == []
-
-        # Open an endpoint breaker
-        endpoint_breaker = registry.get_breaker("test_endpoint")
-        endpoint_breaker.record_failure()
-        endpoint_breaker.record_failure()
-
-        # Check it's in open list
-        open_breakers = registry.get_open_breakers()
-        assert "test_endpoint" in open_breakers
-
-    def test_reset_all(self):
-        """Test reset_all closes all circuit breakers."""
-        registry = get_global_circuit_breaker_registry(
-            default_failure_threshold=2  # Use lower threshold for testing
-        )
-
-        # Open some breakers
-        registry.get_breaker("endpoint1").record_failure()
-        registry.get_breaker("endpoint1").record_failure()
-        registry.get_breaker("endpoint2").record_failure()
-        registry.get_breaker("endpoint2").record_failure()
-
-        assert registry.get_open_breakers() != []
-
-        # Reset all
-        registry.reset_all()
-
-        # All breakers should be closed now
-        open_breakers = registry.get_open_breakers()
-        assert open_breakers == []
-
-        # All failure counts should be reset
-        stats = registry.get_all_stats()
-        assert stats["endpoint1"]["failure_count"] == 0
-        assert stats["endpoint2"]["failure_count"] == 0
-
-    def test_clear_endpoint(self):
-        """Test clear_endpoint removes endpoint breaker."""
-        registry = get_global_circuit_breaker_registry()
-
-        # Create a breaker for an endpoint
-        registry.get_breaker("temp_endpoint")
-
-        # Clear it
-        registry.clear_endpoint("temp_endpoint")
-
-        # Should no longer exist
-        # Get a new breaker to verify
-        new_breaker = registry.get_breaker("temp_endpoint")
-        assert new_breaker is not None  # Creates new instance
-
-    def test_record_success_propagates_to_all_breakers(self):
-        """Test record_success updates both global and endpoint breakers."""
-        registry = get_global_circuit_breaker_registry()
-
-        _ = registry.get_breaker("test_endpoint")
-
-        # Record success propagates to global
-        registry.record_success("test_endpoint")
-        assert registry.global_breaker.failure_count == 0
-
-        # Record success without endpoint affects only global
-        registry.record_success()
-        assert registry.global_breaker.get_stats()["successful_calls"] >= 0
-
-    def test_record_failure_propagates_to_all_breakers(self):
-        """Test record_failure updates both global and endpoint breakers."""
-        registry = get_global_circuit_breaker_registry(default_failure_threshold=5)
-
-        endpoint_breaker = registry.get_breaker("test_endpoint")
-
-        # Record failure propagates to both
-        registry.record_failure("test_endpoint")
-        assert registry.global_breaker.failure_count == 1
-        assert endpoint_breaker.failure_count == 1
-
-    @pytest.mark.asyncio
-    async def test_mixed_registry_reset_clear_and_isolation(self):
-        registry = get_global_circuit_breaker_registry(default_failure_threshold=2, default_timeout=60)
-        endpoint = registry.get_breaker("one")
-        other = registry.get_breaker("other")
-
-        await registry.record_failure_async("one")
-        registry.record_failure("one")
-        assert endpoint.state == CircuitState.OPEN
-        assert other.state == CircuitState.CLOSED
-        assert await registry.can_execute_async("one") is False
-        assert registry.can_execute("other") is True
-
-        registry.global_breaker.record_failure()
-        await registry.global_breaker.record_failure_async()
-        assert not await registry.can_execute_async("other")
-        assert registry.get_open_breakers() == ["global", "one"]
-
-        registry.reset_all()
-        assert await registry.can_execute_async("one")
-        assert registry.get_all_stats()["one"]["failure_count"] == 0
-        assert registry.get_all_stats()["global"]["failure_count"] == 0
-        registry.clear_endpoint("one")
-        assert registry.get_breaker("one") is not endpoint
-        assert registry.get_breaker("other") is other
-        assert registry.global_breaker.state == CircuitState.CLOSED

@@ -5,7 +5,6 @@ import re
 import logging
 from dataclasses import dataclass
 from prdiffer.domain.services.diff import DiffServiceInterface
-from prdiffer.infrastructure.utils.logger_factory import LazyLoggerMixin
 
 
 DEFAULT_LARGE_FILE_THRESHOLD = 5000  # Lines
@@ -84,7 +83,7 @@ def _append_no_newline_markers(
     return result
 
 
-class DiffUtils(LazyLoggerMixin, DiffServiceInterface):
+class DiffUtils(DiffServiceInterface):
     """Utility for diff generation, patch extension, and content decoding.
 
     This class provides functionality for creating unified diffs, extending
@@ -94,7 +93,7 @@ class DiffUtils(LazyLoggerMixin, DiffServiceInterface):
     RE_HUNK_HEADER = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@[ ]?(.*)")
 
     def __init__(self, logger: logging.Logger | None = None, config: DiffProcessingConfig | None = None) -> None:
-        self._init_lazy_logger(logger, __name__)
+        self._logger = logger or logging.getLogger(__name__)
         self._config = (config or DiffProcessingConfig()).validate()
 
     def build_full_file_patch(self, original_file_str: str, new_file_str: str) -> str:
@@ -172,7 +171,7 @@ class DiffUtils(LazyLoggerMixin, DiffServiceInterface):
         if max_lines <= large_file_threshold:
             return self.build_full_file_patch(original_file_str, new_file_str)
 
-        self._get_logger().info(f"Using chunked diff processing for large file ({max_lines} lines)")
+        self._logger.info(f"Using chunked diff processing for large file ({max_lines} lines)")
 
         hunks: list[str] = []
         chunk_index = 0

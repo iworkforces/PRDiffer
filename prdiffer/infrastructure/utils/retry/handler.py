@@ -110,7 +110,7 @@ class UnifiedRetryHandler(BaseUnifiedRetryHandler):
                 )
 
                 log_retry_attempt(
-                    self._get_logger(),
+                    self._logger,
                     attempt,
                     delay,
                     exc,

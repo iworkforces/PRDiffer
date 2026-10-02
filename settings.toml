@@ -159,11 +159,6 @@ async_parallel_executor.max_concurrent = 10  # Maximum concurrent async operatio
 async_parallel_executor.timeout = 30.0  # Default timeout for batch operations (seconds)
 async_parallel_executor.error_strategy = "ignore"  # Options: ignore, raise, collect, continue
 
-# Circuit breaker registry settings
-circuit_breaker_registry.default_failure_threshold = 5  # Failures before opening circuit
-circuit_breaker_registry.default_timeout = 60.0  # Seconds to keep circuit open
-circuit_breaker_registry.global_threshold_multiplier = 2  # Global breaker threshold multiplier
-
 # Security pattern configuration (regex patterns for input validation)
 # NOTE: Patterns use TOML string escaping - backslashes must be doubled
 # Command injection patterns - shell metacharacters and command substitution

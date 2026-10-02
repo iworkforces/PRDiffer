@@ -145,63 +145,56 @@ class TestLogging:
     def test_log_at_debug_level(self):
         """Test logging at DEBUG level."""
         handler = UnifiedRetryHandler(retry_log_level="DEBUG")
-        with patch.object(handler, "_get_logger") as mock_get_logger:
-            mock_logger = Mock()
-            mock_get_logger.return_value = mock_logger
+        mock_logger = Mock()
+        with patch.object(handler, "_logger", mock_logger):
             handler._log_at_level("test message", "DEBUG")
             mock_logger.debug.assert_called_once_with("test message")
 
     def test_log_at_info_level(self):
         """Test logging at INFO level."""
         handler = UnifiedRetryHandler()
-        with patch.object(handler, "_get_logger") as mock_get_logger:
-            mock_logger = Mock()
-            mock_get_logger.return_value = mock_logger
+        mock_logger = Mock()
+        with patch.object(handler, "_logger", mock_logger):
             handler._log_at_level("test message", "INFO")
             mock_logger.info.assert_called_once_with("test message")
 
     def test_log_at_warning_level(self):
         """Test logging at WARNING level."""
         handler = UnifiedRetryHandler()
-        with patch.object(handler, "_get_logger") as mock_get_logger:
-            mock_logger = Mock()
-            mock_get_logger.return_value = mock_logger
+        mock_logger = Mock()
+        with patch.object(handler, "_logger", mock_logger):
             handler._log_at_level("test message", "WARNING")
             mock_logger.warning.assert_called_once_with("test message")
 
     def test_log_at_error_level(self):
         """Test logging at ERROR level."""
         handler = UnifiedRetryHandler()
-        with patch.object(handler, "_get_logger") as mock_get_logger:
-            mock_logger = Mock()
-            mock_get_logger.return_value = mock_logger
+        mock_logger = Mock()
+        with patch.object(handler, "_logger", mock_logger):
             handler._log_at_level("test message", "ERROR")
             mock_logger.error.assert_called_once_with("test message")
 
     def test_log_at_critical_level(self):
         """Test logging at CRITICAL level."""
         handler = UnifiedRetryHandler()
-        with patch.object(handler, "_get_logger") as mock_get_logger:
-            mock_logger = Mock()
-            mock_get_logger.return_value = mock_logger
+        mock_logger = Mock()
+        with patch.object(handler, "_logger", mock_logger):
             handler._log_at_level("test message", "CRITICAL")
             mock_logger.critical.assert_called_once_with("test message")
 
     def test_log_at_unknown_level_falls_back_to_info(self):
         """Test that unknown log levels fall back to INFO."""
         handler = UnifiedRetryHandler()
-        with patch.object(handler, "_get_logger") as mock_get_logger:
-            mock_logger = Mock()
-            mock_get_logger.return_value = mock_logger
+        mock_logger = Mock()
+        with patch.object(handler, "_logger", mock_logger):
             handler._log_at_level("test message", "UNKNOWN")
             mock_logger.info.assert_called_once_with("test message")
 
     def test_log_permanent_failure(self):
         """Test logging of permanent failure."""
         handler = UnifiedRetryHandler()
-        with patch.object(handler, "_get_logger") as mock_get_logger:
-            mock_logger = Mock()
-            mock_get_logger.return_value = mock_logger
+        mock_logger = Mock()
+        with patch.object(handler, "_logger", mock_logger):
             error = Exception("test error")
             handler._log_permanent_failure(error, should_retry=False, is_last_attempt=True)
             mock_logger.info.assert_called()
@@ -209,9 +202,8 @@ class TestLogging:
     def test_log_permanent_failure_custom_level(self):
         """Test permanent failure logging with custom level."""
         handler = UnifiedRetryHandler(permanent_failure_log_level="WARNING")
-        with patch.object(handler, "_get_logger") as mock_get_logger:
-            mock_logger = Mock()
-            mock_get_logger.return_value = mock_logger
+        mock_logger = Mock()
+        with patch.object(handler, "_logger", mock_logger):
             error = Exception("test error")
             handler._log_permanent_failure(error, should_retry=False, is_last_attempt=True)
             mock_logger.warning.assert_called()

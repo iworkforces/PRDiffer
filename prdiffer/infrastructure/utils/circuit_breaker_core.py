@@ -5,8 +5,6 @@ import threading
 import logging
 from enum import StrEnum
 
-import anyio
-
 from prdiffer.infrastructure.logging.console_logger import get_logger, ConsoleLogger
 
 
@@ -25,8 +23,7 @@ class CircuitBreaker:
     and allowing it time to recover.
 
     Thread Safety:
-    - Uses one threading lock for synchronous and asynchronous operations
-    - Async operations acquire it in worker threads, never on the event loop
+    - One threading lock guards all state; callers run on worker threads.
     """
 
     def __init__(self, failure_threshold: int = 5, timeout: float = 60.0, logger: logging.Logger | ConsoleLogger | None = None) -> None:
@@ -82,14 +79,6 @@ class CircuitBreaker:
         self._logger.info("Circuit breaker transitioned to HALF_OPEN: Testing service recovery")
         return True
 
-    async def can_execute_async(self) -> bool:
-        """Async version of can_execute (non-blocking).
-
-        Returns:
-            bool: True if execution is allowed, False otherwise
-        """
-        return await anyio.to_thread.run_sync(self.can_execute)
-
     def record_success(self) -> None:
         """Record a successful operation (thread-safe)."""
         with self._sync_lock:
@@ -99,10 +88,6 @@ class CircuitBreaker:
                 self._logger.info(message[1])
             else:
                 self._logger.debug(message[1])
-
-    async def record_success_async(self) -> None:
-        """Async version of record_success (non-blocking)."""
-        await anyio.to_thread.run_sync(self.record_success)
 
     def _record_success_unlocked(self) -> tuple[bool, str] | None:
         """Record a successful operation (must be called with lock held)."""
@@ -126,10 +111,6 @@ class CircuitBreaker:
         if opened:
             self._logger.warning(f"Circuit breaker OPENED: {failure_count} failures reached threshold {self.failure_threshold}")
 
-    async def record_failure_async(self) -> None:
-        """Async version of record_failure (non-blocking)."""
-        await anyio.to_thread.run_sync(self.record_failure)
-
     def _record_failure_unlocked(self) -> bool:
         """Record a failed operation (must be called with lock held)."""
         self._failure_count += 1
@@ -145,33 +126,14 @@ class CircuitBreaker:
             return True
         return False
 
-    def _transition_to_open(self) -> None:
-        """Transition circuit to OPEN state (thread-safe)."""
-        with self._sync_lock:
-            self._transition_to_open_unlocked()
-            failure_count = self._failure_count
-        self._logger.warning(f"Circuit breaker OPENED: {failure_count} failures reached threshold {self.failure_threshold}")
-
     def _transition_to_open_unlocked(self) -> None:
         """Transition circuit to OPEN state (must be called with lock held)."""
         self._state = CircuitState.OPEN
-
-    def _transition_to_half_open(self) -> None:
-        """Transition circuit to HALF_OPEN state (thread-safe)."""
-        with self._sync_lock:
-            self._transition_to_half_open_unlocked()
-        self._logger.info("Circuit breaker transitioned to HALF_OPEN: Testing service recovery")
 
     def _transition_to_half_open_unlocked(self) -> None:
         """Transition circuit to HALF_OPEN state (must be called with lock held)."""
         self._state = CircuitState.HALF_OPEN
         self._successful_calls = 0
-
-    def _transition_to_closed(self) -> None:
-        """Transition circuit to CLOSED state (thread-safe)."""
-        with self._sync_lock:
-            self._transition_to_closed_unlocked()
-        self._logger.info("Circuit breaker CLOSED: Service recovered")
 
     def _transition_to_closed_unlocked(self) -> None:
         """Transition circuit to CLOSED state (must be called with lock held)."""
