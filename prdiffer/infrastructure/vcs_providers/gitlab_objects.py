@@ -1,7 +1,7 @@
 """Immutable GitLab repository tree/object helpers for strict full-diff.
 
-Infrastructure-only descriptors. Regular files may still use ``files.raw`` when
-tree-proven; symlink (120000) and gitlink (160000) never call raw-file APIs.
+Infrastructure-only descriptors. Regular files use ``files.raw``; symlink
+(120000) and gitlink (160000) never call raw-file APIs.
 """
 
 from __future__ import annotations
@@ -268,19 +268,7 @@ def load_repository_tree_entries(project: object, *, ref: str) -> dict[str, GitL
             FullDiffIncompleteReason.INVENTORY_TRUNCATED,
             message="Project does not support repository_tree",
         )
-    try:
-        raw_list = repository_tree(ref=tree_ref, recursive=True, get_all=True)
-    except FullDiffIncompleteError:
-        raise
-    except TypeError:
-        # Some fakes/SDK variants use ``all=True`` instead of ``get_all=True``.
-        try:
-            raw_list = repository_tree(ref=tree_ref, recursive=True, all=True)
-        except TypeError as exc:
-            raise FullDiffIncompleteError(
-                FullDiffIncompleteReason.INVENTORY_TRUNCATED,
-                message="repository_tree does not support get_all/all pagination",
-            ) from exc
+    raw_list = repository_tree(ref=tree_ref, recursive=True, get_all=True)
 
     coerced = _coerce_complete_tree_list(raw_list)
     entries: list[GitLabTreeEntry] = []
@@ -342,30 +330,10 @@ def fetch_raw_blob_bytes(project: object, object_id: str) -> bytes:
     oid = require_object_id(object_id, field="blob")
     raw_blob = getattr(project, "repository_raw_blob", None)
     if not callable(raw_blob):
-        # Fallback attribute name used by some SDK versions
-        raw_blob = getattr(project, "repository_blob", None)
-        if not callable(raw_blob):
-            raise FullDiffIncompleteError(
-                FullDiffIncompleteReason.CONTENT_UNAVAILABLE,
-                message="Project does not support repository_raw_blob",
-            )
-        payload = raw_blob(oid)
-        if isinstance(payload, dict):
-            content = payload.get("content")
-            encoding = payload.get("encoding")
-            if encoding == "base64" and isinstance(content, str):
-                import base64
-
-                return base64.b64decode(content)
-            if isinstance(content, str):
-                return content.encode("utf-8")
-        if isinstance(payload, (bytes, bytearray)):
-            return bytes(payload)
         raise FullDiffIncompleteError(
             FullDiffIncompleteReason.CONTENT_UNAVAILABLE,
-            message="Unexpected blob payload",
+            message="Project does not support repository_raw_blob",
         )
-
     data = raw_blob(oid)
     if isinstance(data, (bytes, bytearray)):
         return bytes(data)
@@ -375,8 +343,3 @@ def fetch_raw_blob_bytes(project: object, object_id: str) -> bytes:
         FullDiffIncompleteReason.CONTENT_UNAVAILABLE,
         message="repository_raw_blob returned non-bytes",
     )
-
-
-def mode_uses_raw_file_api(mode: str | None) -> bool:
-    """True when ``files.raw`` is appropriate (tree-proven regular blobs only)."""
-    return mode in _REGULAR_BLOB_MODES or mode is None
