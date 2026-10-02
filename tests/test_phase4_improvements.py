@@ -15,7 +15,7 @@ class TestGitHubConfig:
         assert config.max_retries == 3
         assert config.retry_delay == 1.0
         assert config.circuit_breaker_enabled is True
-        assert config.diff_parallel_enabled is True
+        assert config.diff_parallel_threshold == 3
 
     def test_from_dict(self):
         from prdiffer.domain.config.github_config import GitHubConfig
@@ -120,13 +120,11 @@ class TestGitHubConfig:
             circuit_breaker_enabled=True,
             adaptive_retry_enabled=False,
             api_health_tracking=True,
-            diff_parallel_enabled=False,
         )
 
         assert config.should_use_circuit_breaker is True
         assert config.should_use_adaptive_retry is False
         assert config.should_track_api_health is True
-        assert config.should_use_parallel_diff is False
 
 
 class TestSettingsServiceGitHubConfig:
@@ -347,186 +345,6 @@ class TestBatchResult:
         assert e2 in errors
 
 
-def _reset_circuit_breaker_registry():
-    import prdiffer.infrastructure.utils.circuit_breaker_registry as cb_module
-
-    cb_module.GlobalCircuitBreakerRegistry._instance = None
-    cb_module.GlobalCircuitBreakerRegistry._initialized = False
-    cb_module._global_circuit_breaker_registry = None
-
-
-class TestGlobalCircuitBreakerRegistry:
-    def test_singleton_pattern(self):
-        from prdiffer.infrastructure.utils.circuit_breaker_registry import (
-            GlobalCircuitBreakerRegistry,
-        )
-
-        _reset_circuit_breaker_registry()
-
-        registry1 = GlobalCircuitBreakerRegistry()
-        registry2 = GlobalCircuitBreakerRegistry()
-
-        assert registry1 is registry2
-
-    def test_get_breaker_creates_new(self):
-        from prdiffer.infrastructure.utils.circuit_breaker_registry import (
-            get_global_circuit_breaker_registry,
-        )
-
-        _reset_circuit_breaker_registry()
-
-        registry = get_global_circuit_breaker_registry()
-        breaker = registry.get_breaker("test_endpoint")
-
-        assert breaker is not None
-        assert "test_endpoint" in registry.get_all_stats()
-
-    def test_get_breaker_returns_same(self):
-        from prdiffer.infrastructure.utils.circuit_breaker_registry import (
-            get_global_circuit_breaker_registry,
-        )
-
-        _reset_circuit_breaker_registry()
-
-        registry = get_global_circuit_breaker_registry()
-        breaker1 = registry.get_breaker("endpoint_a")
-        breaker2 = registry.get_breaker("endpoint_a")
-
-        assert breaker1 is breaker2
-
-    def test_can_execute_checks_both_breakers(self):
-        from prdiffer.infrastructure.utils.circuit_breaker_registry import (
-            get_global_circuit_breaker_registry,
-        )
-
-        _reset_circuit_breaker_registry()
-
-        registry = get_global_circuit_breaker_registry()
-
-        assert registry.can_execute("test_endpoint") is True
-
-    def test_record_success_updates_both(self):
-        from prdiffer.infrastructure.utils.circuit_breaker_registry import (
-            get_global_circuit_breaker_registry,
-        )
-
-        _reset_circuit_breaker_registry()
-
-        registry = get_global_circuit_breaker_registry()
-        registry.record_success("my_endpoint")
-
-        stats = registry.get_all_stats()
-        assert "my_endpoint" in stats
-        assert "global" in stats
-
-    def test_record_failure_updates_both(self):
-        from prdiffer.infrastructure.utils.circuit_breaker_registry import (
-            get_global_circuit_breaker_registry,
-        )
-
-        _reset_circuit_breaker_registry()
-
-        registry = get_global_circuit_breaker_registry()
-
-        for _ in range(3):
-            registry.record_failure("failing_endpoint")
-
-        stats = registry.get_all_stats()
-        assert stats["failing_endpoint"]["failure_count"] == 3
-        assert stats["global"]["failure_count"] == 3
-
-    def test_get_all_stats(self):
-        from prdiffer.infrastructure.utils.circuit_breaker_registry import (
-            get_global_circuit_breaker_registry,
-        )
-
-        _reset_circuit_breaker_registry()
-
-        registry = get_global_circuit_breaker_registry()
-        registry.get_breaker("endpoint_1")
-        registry.get_breaker("endpoint_2")
-
-        stats = registry.get_all_stats()
-
-        assert "global" in stats
-        assert "endpoint_1" in stats
-        assert "endpoint_2" in stats
-
-    def test_get_open_breakers(self):
-        from prdiffer.infrastructure.utils.circuit_breaker_registry import (
-            get_global_circuit_breaker_registry,
-        )
-
-        _reset_circuit_breaker_registry()
-
-        registry = get_global_circuit_breaker_registry()
-
-        assert registry.get_open_breakers() == []
-
-        breaker = registry.get_breaker("failing_endpoint")
-        # Low threshold to trigger opening in test
-        breaker.failure_threshold = 2
-
-        for _ in range(3):
-            registry.record_failure("failing_endpoint")
-
-        open_breakers = registry.get_open_breakers()
-        assert "failing_endpoint" in open_breakers
-
-    def test_reset_all(self):
-        from prdiffer.infrastructure.utils.circuit_breaker_registry import (
-            get_global_circuit_breaker_registry,
-        )
-        from prdiffer.infrastructure.utils.circuit_breaker_core import (
-            CircuitState,
-        )
-
-        _reset_circuit_breaker_registry()
-
-        registry = get_global_circuit_breaker_registry()
-        breaker = registry.get_breaker("endpoint_to_reset")
-        breaker.failure_threshold = 1  # Low threshold for test
-
-        registry.record_failure("endpoint_to_reset")
-        registry.record_failure("endpoint_to_reset")
-
-        registry.reset_all()
-
-        stats = registry.get_all_stats()
-        assert stats["global"]["state"] == CircuitState.CLOSED.value
-
-    def test_clear_endpoint(self):
-        from prdiffer.infrastructure.utils.circuit_breaker_registry import (
-            get_global_circuit_breaker_registry,
-        )
-
-        _reset_circuit_breaker_registry()
-
-        registry = get_global_circuit_breaker_registry()
-        registry.get_breaker("to_remove")
-
-        assert "to_remove" in registry.get_all_stats()
-
-        registry.clear_endpoint("to_remove")
-
-        assert "to_remove" not in registry.get_all_stats()
-
-
-class TestCircuitBreakerForEndpoint:
-    def test_get_circuit_breaker_from_registry(self):
-        from prdiffer.infrastructure.utils.circuit_breaker_registry import (
-            get_global_circuit_breaker_registry,
-        )
-
-        _reset_circuit_breaker_registry()
-
-        registry = get_global_circuit_breaker_registry()
-        breaker = registry.get_breaker("api_endpoint")
-
-        assert breaker is not None
-        assert breaker.state.value == "closed"
-
-
 class TestPhase4Integration:
     def test_github_config_with_settings_service(self):
         from prdiffer.infrastructure.settings import SettingsService
@@ -540,35 +358,29 @@ class TestPhase4Integration:
 
     @pytest.mark.asyncio
     async def test_async_executor_with_circuit_breaker(self):
+        from prdiffer.infrastructure.utils.circuit_breaker_core import CircuitBreaker
         from prdiffer.infrastructure.utils.parallel.executor import (
             AsyncParallelExecutor,
         )
-        from prdiffer.infrastructure.utils.circuit_breaker_registry import (
-            get_global_circuit_breaker_registry,
-        )
 
-        _reset_circuit_breaker_registry()
-
-        registry = get_global_circuit_breaker_registry()
+        breaker = CircuitBreaker(failure_threshold=3)
 
         async def protected_operation(x: int) -> int:
-            endpoint = "test_api"
-            if not registry.can_execute(endpoint):
+            if not breaker.can_execute():
                 raise RuntimeError("Circuit breaker open")
             try:
                 result = x * 2
-                registry.record_success(endpoint)
+                breaker.record_success()
                 return result
             except Exception:
-                registry.record_failure(endpoint)
+                breaker.record_failure()
                 raise
 
         executor = AsyncParallelExecutor()
         results = await executor.execute_batch(protected_operation, [1, 2, 3, 4, 5])
 
         assert sorted(results) == [2, 4, 6, 8, 10]
-        stats = registry.get_all_stats()
-        assert stats["test_api"]["failure_count"] == 0
+        assert breaker.get_stats()["failure_count"] == 0
 
     def test_github_config_file_filtering(self):
         from prdiffer.domain.config.github_config import GitHubConfig

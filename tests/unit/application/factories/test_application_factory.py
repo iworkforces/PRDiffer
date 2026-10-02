@@ -15,15 +15,8 @@ from prdiffer.application.factories.application_factory import (
 from prdiffer.domain.factories.application_factory import (
     ApplicationFactoryInterface,
 )
-from prdiffer.domain.services.cache import CacheServiceInterface
 from prdiffer.domain.services.logger import LoggerServiceInterface
 from prdiffer.domain.services.settings import SettingsServiceInterface
-from prdiffer.domain.services.repository_cache import RepositoryCacheServiceInterface
-from prdiffer.domain.services.diff import DiffServiceInterface
-from prdiffer.domain.services.pattern_matching import (
-    PatternMatchingServiceInterface,
-)
-from prdiffer.domain.services.retry import RetryServiceInterface
 from prdiffer.domain.interfaces.protocols import (
     RateLimiterProtocol,
     MetricsTrackerProtocol,
@@ -54,30 +47,6 @@ class TestApplicationFactoryComponentCreation:
         assert result is not None
         assert hasattr(result, "track_request")
         assert hasattr(result, "get_metrics_summary")
-
-    def test_create_pr_operation_handler(self):
-        """Test that create_pr_operation_handler returns PROperationHandlerProtocol instance."""
-        factory = ApplicationFactory()
-        mock_logger = Mock(spec=LoggerServiceInterface)
-        mock_cache = Mock(spec=CacheServiceInterface)
-        mock_repo_cache = Mock(spec=RepositoryCacheServiceInterface)
-        mock_diff = Mock(spec=DiffServiceInterface)
-        mock_pattern = Mock(spec=PatternMatchingServiceInterface)
-        mock_retry = Mock(spec=RetryServiceInterface)
-        mock_github_class = Mock()
-
-        result = factory.create_pr_operation_handler(
-            github_repository_class=mock_github_class,
-            cache_service=mock_cache,
-            repository_cache_service=mock_repo_cache,
-            diff_service=mock_diff,
-            pattern_matching_service=mock_pattern,
-            retry_service=mock_retry,
-            logger=mock_logger,
-        )
-
-        assert result is not None
-        assert hasattr(result, "get_pr_diff")
 
     def test_create_health_monitor(self):
         """Test that create_health_monitor returns HealthMonitorProtocol instance."""
@@ -142,8 +111,6 @@ class TestApplicationFactorySingleton:
         assert callable(factory.create_rate_limiter)
         assert hasattr(factory, "create_metrics_tracker")
         assert callable(factory.create_metrics_tracker)
-        assert hasattr(factory, "create_pr_operation_handler")
-        assert callable(factory.create_pr_operation_handler)
         assert hasattr(factory, "create_health_monitor")
         assert callable(factory.create_health_monitor)
         assert hasattr(factory, "create_server_configuration")

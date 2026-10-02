@@ -6,5 +6,4 @@ ThreadPoolExecutor with anyio's structured concurrency primitives.
 Modules:
 - executor: AsyncParallelExecutor class for parallel task execution
 - results: BatchResult and ErrorStrategy for result handling
-- semaphores: Concurrency primitives and helpers
 """

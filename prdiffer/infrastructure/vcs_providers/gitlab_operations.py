@@ -1,21 +1,15 @@
-"""Synchronous python-gitlab lifecycle and immutable MR diff version selection."""
+"""Synchronous python-gitlab MR operations and immutable diff version selection."""
 
 from __future__ import annotations
 
 from typing import Any, TypeGuard
 
 import gitlab
-import requests
 
-from prdiffer.domain.error_codes import (
-    E1001_INVALID_URL,
-    E5019_CONNECTION_ERROR,
-)
+from prdiffer.domain.error_codes import E1001_INVALID_URL
 from prdiffer.domain.exceptions import (
     FullDiffIncompleteError,
     FullDiffIncompleteReason,
-    InvalidURLError,
-    PRDifferException,
     ValidationError,
 )
 from prdiffer.infrastructure.vcs_providers.gitlab_models import (
@@ -25,21 +19,10 @@ from prdiffer.infrastructure.vcs_providers.gitlab_models import (
     GitLabVersionSummary,
 )
 from prdiffer.infrastructure.vcs_providers.gitlab_runtime import (
-    GITLAB_COM_URL,
     GitLabNotFoundContext,
     GitLabNotFoundKind,
-    cache_host_from_base_url,
     map_gitlab_exception,
 )
-
-# Re-export for backward-compatible imports from gitlab_operations.
-__all__ = [
-    "GitLabDiffRecord",
-    "GitLabDiffRefs",
-    "GitLabDiffSnapshot",
-    "GitLabOperations",
-    "GitLabVersionSummary",
-]
 
 
 class GitLabOperations:
@@ -48,81 +31,9 @@ class GitLabOperations:
     Strict full-diff path pins one MR diff version whose base/start/head SHAs
     exactly match the MR's current ``diff_refs``.
 
-    Production callers must obtain the client via :class:`GitLabRuntime`
-    (capacity, deadline, host allowlist). Synchronous helpers that open their
-    own clients exist only for isolated unit tests and initialization probes.
+    Callers obtain the client via :class:`GitLabRuntime` (capacity, deadline,
+    host allowlist); this class never opens or closes clients itself.
     """
-
-    def __init__(
-        self,
-        gitlab_token: str | None = None,
-        *,
-        base_url: str = GITLAB_COM_URL,
-        allowed_hosts: tuple[str, ...] = ("gitlab.com",),
-    ) -> None:
-        self._gitlab_token = gitlab_token
-        self._base_url = (base_url or GITLAB_COM_URL).rstrip("/")
-        self._allowed_hosts = tuple(h.casefold() for h in allowed_hosts) or ("gitlab.com",)
-
-    def _ensure_host_allowed(self, base_url: str) -> None:
-        """Reject token-bearing client construction outside the host allowlist."""
-        host = cache_host_from_base_url(base_url).split(":", 1)[0]
-        if host not in self._allowed_hosts:
-            raise InvalidURLError(
-                f"GitLab host {host!r} is not in allowed_hosts {list(self._allowed_hosts)!r}",
-                error_code=E1001_INVALID_URL,
-                details={"host": host},
-            )
-
-    def initialize(self, *, base_url: str | None = None) -> None:
-        """Authenticate a newly created GitLab client (blocking probe)."""
-        url = (base_url or self._base_url).rstrip("/")
-        self._ensure_host_allowed(url)
-        try:
-            with gitlab.Gitlab(url=url, private_token=self._gitlab_token) as client:
-                client.auth()
-        except gitlab.GitlabError, requests.RequestException:
-            raise PRDifferException(
-                "Failed to initialize GitLab connection",
-                error_code=E5019_CONNECTION_ERROR,
-            ) from None
-
-    def get_latest_commit_sha(self, owner: str, repo: str, pr: int, *, base_url: str | None = None) -> str:
-        """Return the head SHA from a pinned snapshot (compat surface)."""
-        return self.select_diff_snapshot(f"{owner}/{repo}", pr, base_url=base_url).head_sha
-
-    def get_diff_records(self, owner: str, repo: str, pr: int, *, base_url: str | None = None) -> tuple[GitLabDiffRecord, ...]:
-        """Return ordered records from the pinned immutable version (compat)."""
-        return self.select_diff_snapshot(f"{owner}/{repo}", pr, base_url=base_url).records
-
-    def select_diff_snapshot(
-        self,
-        project_path: str,
-        iid: int,
-        *,
-        base_url: str | None = None,
-    ) -> GitLabDiffSnapshot:
-        """Select and fetch exactly one MR diff version matching current diff_refs.
-
-        Prefer :meth:`select_with_client` under :meth:`GitLabRuntime.run_blocking`
-        on the request path so capacity and deadlines apply. This method opens a
-        short-lived client for unit tests and non-session callers.
-        """
-        url = (base_url or self._base_url).rstrip("/")
-        self._ensure_host_allowed(url)
-        try:
-            with gitlab.Gitlab(url=url, private_token=self._gitlab_token) as client:
-                return self.select_with_client(client, project_path, iid)
-        except FullDiffIncompleteError, InvalidURLError:
-            raise
-        except Exception as exc:
-            mapped = map_gitlab_exception(
-                exc,
-                not_found=GitLabNotFoundContext(GitLabNotFoundKind.MERGE_REQUEST),
-            )
-            if mapped is not exc:
-                raise mapped from None
-            raise
 
     def select_with_client(
         self,
@@ -206,7 +117,13 @@ class GitLabOperations:
                 raise mapped from None
             raise
 
-        fetched = GitLabVersionSummary.from_object(version)
+        try:
+            fetched = GitLabVersionSummary.from_object(version)
+        except ValueError as exc:
+            raise FullDiffIncompleteError(
+                FullDiffIncompleteReason.INVENTORY_TRUNCATED,
+                message=f"Fetched MR diff version metadata is malformed: {exc}",
+            ) from None
         if fetched.version_id != selected.version_id or not fetched.matches_refs(refs):
             raise FullDiffIncompleteError(
                 FullDiffIncompleteReason.INVENTORY_TRUNCATED,

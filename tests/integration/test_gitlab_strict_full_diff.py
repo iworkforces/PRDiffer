@@ -26,12 +26,6 @@ class MemoryCache:
         self.store: dict[tuple[str, str], Any] = {}
         self.sets = 0
 
-    def get_cache_key(self, owner: str, repo: str, pr: int) -> str:
-        return f"{owner}/{repo}/{pr}"
-
-    async def get_optimistic(self, key: str) -> tuple[Any, None]:
-        return None, None
-
     async def get(self, key: str, token: str) -> Any:
         return self.store.get((key, token))
 
@@ -42,14 +36,9 @@ class MemoryCache:
 
 class FakeOps(GitLabOperations):
     def __init__(self, snapshot: GitLabDiffSnapshot) -> None:
-        super().__init__(None)
+        super().__init__()
         self.snapshot = snapshot
         self.select_calls = 0
-
-    def select_diff_snapshot(self, project_path: str, iid: int, *, base_url: str | None = None) -> GitLabDiffSnapshot:
-        self.select_calls += 1
-        self.last_base_url = base_url
-        return self.snapshot
 
     def select_with_client(
         self,

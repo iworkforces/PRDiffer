@@ -7,7 +7,7 @@ network errors, and invalid inputs.
 from __future__ import annotations
 
 from typing import cast
-from unittest.mock import Mock, AsyncMock
+from unittest.mock import Mock
 import pytest
 from github import GithubException, RateLimitExceededException, UnknownObjectException
 
@@ -23,7 +23,6 @@ from prdiffer.domain.exceptions import (
     SuspiciousOperationError,
 )
 from prdiffer.domain.interfaces.pr_diff_reader import PRDiffReadSessionInterface, PRDiffSnapshot
-from prdiffer.domain.services.pr_diff_service import PRDiffServiceInterface
 from prdiffer.infrastructure.github_repository import GitHubPRDiffRepository
 
 
@@ -66,7 +65,7 @@ class ErrorScenarioPRDiffSession(PRDiffReadSessionInterface):
         return None
 
 
-class ErrorScenarioPRDiffReader(PRDiffServiceInterface):
+class ErrorScenarioPRDiffReader:
     def __init__(self, pr_diff: PRDiff | None = None) -> None:
         self.build_pr_diff_return_value = pr_diff if pr_diff is not None else PRDiff(files=())
         self.build_pr_diff_side_effect: Exception | None = None
@@ -83,19 +82,6 @@ class ErrorScenarioPRDiffReader(PRDiffServiceInterface):
     ) -> PRDiffReadSessionInterface:
         del base_url
         return ErrorScenarioPRDiffSession(self, repo_owner, repo_name, pr_number)
-
-    async def get_pr_diff(self, repo_owner: str, repo_name: str, pr_number: int) -> PRDiff | None:
-        session = await self.open_pr_diff_session(repo_owner, repo_name, pr_number)
-        try:
-            return await session.build_pr_diff()
-        finally:
-            await session.aclose()
-
-    async def get_latest_commit_sha(self, repo_owner: str, repo_name: str, pr_number: int) -> str | None:
-        return "c" * 40
-
-    def validate_repository_access(self, repo_owner: str, repo_name: str) -> bool:
-        return True
 
 
 @pytest.fixture
@@ -146,29 +132,19 @@ class TestAPIErrorScenarios:
         return mock_cache
 
     @pytest.fixture
-    def mock_repo_cache(self):
-        mock_repo_cache = Mock()
-        mock_repo_cache.retrieve = Mock(return_value=None)
-        mock_repo_cache.insert = Mock(return_value=True)
-        return mock_repo_cache
-
-    @pytest.fixture
     def server(
         self,
         mock_settings,
         mock_logger,
         mock_cache,
-        mock_repo_cache,
         mock_pr_diff_service,
     ):
         mock_repo = Mock(spec=GitHubPRDiffRepository)
-        mock_repo.get_pr_diff = AsyncMock()
 
         return create_mcp_server(
             github_repository_class=lambda o, r, n: mock_repo,
             settings_service=mock_settings,
             cache_service=mock_cache,
-            repository_cache_service=mock_repo_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=mock_logger,
         )
@@ -252,28 +228,19 @@ class TestValidationErrorScenarios:
         return mock_cache
 
     @pytest.fixture
-    def mock_repo_cache(self):
-        mock_repo_cache = Mock()
-        mock_repo_cache.retrieve = Mock(return_value=None)
-        return mock_repo_cache
-
-    @pytest.fixture
     def server(
         self,
         mock_settings,
         mock_logger,
         mock_cache,
-        mock_repo_cache,
         mock_pr_diff_service,
     ):
         mock_repo = Mock(spec=GitHubPRDiffRepository)
-        mock_repo.get_pr_diff = AsyncMock()
 
         return create_mcp_server(
             github_repository_class=lambda o, r, n: mock_repo,
             settings_service=mock_settings,
             cache_service=mock_cache,
-            repository_cache_service=mock_repo_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=mock_logger,
         )
@@ -385,28 +352,19 @@ class TestRateLimitingScenarios:
         return mock_cache
 
     @pytest.fixture
-    def mock_repo_cache(self):
-        mock_repo_cache = Mock()
-        mock_repo_cache.retrieve = Mock(return_value=None)
-        return mock_repo_cache
-
-    @pytest.fixture
     def server(
         self,
         mock_settings,
         mock_logger,
         mock_cache,
-        mock_repo_cache,
         mock_pr_diff_service,
     ):
         mock_repo = Mock(spec=GitHubPRDiffRepository)
-        mock_repo.get_pr_diff = AsyncMock()
 
         return create_mcp_server(
             github_repository_class=lambda o, r, n: mock_repo,
             settings_service=mock_settings,
             cache_service=mock_cache,
-            repository_cache_service=mock_repo_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=mock_logger,
         )
@@ -502,28 +460,19 @@ class TestCacheErrorScenarios:
         return mock_cache
 
     @pytest.fixture
-    def mock_repo_cache(self):
-        mock_repo_cache = Mock()
-        mock_repo_cache.retrieve = Mock(return_value=None)
-        return mock_repo_cache
-
-    @pytest.fixture
     def server_with_failing_cache(
         self,
         mock_settings,
         mock_logger,
         failing_cache,
-        mock_repo_cache,
         mock_pr_diff_service,
     ):
         mock_repo = Mock(spec=GitHubPRDiffRepository)
-        mock_repo.get_pr_diff = AsyncMock()
 
         return create_mcp_server(
             github_repository_class=lambda o, r, n: mock_repo,
             settings_service=mock_settings,
             cache_service=failing_cache,
-            repository_cache_service=mock_repo_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=mock_logger,
         )
@@ -556,28 +505,19 @@ class TestAuthenticationErrorScenarios:
         return mock_cache
 
     @pytest.fixture
-    def mock_repo_cache(self):
-        mock_repo_cache = Mock()
-        mock_repo_cache.retrieve = Mock(return_value=None)
-        return mock_repo_cache
-
-    @pytest.fixture
     def server(
         self,
         mock_settings,
         mock_logger,
         mock_cache,
-        mock_repo_cache,
         mock_pr_diff_service,
     ):
         mock_repo = Mock(spec=GitHubPRDiffRepository)
-        mock_repo.get_pr_diff = AsyncMock()
 
         return create_mcp_server(
             github_repository_class=lambda o, r, n: mock_repo,
             settings_service=mock_settings,
             cache_service=mock_cache,
-            repository_cache_service=mock_repo_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=mock_logger,
         )

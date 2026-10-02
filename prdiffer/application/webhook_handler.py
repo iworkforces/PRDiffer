@@ -11,7 +11,6 @@ from starlette.responses import JSONResponse
 
 from prdiffer.domain.services.settings import SettingsServiceInterface
 from prdiffer.domain.services.cache import CacheServiceInterface
-from prdiffer.domain.services.repository_cache import RepositoryCacheServiceInterface
 from prdiffer.domain.services.logger import LoggerServiceInterface
 from prdiffer.domain.interfaces.input_validation import InputValidatorProtocol
 
@@ -23,13 +22,11 @@ class WebhookHandler:
         self,
         settings_service: SettingsServiceInterface,
         cache_service: CacheServiceInterface,
-        repository_cache_service: RepositoryCacheServiceInterface,
         logger: LoggerServiceInterface,
         input_validator: InputValidatorProtocol,
     ):
         self._settings_service = settings_service
         self._cache_service = cache_service
-        self._repository_cache_service = repository_cache_service
         self._logger = logger
         self._input_validator = input_validator
 
@@ -85,10 +82,7 @@ class WebhookHandler:
         repository = payload.get("repository") if isinstance(payload, dict) else None
         repository_full_name = repository.get("full_name") if isinstance(repository, dict) else None
         repository_parts = repository_full_name.split("/") if isinstance(repository_full_name, str) else []
-        if (
-            len(repository_parts) != 2
-            or any(not part or any(char.isspace() for char in part) for part in repository_parts)
-        ):
+        if len(repository_parts) != 2 or any(not part or any(char.isspace() for char in part) for part in repository_parts):
             self._logger.warning(
                 "Webhook payload has invalid repository information",
                 github_event=github_event,
@@ -111,7 +105,6 @@ class WebhookHandler:
                     github_event=github_event,
                 )
                 await self._cache_service.invalidate_github_pr(owner, repo, number)
-                self._repository_cache_service.invalidate_github_pr(owner, repo, number)
         elif github_event == "push":
             cache_key = repository_full_name
             self._logger.info(
@@ -120,7 +113,6 @@ class WebhookHandler:
                 github_event=github_event,
             )
             await self._cache_service.invalidate_github_repository(owner, repo)
-            self._repository_cache_service.invalidate_github_repository(owner, repo)
 
         self._logger.info(
             "Webhook processed successfully",
@@ -137,8 +129,6 @@ class WebhookHandler:
             """Handle GitHub webhook events for cache invalidation."""
             try:
                 signature = request.headers.get("X-Hub-Signature-256", "")
-                if not signature:
-                    signature = request.headers.get("X-Hub-Signature", "")
 
                 github_event = request.headers.get("X-GitHub-Event", "")
 

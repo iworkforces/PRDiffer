@@ -30,12 +30,11 @@ def assert_live_metadata(cache_service: CacheService) -> None:
 
 
 @pytest.mark.asyncio
-async def test_pr_scope_removes_every_snapshot_and_legacy_without_prefix_collisions(cache_service: CacheService) -> None:
+async def test_pr_scope_removes_every_snapshot_without_prefix_collisions(cache_service: CacheService) -> None:
     # Given snapshots for one PR alongside similarly named PRs, repos and providers.
     selected = [
         github_full_diff_v3_key("OWNER", "Repo", 12, "base-a", "head-a"),
         github_full_diff_v3_key("owner", "repo", 12, "base-b", "head-b"),
-        "Owner/Repo/pr/12",
     ]
     retained = [
         github_full_diff_v3_key("owner", "repo", 123, "base", "head"),
@@ -65,7 +64,7 @@ async def test_pr_scope_removes_every_snapshot_and_legacy_without_prefix_collisi
 @pytest.mark.asyncio
 async def test_repository_scope_removes_all_prs_only_in_that_repository(cache_service: CacheService) -> None:
     # Given multiple PR identities and an unrelated GitLab MR.
-    selected = [github_full_diff_v3_key("owner", "repo", 1, "a", "b"), github_full_diff_v3_key("owner", "repo", 20, "c", "d"), "OWNER/REPO/pr/1"]
+    selected = [github_full_diff_v3_key("owner", "repo", 1, "a", "b"), github_full_diff_v3_key("owner", "repo", 20, "c", "d")]
     retained = [github_full_diff_v3_key("owner", "repository", 1, "a", "b"), "owner/repository/pr/1", "gitlab:owner/repo/pr/1"]
     value = PRDiff(files=())
     for key in selected + retained:
@@ -149,48 +148,28 @@ async def test_periodic_ttl_sweep_and_lru_remove_reverse_metadata(cache_service:
 
 
 @pytest.mark.asyncio
-async def test_optimistic_expiry_removes_live_key_metadata(cache_service: CacheService) -> None:
+async def test_get_expiry_removes_live_key_metadata(cache_service: CacheService) -> None:
     # Given a snapshot past its TTL.
     key = github_full_diff_v3_key("owner", "repo", 1, "base", "head")
     await cache_service.set(key, "sha", PRDiff(files=()))
     internal_key = cache_service._hash_key(key) if cache_service._use_hashed_keys else key
     cache_service.cache[internal_key]["timestamp"] = 0
 
-    # When the optimistic lookup expires it.
-    result = await cache_service.get_optimistic(key)
+    # When the authoritative lookup expires it.
+    result = await cache_service.get(key, "sha")
 
     # Then the entry and its reverse metadata are gone.
-    assert result == (None, None)
+    assert result is None
     assert internal_key not in cache_service.cache
     assert_live_metadata(cache_service)
 
 
 @pytest.mark.asyncio
-async def test_scoped_eviction_handles_etag_entries_without_harming_other_etags(cache_service: CacheService) -> None:
-    # Given raw ETag entries coexisting with hashed diff data.
-    selected = github_full_diff_v3_key("owner", "repo", 8, "base", "head")
-    unrelated = "gitlab:owner/repo/pr/8"
-    value = PRDiff(files=())
-    await cache_service.set(selected, "sha", value)
-    cache_service.set_etag(selected, "selected-etag")
-    cache_service.set_etag(unrelated, "gitlab-etag")
-
-    # When the matching PR is evicted.
-    await cache_service.invalidate_github_pr("owner", "repo", 8)
-
-    # Then its data and ETag disappear, but the GitLab ETag survives.
-    assert await cache_service.get(selected, "sha") is None
-    assert cache_service.get_etag(selected) is None
-    assert cache_service.get_etag(unrelated) == "gitlab-etag"
-    assert_live_metadata(cache_service)
-
-
-@pytest.mark.asyncio
 async def test_clear_removes_live_key_index(cache_service: CacheService) -> None:
-    # Given a populated cache with an ETag.
+    # Given a populated cache with entries for two repositories.
     key = github_full_diff_v3_key("owner", "repo", 1, "base", "head")
     await cache_service.set(key, "sha", PRDiff(files=()))
-    cache_service.set_etag("elsewhere/repo/pr/1", "etag")
+    await cache_service.set(github_full_diff_v3_key("elsewhere", "repo", 1, "base", "head"), "sha", PRDiff(files=()))
 
     # When the existing clear API is used.
     await cache_service.clear()

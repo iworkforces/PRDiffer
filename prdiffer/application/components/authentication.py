@@ -23,9 +23,8 @@ from dataclasses import dataclass, field
 from threading import RLock
 
 from prdiffer.domain.interfaces.protocols import AuthenticationProtocol
-from prdiffer.domain.interfaces.input_validation import InputValidatorProtocol
 from prdiffer.domain.exceptions import AuthenticationError
-from prdiffer.domain.errors import E2002_AUTH_FAILED
+from prdiffer.domain.error_codes import E2002_AUTH_FAILED
 from prdiffer.domain.services.logger import LoggerServiceInterface
 
 from prdiffer.application.components.jwt_handler import JWTHandlerMixin
@@ -65,7 +64,6 @@ class AuthenticationMiddleware(JWTHandlerMixin, APIKeyManagerMixin, Authenticati
         lockout_duration: int = DEFAULT_LOCKOUT_DURATION,
         failure_window: int = DEFAULT_FAILURE_WINDOW,
         check_token_expiration: bool = True,
-        input_validator: InputValidatorProtocol | None = None,
     ):
         """Initialize authentication middleware.
 
@@ -77,11 +75,6 @@ class AuthenticationMiddleware(JWTHandlerMixin, APIKeyManagerMixin, Authenticati
             check_token_expiration: Whether to check JWT token expiration (default: True)
         """
         self._logger = logger or logging.getLogger(__name__)
-        if input_validator is None:
-            from prdiffer.infrastructure.factories.infrastructure_factory import get_infrastructure_factory
-
-            input_validator = get_infrastructure_factory().create_input_validator()
-        self._input_validator = input_validator
 
         self._auth_enabled = os.getenv("MCP_AUTH_ENABLED", "false").lower() in (
             "true",

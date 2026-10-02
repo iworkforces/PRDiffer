@@ -30,17 +30,6 @@ class InputValidatorProtocol(Protocol):
         """Validate and parse a canonical GitLab merge request URL."""
         ...
 
-    def validate_repository_identifier(self, identifier: str) -> tuple[str, str]:
-        """Validate a repository identifier (owner/repo format).
-
-        Args:
-            identifier: Repository identifier to validate
-
-        Returns:
-            Tuple of (owner, repo)
-        """
-        ...
-
     def sanitize_string(self, value: str, max_length: int = 1000) -> str:
         """Sanitize a string input.
 
@@ -50,61 +39,6 @@ class InputValidatorProtocol(Protocol):
 
         Returns:
             Sanitized string
-        """
-        ...
-
-    def validate_pr_number(self, pr_number: int) -> int:
-        """Validate a PR number.
-
-        Args:
-            pr_number: PR number to validate
-
-        Returns:
-            Validated PR number
-        """
-        ...
-
-    def validate_file_path(self, file_path: str) -> str:
-        """Validate a file path for safe operations.
-
-        Args:
-            file_path: File path to validate
-
-        Returns:
-            Validated file path
-        """
-        ...
-
-    def validate_token(self, token: str) -> str:
-        """Validate an authentication token format.
-
-        Args:
-            token: Token to validate
-
-        Returns:
-            Validated token
-        """
-        ...
-
-    def validate_user_id(self, user_id: str) -> str:
-        """Validate a user ID.
-
-        Args:
-            user_id: User ID to validate
-
-        Returns:
-            Validated user ID
-        """
-        ...
-
-    def validate_branch_name(self, branch: str) -> str:
-        """Validate a Git branch or reference name.
-
-        Args:
-            branch: Branch or reference name to validate
-
-        Returns:
-            Validated branch name
         """
         ...
 

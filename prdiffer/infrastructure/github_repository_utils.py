@@ -1,15 +1,6 @@
-"""Utility functions and helpers for GitHub repository operations.
-
-Extracted from github_repository.py for maintainability.
-Contains exception handling helpers, logging utilities, and factory functions.
-"""
+"""GitHub exception handling helper for repository write operations."""
 
 from __future__ import annotations
-
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from github.File import File
 
 from github.GithubException import GithubException
 
@@ -17,7 +8,6 @@ from prdiffer.domain.services.logger import LoggerServiceInterface
 from prdiffer.infrastructure.logging.exception_utils import (
     sanitize_exception_for_logging,
 )
-from prdiffer.infrastructure.security.input_validator import InputValidator
 
 
 def handle_github_exception(
@@ -79,49 +69,3 @@ def handle_github_exception(
         pr_number=pr_number,
     )
     raise RuntimeError(f"GitHub API error while {operation} PR #{pr_number}") from e
-
-
-def sanitize_filename_for_logging(
-    input_validator: InputValidator,
-    filename: str,
-) -> str:
-    """Sanitize a filename for safe logging.
-
-    This prevents log injection attacks through malicious file names.
-
-    Args:
-        input_validator: The input validator instance
-        filename: The filename to sanitize
-
-    Returns:
-        str: A sanitized filename safe for logging
-    """
-    return input_validator.sanitize_for_logging(filename, max_length=200)
-
-
-def log_filtered_files(
-    logger: LoggerServiceInterface,
-    input_validator: InputValidator,
-    original_files: list[File],
-    filtered_files: list[File],
-) -> None:
-    """Log information about filtered files with sanitized names.
-
-    Args:
-        logger: Logger service for structured logging
-        input_validator: Input validator for filename sanitization
-        original_files: All files before filtering
-        filtered_files: Files remaining after filtering
-    """
-    try:
-        original_names = [sanitize_filename_for_logging(input_validator, file.filename) for file in original_files]
-        filtered_names = [sanitize_filename_for_logging(input_validator, file.filename) for file in filtered_files]
-        logger.info(
-            "Filtered out [ignore] files for pull request:",
-            extra={"files": original_names, "filtered_files": filtered_names},
-        )
-    except Exception as e:
-        logger.warning(
-            f"Failed to log filtered files: {e}",
-            error_type=type(e).__name__,
-        )

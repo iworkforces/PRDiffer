@@ -5,7 +5,7 @@ Adapters, DI, cache, GitLab/GitHub, security, settings, full-diff plumbing.
 ## STRUCTURE (HIGH LEVEL)
 ```
 tests/unit/infrastructure/
-├── github/                              # Client, processor, multi-ref, generator, mappers, session, inventory
+├── github/                              # Client, tree processor, generator, session, inventory
 ├── vcs_providers/                       # GitLab runtime/session/assembler/models + MR approve/describe
 ├── utils/                               # Retry, CB, cache decorator, parsers, cross-loop executor
 ├── cache/                               # Cache store/keys/decorators + repository/
@@ -23,7 +23,6 @@ tests/unit/infrastructure/
 ├── test_full_diff_concurrency_defaults.py
 ├── test_diff_limits.py                  # Strict size limits (no silent truncate)
 ├── test_async_parallel_executor.py      # anyio parallel executor (~832)
-├── test_di_container.py
 ├── test_settings_*.py
 ├── test_request_coalescing.py
 ├── test_input_validator.py
@@ -41,7 +40,6 @@ tests/unit/infrastructure/
 | **Strict size limits** | `test_diff_limits.py` | `RESPONSE_SIZE_LIMIT` / E5020 |
 | **Service full-context** | `test_pr_diff_service_full_context.py` | Generated full-context → PRDiff |
 | **Parallel executor** | `test_async_parallel_executor.py` | anyio task groups, ordered batches, per-batch semaphore |
-| **Multi-ref content** | `github/test_file_content_multi_ref_batch.py`, `github/test_file_processor_multi_ref.py` | Cross-ref order + capacity |
 | **GitHub adapter details** | `github/` | See package AGENTS.md |
 | **Resilience** | `utils/` | Retry + circuit breaker |
 
@@ -50,7 +48,7 @@ tests/unit/infrastructure/
 - Prefer anyio-compatible async tests consistent with neighboring files (`@pytest.mark.asyncio` or `@pytest.mark.anyio`).
 - Cover retry classification, rate limits, and circuit breaker transitions when touching resilience code.
 - Never retry 404s for file content in retry/error-classifier tests.
-- GitLab session tests mock `runtime.run_blocking` (not only `select_diff_snapshot`).
+- GitLab session tests mock `runtime.run_blocking` around `select_with_client`.
 
 ## ANTI-PATTERNS
 - NO live API calls.

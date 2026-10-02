@@ -16,7 +16,7 @@ tests/performance/
 | **Harness matrix/modes** | `test_full_diff_benchmark.py` | Workload sizes, seed 5020, baseline vs post modes |
 | **Fixture digests** | `test_full_diff_benchmark.py` | Determinism + preflight failures |
 | **Overwrite refusal** | `test_full_diff_benchmark.py` | Sealed baseline artifacts |
-| **Legacy microbenches** | `test_performance.py` | Validator, cache, auth, pattern-matching timing |
+| **Microbenches** | `test_performance.py` | Validator, auth, health tracker, pattern-matching, coalescing timing |
 | **GitLab concurrency** | `test_gitlab_strict_full_diff.py` | max concurrent clients; deadline_monotonic on `run_blocking` |
 
 ## CONVENTIONS

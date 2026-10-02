@@ -20,7 +20,6 @@ prdiffer/application/factories/
 |--------|--------------------|
 | `create_rate_limiter` | `RateLimiterProtocol` |
 | `create_metrics_tracker` | `MetricsTrackerProtocol` |
-| `create_pr_operation_handler` | `PROperationHandlerProtocol` |
 | `create_health_monitor` | `HealthMonitorProtocol` |
 | `create_server_configuration` | `ServerConfigurationProtocol` |
 | `create_authentication` | `AuthenticationProtocol` |

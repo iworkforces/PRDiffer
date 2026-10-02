@@ -5,18 +5,14 @@
 ## STRUCTURE
 ```
 tests/unit/domain/usecases/
-├── test_pr_diff_usecases.py           # 235 — GetPRDiff + cache keying
-├── test_session_pr_diff_usecase.py    # 232 — session-capable vs legacy reader dispatch
-├── test_pr_approval_usecases.py       # 159
-├── test_pr_description_usecases.py    # 136
+├── test_session_pr_diff_usecase.py    # Session open → identity → cache/build → aclose
 └── test_pr_diff_usecases_purity.py    # AST import purity checks
 ```
 
 ## WHERE TO LOOK
 | Task | File | Notes |
 |------|------|-------|
-| **Session PRDiff** | `test_session_pr_diff_usecase.py` | Session build/aclose, fallback to legacy reader |
-| **Diff cache keys** | `test_pr_diff_usecases.py` | GitHub vs GitLab cache key prefixes |
+| **Session PRDiff** | `test_session_pr_diff_usecase.py` | Session build/aclose, cache hit/miss, error closure |
 | **Domain isolation** | `test_pr_diff_usecases_purity.py` | No `prdiffer.application` imports |
 
 ## CONVENTIONS

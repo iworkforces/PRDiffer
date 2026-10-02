@@ -12,20 +12,6 @@ class CacheServiceInterface(ABC):
     """
 
     @abstractmethod
-    def get_cache_key(self, repo_owner: str, repo_name: str, pr_number: int) -> str:
-        """Generate a cache key for the given repository and PR.
-
-        Args:
-            repo_owner: Repository owner/organization
-            repo_name: Repository name
-            pr_number: Pull request number
-
-        Returns:
-            str: Cache key in format "owner/repo/pr/number"
-        """
-        pass
-
-    @abstractmethod
     async def get(self, cache_key: str, current_commit_sha: str) -> PRDiff | None:
         """Get cached PR diff data if it exists and commit SHA matches.
 
@@ -35,21 +21,6 @@ class CacheServiceInterface(ABC):
 
         Returns:
             Optional["PRDiff"]: Cached data if valid, None otherwise
-        """
-        pass
-
-    @abstractmethod
-    async def get_optimistic(self, cache_key: str) -> tuple[PRDiff | None, str | None]:
-        """Get cached PR diff data without commit SHA validation (optimistic lookup).
-
-        Performance optimization: Returns cached data and its commit SHA without
-        validation, allowing caller to decide whether the data is fresh enough.
-
-        Args:
-            cache_key: The cache key to look up
-
-        Returns:
-            tuple: (cached_data, cached_commit_sha) - Both None if cache miss
         """
         pass
 
@@ -75,29 +46,12 @@ class CacheServiceInterface(ABC):
 
     @abstractmethod
     async def invalidate_github_pr(self, owner: str, repo: str, pr_number: int) -> None:
-        """Invalidate GitHub strict snapshots and legacy entries for one PR."""
+        """Invalidate GitHub strict snapshots for one PR."""
         pass
 
     @abstractmethod
     async def invalidate_github_repository(self, owner: str, repo: str) -> None:
-        """Invalidate GitHub strict snapshots and legacy entries for a repository."""
-        pass
-
-    @abstractmethod
-    def get_etag(self, cache_key: str) -> str | None:
-        """Get stored ETag for a cache key."""
-        pass
-
-    @abstractmethod
-    def set_etag(self, cache_key: str, etag: str) -> None:
-        """Cache ETag for a specific PR key.
-
-        Args:
-            cache_key: The cache key to store ETag under
-            etag: The ETag value from HTTP response
-
-        Store ETag for conditional requests.
-        """
+        """Invalidate GitHub strict snapshots for a repository."""
         pass
 
     @abstractmethod

@@ -19,9 +19,6 @@ class ConcreteFactory(InfrastructureFactoryInterface):
     def create_cache_service(self):
         return MagicMock()
 
-    def create_repository_cache_service(self):
-        return MagicMock()
-
     def create_github_api_service(self):
         return MagicMock()
 
@@ -29,9 +26,6 @@ class ConcreteFactory(InfrastructureFactoryInterface):
         return MagicMock()
 
     def create_pattern_matching_service(self):
-        return MagicMock()
-
-    def create_retry_service(self):
         return MagicMock()
 
     def create_pr_diff_service(self):
@@ -58,11 +52,9 @@ class TestInfrastructureFactoryInterface:
             "create_settings_service",
             "create_logger_service",
             "create_cache_service",
-            "create_repository_cache_service",
             "create_github_api_service",
             "create_diff_service",
             "create_pattern_matching_service",
-            "create_retry_service",
             "create_pr_diff_service",
             "create_input_validator",
         ]
@@ -74,11 +66,9 @@ class TestInfrastructureFactoryInterface:
         assert factory.create_settings_service() is not None
         assert factory.create_logger_service() is not None
         assert factory.create_cache_service() is not None
-        assert factory.create_repository_cache_service() is not None
         assert factory.create_github_api_service() is not None
         assert factory.create_diff_service() is not None
         assert factory.create_pattern_matching_service() is not None
-        assert factory.create_retry_service() is not None
         assert factory.create_pr_diff_service() is not None
         assert factory.create_input_validator() is not None
 

@@ -116,8 +116,3 @@ class PatternMatcher(PatternMatchingServiceInterface):
     def filter_files(self, filenames: list[str]) -> list[str]:
         """Filter a list of filenames based on configured patterns."""
         return [filename for filename in filenames if self.is_valid_file(filename)]
-
-
-def get_pattern_matcher(ignore_patterns: list[str], valid_extensions: list[str] | None = None) -> PatternMatcher:
-    """Get a configured pattern matcher instance."""
-    return PatternMatcher(ignore_patterns, valid_extensions)

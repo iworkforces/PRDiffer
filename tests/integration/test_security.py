@@ -4,7 +4,7 @@ These tests verify that security validations properly prevent attacks
 including command injection, SQL injection, path traversal, and other threats.
 """
 
-from unittest.mock import Mock, AsyncMock
+from unittest.mock import Mock
 import pytest
 
 from prdiffer.application.factory import create_mcp_server
@@ -18,7 +18,6 @@ from prdiffer.domain.exceptions import (
     SuspiciousOperationError,
 )
 from prdiffer.domain.interfaces.pr_diff_reader import PRDiffReadSessionInterface, PRDiffSnapshot
-from prdiffer.domain.services.pr_diff_service import PRDiffServiceInterface
 from prdiffer.infrastructure.github_repository import GitHubPRDiffRepository
 
 
@@ -56,7 +55,7 @@ class SecurityFakeSession(PRDiffReadSessionInterface):
         return None
 
 
-class SecurityFakeReader(PRDiffServiceInterface):
+class SecurityFakeReader:
     async def open_pr_diff_session(
         self,
         repo_owner: str,
@@ -68,15 +67,6 @@ class SecurityFakeReader(PRDiffServiceInterface):
     ) -> PRDiffReadSessionInterface:
         del base_url
         return SecurityFakeSession(repo_owner, repo_name, pr_number)
-
-    async def get_pr_diff(self, repo_owner: str, repo_name: str, pr_number: int) -> PRDiff | None:
-        return PRDiff(files=())
-
-    async def get_latest_commit_sha(self, repo_owner: str, repo_name: str, pr_number: int) -> str | None:
-        return "c" * 40
-
-    def validate_repository_access(self, repo_owner: str, repo_name: str) -> bool:
-        return True
 
 
 @pytest.mark.integration
@@ -98,19 +88,14 @@ class TestCommandInjectionPrevention:
         mock_cache = Mock()
         mock_cache.get = Mock(return_value=None)
 
-        mock_repo_cache = Mock()
-        mock_repo_cache.retrieve = Mock(return_value=None)
-
         mock_pr_diff_service = SecurityFakeReader()
 
         mock_repo = Mock(spec=GitHubPRDiffRepository)
-        mock_repo.get_pr_diff = AsyncMock()
 
         return create_mcp_server(
             github_repository_class=lambda o, r, n: mock_repo,
             settings_service=mock_settings,
             cache_service=mock_cache,
-            repository_cache_service=mock_repo_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=logger,
         )
@@ -214,19 +199,14 @@ class TestSQLInjectionPrevention:
         mock_cache = Mock()
         mock_cache.get = Mock(return_value=None)
 
-        mock_repo_cache = Mock()
-        mock_repo_cache.retrieve = Mock(return_value=None)
-
         mock_pr_diff_service = SecurityFakeReader()
 
         mock_repo = Mock(spec=GitHubPRDiffRepository)
-        mock_repo.get_pr_diff = AsyncMock()
 
         return create_mcp_server(
             github_repository_class=lambda o, r, n: mock_repo,
             settings_service=mock_settings,
             cache_service=mock_cache,
-            repository_cache_service=mock_repo_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=logger,
         )
@@ -330,19 +310,14 @@ class TestPathTraversalPrevention:
         mock_cache = Mock()
         mock_cache.get = Mock(return_value=None)
 
-        mock_repo_cache = Mock()
-        mock_repo_cache.retrieve = Mock(return_value=None)
-
         mock_pr_diff_service = SecurityFakeReader()
 
         mock_repo = Mock(spec=GitHubPRDiffRepository)
-        mock_repo.get_pr_diff = AsyncMock()
 
         return create_mcp_server(
             github_repository_class=lambda o, r, n: mock_repo,
             settings_service=mock_settings,
             cache_service=mock_cache,
-            repository_cache_service=mock_repo_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=logger,
         )
@@ -422,19 +397,14 @@ class TestXSSPrevention:
         mock_cache = Mock()
         mock_cache.get = Mock(return_value=None)
 
-        mock_repo_cache = Mock()
-        mock_repo_cache.retrieve = Mock(return_value=None)
-
         mock_pr_diff_service = SecurityFakeReader()
 
         mock_repo = Mock(spec=GitHubPRDiffRepository)
-        mock_repo.get_pr_diff = AsyncMock()
 
         return create_mcp_server(
             github_repository_class=lambda o, r, n: mock_repo,
             settings_service=mock_settings,
             cache_service=mock_cache,
-            repository_cache_service=mock_repo_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=logger,
         )
@@ -488,19 +458,14 @@ class TestInputSanitization:
         mock_cache = Mock()
         mock_cache.get = Mock(return_value=None)
 
-        mock_repo_cache = Mock()
-        mock_repo_cache.retrieve = Mock(return_value=None)
-
         mock_pr_diff_service = SecurityFakeReader()
 
         mock_repo = Mock(spec=GitHubPRDiffRepository)
-        mock_repo.get_pr_diff = AsyncMock()
 
         return create_mcp_server(
             github_repository_class=lambda o, r, n: mock_repo,
             settings_service=mock_settings,
             cache_service=mock_cache,
-            repository_cache_service=mock_repo_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=logger,
         )
@@ -568,19 +533,14 @@ class TestRepositoryValidation:
         mock_cache = Mock()
         mock_cache.get = Mock(return_value=None)
 
-        mock_repo_cache = Mock()
-        mock_repo_cache.retrieve = Mock(return_value=None)
-
         mock_pr_diff_service = SecurityFakeReader()
 
         mock_repo = Mock(spec=GitHubPRDiffRepository)
-        mock_repo.get_pr_diff = AsyncMock()
 
         return create_mcp_server(
             github_repository_class=lambda o, r, n: mock_repo,
             settings_service=mock_settings,
             cache_service=mock_cache,
-            repository_cache_service=mock_repo_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=logger,
         )
@@ -653,19 +613,14 @@ class TestSecureLogging:
         mock_cache = Mock()
         mock_cache.get = Mock(return_value=None)
 
-        mock_repo_cache = Mock()
-        mock_repo_cache.retrieve = Mock(return_value=None)
-
         mock_pr_diff_service = SecurityFakeReader()
 
         mock_repo = Mock(spec=GitHubPRDiffRepository)
-        mock_repo.get_pr_diff = AsyncMock()
 
         return create_mcp_server(
             github_repository_class=lambda o, r, n: mock_repo,
             settings_service=mock_settings,
             cache_service=mock_cache,
-            repository_cache_service=mock_repo_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=logger,
         )
@@ -688,97 +643,3 @@ class TestSecureLogging:
 
         # Should be truncated for logging
         assert len(sanitized) <= 500  # Reasonable log limit
-
-
-@pytest.mark.integration
-class TestBranchValidationSecurity:
-    """Integration tests for branch/ref validation security."""
-
-    @pytest.fixture
-    def server(self):
-        """Create server for testing."""
-        mock_settings = Mock()
-        mock_settings.get = Mock(return_value=None)
-
-        mock_logger = Mock()
-        from prdiffer.infrastructure.logging.console_logger import ConsoleLogger
-
-        logger = ConsoleLogger()
-        logger._logger = mock_logger
-
-        mock_cache = Mock()
-        mock_cache.get = Mock(return_value=None)
-
-        mock_repo_cache = Mock()
-        mock_repo_cache.retrieve = Mock(return_value=None)
-
-        mock_pr_diff_service = SecurityFakeReader()
-
-        mock_repo = Mock(spec=GitHubPRDiffRepository)
-        mock_repo.get_pr_diff = AsyncMock()
-
-        return create_mcp_server(
-            github_repository_class=lambda o, r, n: mock_repo,
-            settings_service=mock_settings,
-            cache_service=mock_cache,
-            repository_cache_service=mock_repo_cache,
-            pr_diff_service=mock_pr_diff_service,
-            logger=logger,
-        )
-
-    def test_rejects_command_injection_in_branch(self, server):
-        """Test that command injection in branch names is rejected."""
-        malicious_branches = [
-            "feature; rm -rf /",
-            "bugfix|cat /etc/passwd",
-            "hotfix$(whoami)",
-            "release`malicious`",
-        ]
-
-        for branch in malicious_branches:
-            with pytest.raises((InputSanitizationError, SuspiciousOperationError)):
-                server._input_validator.validate_branch_name(branch)
-
-    def test_rejects_path_traversal_in_branch(self, server):
-        """Test that path traversal in branch names is rejected."""
-        malicious_branches = [
-            "feature/../../etc/passwd",
-            "bugfix/../../../var/log",
-            "hotfix/..\\..\\windows",
-        ]
-
-        for branch in malicious_branches:
-            with pytest.raises((InputSanitizationError, SuspiciousOperationError)):
-                server._input_validator.validate_branch_name(branch)
-
-    def test_rejects_null_bytes_in_branch(self, server):
-        """Test that null bytes in branch names are rejected."""
-        malicious_branches = [
-            "feature\x00injection",
-            "bugfix\x00",
-        ]
-
-        for branch in malicious_branches:
-            with pytest.raises((InputSanitizationError, SuspiciousOperationError)):
-                server._input_validator.validate_branch_name(branch)
-
-    def test_accepts_valid_branch_names(self, server):
-        """Test that valid branch names are accepted."""
-        valid_branches = [
-            "feature/new-functionality",
-            "bugfix/issue-123",
-            "hotfix/critical-fix",
-            "release/v1.0.0",
-            "develop",
-            "main",
-            "feature/123-feature-name",
-        ]
-
-        for branch in valid_branches:
-            # Should not raise exception
-            try:
-                result = server._input_validator.validate_branch_name(branch)
-                assert result == branch
-            except Exception:
-                # If validation fails unexpectedly
-                pytest.fail(f"Valid branch name '{branch}' was rejected")

@@ -48,10 +48,8 @@ class TestGitHubConfigDefaults:
 
     def test_default_parallel_settings(self):
         config = GitHubConfig()
-        assert config.diff_parallel_enabled is True
         assert config.diff_parallel_threshold == 3
         assert config.diff_max_workers == 4
-        assert config.diff_worker_timeout == 30.0
 
     def test_default_size_limits(self):
         config = GitHubConfig()
@@ -63,7 +61,6 @@ class TestGitHubConfigDefaults:
         assert config.max_total_chars == 600_000
         assert config.pr_diff_request_timeout_seconds == 180.0
         assert config.parallel_file_fetch_enabled is True
-        assert config.parallel_head_base_fetch_enabled is True
         assert config.parallel_diff_generation_enabled is True
 
 
@@ -175,10 +172,8 @@ class TestGitHubConfigFromDict:
             "context_aware_retry": False,
             "ignore_patterns": ["*.lock"],
             "valid_extensions": [".py"],
-            "diff_parallel_enabled": False,
             "diff_parallel_threshold": 5,
             "diff_max_workers": 8,
-            "diff_worker_timeout": 60.0,
             "max_files_allowed": 100,
             "large_file_threshold": 10000,
             "chunk_size": 500,
@@ -190,7 +185,7 @@ class TestGitHubConfigFromDict:
         assert config.circuit_breaker_enabled is False
         assert config.ignore_patterns == ("*.lock",)
         assert config.valid_extensions == (".py",)
-        assert config.diff_parallel_enabled is False
+        assert config.diff_parallel_threshold == 5
         assert config.max_diff_size == 50000
 
 
@@ -225,10 +220,8 @@ class TestGitHubConfigToDict:
             "context_aware_retry",
             "ignore_patterns",
             "valid_extensions",
-            "diff_parallel_enabled",
             "diff_parallel_threshold",
             "diff_max_workers",
-            "diff_worker_timeout",
             "max_files_allowed",
             "large_file_threshold",
             "chunk_size",
@@ -236,7 +229,6 @@ class TestGitHubConfigToDict:
             "max_file_size_bytes",
             "max_total_chars",
             "parallel_file_fetch_enabled",
-            "parallel_head_base_fetch_enabled",
             "parallel_diff_generation_enabled",
             "pr_diff_request_timeout_seconds",
             "max_concurrent",
@@ -370,7 +362,3 @@ class TestGitHubConfigProperties:
     def test_should_track_api_health(self):
         assert GitHubConfig(api_health_tracking=True).should_track_api_health is True
         assert GitHubConfig(api_health_tracking=False).should_track_api_health is False
-
-    def test_should_use_parallel_diff(self):
-        assert GitHubConfig(diff_parallel_enabled=True).should_use_parallel_diff is True
-        assert GitHubConfig(diff_parallel_enabled=False).should_use_parallel_diff is False

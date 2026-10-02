@@ -32,7 +32,6 @@ from prdiffer.domain.exceptions import (
     RateLimitError,
     ValidationError,
     GitHubAPIError,
-    InputSanitizationError,
 )
 from prdiffer.domain.error_codes import E1001_INVALID_URL
 from fastmcp.exceptions import ToolError
@@ -68,16 +67,6 @@ class ProviderReader:
     provider: ProviderName = "github"
     open_calls: list[tuple[str, str, int, str | None]] = field(default_factory=list[tuple[str, str, int, str | None]])
     sessions: list[ProviderSession] = field(default_factory=list[ProviderSession])
-    diff_calls: list[tuple[str, str, int]] = field(default_factory=list[tuple[str, str, int]])
-    commit_calls: list[tuple[str, str, int]] = field(default_factory=list[tuple[str, str, int]])
-
-    async def get_pr_diff(self, repo_owner: str, repo_name: str, pr_number: int, /) -> PRDiff:
-        self.diff_calls.append((repo_owner, repo_name, pr_number))
-        return self.result
-
-    async def get_latest_commit_sha(self, repo_owner: str, repo_name: str, pr_number: int, /) -> str:
-        self.commit_calls.append((repo_owner, repo_name, pr_number))
-        return self.commit_sha
 
     async def open_pr_diff_session(
         self,
@@ -144,9 +133,6 @@ class RecordingCache:
     lookup_keys: list[tuple[str, str]] = field(default_factory=list[tuple[str, str]])
     write_keys: list[tuple[str, str, PRDiff]] = field(default_factory=list[tuple[str, str, PRDiff]])
 
-    def get_cache_key(self, repo_owner: str, repo_name: str, pr_number: int) -> str:
-        return f"{repo_owner}/{repo_name}/pr/{pr_number}"
-
     async def get(self, cache_key: str, commit_sha: str) -> None:
         self.lookup_keys.append((cache_key, commit_sha))
         return None
@@ -204,12 +190,6 @@ class MCPToolCapture:
             return function
 
         return decorator
-
-
-@pytest.fixture
-def mock_pr_diff_service():
-    """Create mock PR diff service."""
-    return MagicMock()
 
 
 @pytest.fixture
@@ -349,7 +329,6 @@ def tool_registry(
 ):
     """Create ToolRegistry with mocked dependencies."""
     return ToolRegistry(
-        pr_diff_service=session_reader,
         cache_service=mock_cache_service,
         logger=mock_logger,
         rate_limiter=mock_rate_limiter,
@@ -381,7 +360,6 @@ class TestToolRegistryInit:
 
     def test_init_with_all_dependencies(
         self,
-        mock_pr_diff_service,
         mock_cache_service,
         mock_logger,
         mock_github_repository_class,
@@ -394,7 +372,6 @@ class TestToolRegistryInit:
     ):
         """Test initialization with all dependencies."""
         registry = ToolRegistry(
-            pr_diff_service=mock_pr_diff_service,
             cache_service=mock_cache_service,
             logger=mock_logger,
             rate_limiter=mock_rate_limiter,
@@ -405,7 +382,6 @@ class TestToolRegistryInit:
             request_coalescing_service=mock_request_coalescing,
         )
 
-        assert registry._pr_diff_service is mock_pr_diff_service
         assert registry._cache_service is mock_cache_service
         assert registry._logger is mock_logger
         assert registry._authentication is mock_authentication
@@ -491,25 +467,6 @@ class TestCreateSafeErrorMessage:
         assert result == "Request processing failed"
 
 
-class TestValidateAndSanitizeParams:
-    """Tests for _validate_and_sanitize_params method."""
-
-    def test_validate_valid_url(self, tool_registry, mock_input_validator):
-        """Test validating valid URL."""
-        mock_input_validator.sanitize_string.return_value = "https://github.com/owner/repo/pull/123"
-
-        with patch("prdiffer.application.tool_registry.parse_pr_url") as mock_parse:
-            mock_parse.return_value = ("owner", "repo", 123)
-            result = tool_registry._validate_and_sanitize_params("https://github.com/owner/repo/pull/123")
-
-            assert result == ("owner", "repo", 123)
-
-    def test_validate_empty_url(self, tool_registry):
-        """Test validating empty URL."""
-        with pytest.raises(InputSanitizationError, match="PR URL parameter is required"):
-            tool_registry._validate_and_sanitize_params("")
-
-
 class TestLogMetricsAndReturnSuccess:
     """Tests for _log_metrics_and_return_success method."""
 
@@ -572,7 +529,7 @@ class TestAuthenticateRequest:
     @pytest.mark.anyio
     async def test_authenticate_success(self, tool_registry, mock_authentication):
         """Test successful authentication."""
-        result = await tool_registry._authenticate_request("req-123", 0.0, "api-key-123")
+        result = await tool_registry._authenticate_request("req-123", 0.0, "api-key-123", operation="get_pr_diff")
 
         mock_authentication.authenticate.assert_called_once_with("api-key-123")
         assert result == "client-123"
@@ -583,7 +540,7 @@ class TestAuthenticateRequest:
         tool_registry._authentication = None
 
         with pytest.raises(AuthenticationError):
-            await tool_registry._authenticate_request("req-123", 0.0, "api-key-123")
+            await tool_registry._authenticate_request("req-123", 0.0, "api-key-123", operation="get_pr_diff")
 
     @pytest.mark.anyio
     async def test_authenticate_failed(self, tool_registry, mock_authentication):
@@ -591,24 +548,26 @@ class TestAuthenticateRequest:
         mock_authentication.authenticate.return_value = (False, None)
 
         with pytest.raises(AuthenticationError):
-            await tool_registry._authenticate_request("req-123", 0.0, "api-key-123")
+            await tool_registry._authenticate_request("req-123", 0.0, "api-key-123", operation="get_pr_diff")
 
     @pytest.mark.anyio
-    async def test_authenticate_runtime_error(self, tool_registry, mock_authentication, mock_metrics_tracker):
-        """Test authentication with runtime error."""
+    @pytest.mark.parametrize("operation", ["get_pr_diff", "approve_pr", "describe_pr"])
+    async def test_authenticate_runtime_error_records_calling_tool(self, tool_registry, mock_authentication, mock_metrics_tracker, operation):
+        """Rate-limited authentication failures are attributed to the calling tool."""
         mock_authentication.authenticate.side_effect = RuntimeError("Rate limited")
 
         with pytest.raises(AuthenticationError):
-            await tool_registry._authenticate_request("req-123", 0.0, "api-key-123")
+            await tool_registry._authenticate_request("req-123", 0.0, "api-key-123", operation=operation)
 
-        mock_metrics_tracker.track_request.assert_called()
+        mock_metrics_tracker.track_request.assert_called_once()
+        assert mock_metrics_tracker.track_request.call_args.args[:2] == (operation, False)
 
 
 class TestExecuteUseCaseWithCoalescing:
     """Tests for _execute_use_case_with_coalescing method."""
 
     @pytest.mark.anyio
-    async def test_execute_success(self, tool_registry, mock_request_coalescing, sample_pr_diff):
+    async def test_execute_success(self, tool_registry, mock_request_coalescing, session_reader, sample_pr_diff):
         """Test successful use case execution."""
         mock_request_coalescing.coalesce = AsyncMock(return_value=sample_pr_diff)
 
@@ -617,26 +576,9 @@ class TestExecuteUseCaseWithCoalescing:
             mock_use_case.execute = AsyncMock(return_value=sample_pr_diff)
             MockUseCase.return_value = mock_use_case
 
-            result = await tool_registry._execute_use_case_with_coalescing("req-123", "owner", "repo", 123)
+            result = await tool_registry._execute_use_case_with_coalescing("owner", "repo", 123, pr_diff_reader=session_reader)
 
             assert result is sample_pr_diff
-
-    @pytest.mark.anyio
-    async def test_execute_returns_none(self, tool_registry, mock_request_coalescing, mock_logger):
-        """Test use case returns None."""
-        with patch("prdiffer.application.pr_diff_executor.GetPRDiffUseCase") as MockUseCase:
-            mock_use_case = MagicMock()
-            mock_use_case.execute = AsyncMock(return_value=None)
-            MockUseCase.return_value = mock_use_case
-
-            # The coalesce will call the inner function which raises GitHubAPIError
-            async def side_effect(key, fn, timeout=None):
-                return await fn()
-
-            mock_request_coalescing.coalesce = AsyncMock(side_effect=side_effect)
-
-            with pytest.raises(GitHubAPIError, match="use case returned None"):
-                await tool_registry._execute_use_case_with_coalescing("req-123", "owner", "repo", 123)
 
 
 class TestRegisterTools:
@@ -730,7 +672,6 @@ class TestGetPRDiffProviderDispatch:
             gitlab_reader=gitlab_reader,
         )
         registry = ToolRegistry(
-            pr_diff_service=github_reader,
             cache_service=cache,
             logger=mock_logger,
             rate_limiter=mock_rate_limiter,
@@ -759,11 +700,7 @@ class TestGetPRDiffProviderDispatch:
         ]
         assert selected_reader.sessions[0].build_calls == 1
         assert selected_reader.sessions[0].close_calls == 1
-        assert selected_reader.commit_calls == []
-        assert selected_reader.diff_calls == []
         assert other_reader.open_calls == []
-        assert other_reader.commit_calls == []
-        assert other_reader.diff_calls == []
         session_identity = selected_reader.sessions[0].cache_identity
         match provider:
             case "github":
@@ -850,7 +787,6 @@ class TestFullDiffIncompleteToolError:
 
         reader = BoomReader()
         registry = ToolRegistry(
-            pr_diff_service=reader,
             cache_service=RecordingCache(),
             logger=mock_logger,
             rate_limiter=mock_rate_limiter,
@@ -915,7 +851,6 @@ class TestFullDiffIncompleteToolError:
 
         reader = AuthBoom()
         registry = ToolRegistry(
-            pr_diff_service=reader,
             cache_service=RecordingCache(),
             logger=mock_logger,
             rate_limiter=mock_rate_limiter,
@@ -948,12 +883,10 @@ class TestApproveDescribeProviderDispatch:
         mock_authentication,
         mock_input_validator,
         mock_request_coalescing,
-        mock_pr_diff_service,
         mock_cache_service,
     ) -> None:
         mock_input_validator.validate_github_url = MagicMock(return_value=("owner", "repo", 17))
         registry = ToolRegistry(
-            pr_diff_service=ProviderReader(PRDiff(files=()), "github-head"),
             cache_service=mock_cache_service,
             logger=mock_logger,
             rate_limiter=mock_rate_limiter,
@@ -990,12 +923,10 @@ class TestApproveDescribeProviderDispatch:
         mock_metrics_tracker,
         mock_authentication,
         mock_request_coalescing,
-        mock_pr_diff_service,
         mock_cache_service,
     ) -> None:
         gitlab_ops = RecordingGitLabPROps()
         registry = ToolRegistry(
-            pr_diff_service=ProviderReader(PRDiff(files=()), "github-head"),
             cache_service=mock_cache_service,
             logger=mock_logger,
             rate_limiter=mock_rate_limiter,
@@ -1033,12 +964,10 @@ class TestApproveDescribeProviderDispatch:
         mock_metrics_tracker,
         mock_authentication,
         mock_request_coalescing,
-        mock_pr_diff_service,
         mock_cache_service,
     ) -> None:
         gitlab_ops = RecordingGitLabPROps()
         registry = ToolRegistry(
-            pr_diff_service=ProviderReader(PRDiff(files=()), "github-head"),
             cache_service=mock_cache_service,
             logger=mock_logger,
             rate_limiter=mock_rate_limiter,
@@ -1074,12 +1003,10 @@ class TestApproveDescribeProviderDispatch:
         mock_metrics_tracker,
         mock_authentication,
         mock_request_coalescing,
-        mock_pr_diff_service,
         mock_cache_service,
     ) -> None:
         gitlab_ops = RecordingGitLabPROps()
         registry = ToolRegistry(
-            pr_diff_service=ProviderReader(PRDiff(files=()), "github-head"),
             cache_service=mock_cache_service,
             logger=mock_logger,
             rate_limiter=mock_rate_limiter,
@@ -1117,12 +1044,10 @@ class TestApproveDescribeProviderDispatch:
         mock_metrics_tracker,
         mock_authentication,
         mock_request_coalescing,
-        mock_pr_diff_service,
         mock_cache_service,
     ) -> None:
         gitlab_ops = RecordingGitLabPROps()
         registry = ToolRegistry(
-            pr_diff_service=ProviderReader(PRDiff(files=()), "github-head"),
             cache_service=mock_cache_service,
             logger=mock_logger,
             rate_limiter=mock_rate_limiter,
@@ -1159,12 +1084,10 @@ class TestApproveDescribeProviderDispatch:
         mock_authentication,
         mock_input_validator,
         mock_request_coalescing,
-        mock_pr_diff_service,
         mock_cache_service,
     ) -> None:
         mock_input_validator.validate_github_url = MagicMock(return_value=("owner", "repo", 17))
         registry = ToolRegistry(
-            pr_diff_service=ProviderReader(PRDiff(files=()), "github-head"),
             cache_service=mock_cache_service,
             logger=mock_logger,
             rate_limiter=mock_rate_limiter,
@@ -1200,12 +1123,10 @@ class TestApproveDescribeProviderDispatch:
         mock_metrics_tracker,
         mock_authentication,
         mock_request_coalescing,
-        mock_pr_diff_service,
         mock_cache_service,
     ) -> None:
         gitlab_ops = RecordingGitLabPROps()
         registry = ToolRegistry(
-            pr_diff_service=ProviderReader(PRDiff(files=()), "github-head"),
             cache_service=mock_cache_service,
             logger=mock_logger,
             rate_limiter=mock_rate_limiter,
@@ -1239,11 +1160,9 @@ class TestApproveDescribeProviderDispatch:
         mock_metrics_tracker,
         mock_authentication,
         mock_request_coalescing,
-        mock_pr_diff_service,
         mock_cache_service,
     ) -> None:
         registry = ToolRegistry(
-            pr_diff_service=ProviderReader(PRDiff(files=()), "github-head"),
             cache_service=mock_cache_service,
             logger=mock_logger,
             rate_limiter=mock_rate_limiter,
@@ -1281,7 +1200,6 @@ class TestApproveDescribeProviderDispatch:
         mock_metrics_tracker,
         mock_authentication,
         mock_request_coalescing,
-        mock_pr_diff_service,
         mock_cache_service,
     ) -> None:
         class NestedValidator(ProviderAwareValidator):
@@ -1291,7 +1209,6 @@ class TestApproveDescribeProviderDispatch:
 
         gitlab_ops = RecordingGitLabPROps()
         registry = ToolRegistry(
-            pr_diff_service=ProviderReader(PRDiff(files=()), "github-head"),
             cache_service=mock_cache_service,
             logger=mock_logger,
             rate_limiter=mock_rate_limiter,
@@ -1334,8 +1251,8 @@ class TestApproveDescribeProviderDispatch:
 @pytest.mark.unit
 @pytest.mark.asyncio
 class TestProviderCapabilityResolver:
-    async def test_strict_diff_capability_rejects_legacy_reader_without_session_protocol(self) -> None:
-        class LegacyReader:
+    async def test_strict_diff_capability_rejects_reader_without_session_protocol(self) -> None:
+        class NonSessionReader:
             async def get_pr_diff(self, repo_owner: str, repo_name: str, pr_number: int, /) -> PRDiff:
                 return PRDiff(files=())
 
@@ -1343,7 +1260,7 @@ class TestProviderCapabilityResolver:
                 return "head"
 
         with pytest.raises(TypeError, match="session-capable reader"):
-            StrictDiffCapability(LegacyReader(), "legacy")
+            StrictDiffCapability(NonSessionReader(), "other")
 
     async def test_third_provider_registration_routes_all_advertised_capabilities(
         self,
@@ -1374,7 +1291,6 @@ class TestProviderCapabilityResolver:
         resolver.register_approval("third", writes)
         resolver.register_description("third", writes)
         registry = ToolRegistry(
-            pr_diff_service=reader,
             cache_service=RecordingCache(),
             logger=mock_logger,
             rate_limiter=mock_rate_limiter,
@@ -1412,7 +1328,6 @@ class TestProviderCapabilityResolver:
 
         resolver.register_parser("read-only", parse_read_only)
         registry = ToolRegistry(
-            pr_diff_service=ProviderReader(PRDiff(files=()), "head"),
             cache_service=RecordingCache(),
             logger=mock_logger,
             rate_limiter=mock_rate_limiter,
@@ -1516,7 +1431,6 @@ class TestProviderCapabilityResolver:
         github_diff = PRDiff(files=())
         github_reader = ProviderReader(github_diff, "github-commit", provider="github")
         registry = ToolRegistry(
-            pr_diff_service=github_reader,
             cache_service=RecordingCache(),
             logger=mock_logger,
             rate_limiter=mock_rate_limiter,

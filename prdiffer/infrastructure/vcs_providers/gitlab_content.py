@@ -22,7 +22,6 @@ from prdiffer.infrastructure.vcs_providers.gitlab_objects import (
     MODE_SYMLINK,
     fetch_raw_blob_bytes,
     load_repository_tree_entries,
-    mode_uses_raw_file_api,
     require_tree_entry,
     resolve_entry_text,
 )
@@ -219,16 +218,6 @@ class GitLabContentFetcher:
                 base_url=base_url,
                 deadline_monotonic=deadline_monotonic,
             )
-        if mode_uses_raw_file_api(mode):
-            return await self._raw(
-                project_path,
-                path,
-                ref,
-                required=True,
-                base_url=base_url,
-                deadline_monotonic=deadline_monotonic,
-            )
-        # Unknown/None mode: keep legacy raw-file path for regular content.
         return await self._raw(
             project_path,
             path,

@@ -11,7 +11,6 @@ from unittest.mock import Mock, patch
 import pytest
 
 from prdiffer.application.components.authentication import AuthenticationMiddleware
-from prdiffer.domain.exceptions import InputSanitizationError
 
 
 class TestAuthenticationMiddlewareInitialization:
@@ -373,26 +372,6 @@ class TestAuthenticationMiddlewareValidateApiKeyFormat:
         auth = AuthenticationMiddleware()
 
         assert auth.validate_api_key_format("a" * 256) is True
-
-
-class TestAuthenticationMiddlewareValidateToken:
-    """Test suite for validate_token method."""
-
-    @patch.dict(os.environ, {"MCP_AUTH_ENABLED": "false"})
-    def test_validate_token_valid(self):
-        """Test validation accepts a valid token format."""
-        auth = AuthenticationMiddleware()
-
-        token = "valid_token_1234567890abcdef"
-        assert auth.validate_token(token) == token
-
-    @patch.dict(os.environ, {"MCP_AUTH_ENABLED": "false"})
-    def test_validate_token_invalid(self):
-        """Test validation rejects invalid token format."""
-        auth = AuthenticationMiddleware()
-
-        with pytest.raises(InputSanitizationError):
-            auth.validate_token("short")
 
 
 class TestAuthenticationMiddlewareAddApiKey:

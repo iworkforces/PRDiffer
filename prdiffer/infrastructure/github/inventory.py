@@ -93,32 +93,17 @@ def select_files_with_admission(
     return selected
 
 
-def resolve_authoritative_count(pull_request: object, enumerated_count: int) -> int:
-    """Read PR.changed_files when it is a real int; otherwise trust enumeration."""
-    raw = getattr(pull_request, "changed_files", None)
-    if isinstance(raw, int) and not isinstance(raw, bool):
-        return raw
-    return enumerated_count
-
-
 def prepare_selected_inventory(
     *,
-    authoritative_changed_files: int | None,
+    authoritative_changed_files: int,
     provider_files: Iterable[_NamedFileT],
     is_valid_file: Callable[[str], bool],
     max_files_allowed: object,
-    pull_request: object | None = None,
 ) -> list[_NamedFileT]:
     """Materialize, validate inventory, then select with hard admission limit."""
     enumerated = materialize_pr_files(provider_files)
-    if authoritative_changed_files is None and pull_request is not None:
-        authoritative = resolve_authoritative_count(pull_request, len(enumerated))
-    elif authoritative_changed_files is None:
-        authoritative = len(enumerated)
-    else:
-        authoritative = authoritative_changed_files
     validate_authoritative_inventory(
-        authoritative_changed_files=authoritative,
+        authoritative_changed_files=authoritative_changed_files,
         enumerated_count=len(enumerated),
     )
     limit = max_files_allowed if isinstance(max_files_allowed, int) and not isinstance(max_files_allowed, bool) else 50

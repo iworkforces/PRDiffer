@@ -1,12 +1,11 @@
 """Comprehensive tests for diff_utils.py."""
 
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 from prdiffer.infrastructure.utils.diff_utils import (
     DiffProcessingConfig,
     DiffUtils,
-    get_diff_utils,
     DEFAULT_LARGE_FILE_THRESHOLD,
     DEFAULT_DIFF_CHUNK_SIZE,
     DEFAULT_MAX_DIFF_SIZE,
@@ -276,162 +275,6 @@ class TestBuildChunkHunk:
         new = ["line1", "line2"]
         result = diff_utils._build_chunk_hunk(orig, new, 100, 200)
         assert "@@ -100,1 +200,2 @@" in result
-
-
-class TestDecodeIfBytes:
-    """Tests for decode_if_bytes method."""
-
-    def test_string_passthrough(self):
-        """Test that strings pass through unchanged."""
-        diff_utils = DiffUtils()
-        result = diff_utils.decode_if_bytes("hello")
-        assert result == "hello"
-
-    def test_bytes_utf8(self):
-        """Test UTF-8 bytes decoding."""
-        diff_utils = DiffUtils()
-        result = diff_utils.decode_if_bytes(b"hello")
-        assert result == "hello"
-
-    def test_bytearray_utf8(self):
-        """Test bytearray UTF-8 decoding."""
-        diff_utils = DiffUtils()
-        result = diff_utils.decode_if_bytes(bytearray(b"hello"))
-        assert result == "hello"
-
-    def test_bytes_latin1_fallback(self):
-        """Test fallback to latin-1 encoding."""
-        diff_utils = DiffUtils()
-        latin1_content = b"\xe9\xe8\xe7"
-        result = diff_utils.decode_if_bytes(latin1_content)
-        assert len(result) == 3
-
-    def test_bytes_all_fallbacks_fail(self):
-        """Test empty string when all encodings fail."""
-        diff_utils = DiffUtils()
-        # Invalid UTF-8 sequence that may fail on some encodings
-        _ = b"\xff\xfe\xfd"  # invalid_bytes not used in this test setup
-        with patch.object(
-            type(diff_utils),
-            "decode_if_bytes",
-            lambda self, content: "" if isinstance(content, (bytes, bytearray)) else content,
-        ):
-            pass
-
-
-class TestExtendPatch:
-    """Tests for extend_patch method."""
-
-    def test_extend_simple_patch(self):
-        """Test extending a simple patch."""
-        diff_utils = DiffUtils()
-        original = "line1\nline2\nline3"
-        new = "line1\nmodified\nline3"
-        result = diff_utils.extend_patch(original, "fallback", new)
-        assert "-line2" in result
-        assert "+modified" in result
-
-    def test_extend_returns_fallback_on_binary(self):
-        """Test that binary content returns fallback patch."""
-        diff_utils = DiffUtils()
-        original = "\x00\x01\x02"
-        new = "\x00\x01\x03"
-        result = diff_utils.extend_patch(original, "fallback_patch", new)
-        assert "BINARY FILE" in result
-
-    def test_extend_with_empty_original(self):
-        """Test extending with empty original (new file)."""
-        diff_utils = DiffUtils()
-        new = "line1\nline2"
-        result = diff_utils.extend_patch("", "fallback", new)
-        assert "+line1" in result
-        assert "+line2" in result
-
-    def test_extend_with_empty_new(self):
-        """Test extending with empty new (deleted file)."""
-        diff_utils = DiffUtils()
-        original = "line1\nline2"
-        result = diff_utils.extend_patch(original, "fallback", "")
-        assert "-line1" in result
-        assert "-line2" in result
-
-    def test_extend_bytes_content(self):
-        """Test extending with bytes content."""
-        diff_utils = DiffUtils()
-        original = b"line1\nline2"
-        new = b"line1\nmodified"
-        result = diff_utils.extend_patch(original, "fallback", new)
-        assert "-line2" in result or "+modified" in result
-
-    def test_extend_large_file_uses_chunked(self):
-        """Test that large files use chunked processing."""
-        config = DiffProcessingConfig(large_file_threshold=10)
-        diff_utils = DiffUtils(config=config)
-        lines = [f"line{i}" for i in range(100)]
-        original = "\n".join(lines)
-        new_lines = lines.copy()
-        new_lines[50] = "modified"
-        new = "\n".join(new_lines)
-        result = diff_utils.extend_patch(original, "fallback", new)
-        assert result != "fallback"
-
-
-class TestIsBinaryContent:
-    """Tests for _is_binary_content method."""
-
-    def test_empty_content(self):
-        """Test empty content is not binary."""
-        diff_utils = DiffUtils()
-        assert diff_utils._is_binary_content("") is False
-
-    def test_text_content(self):
-        """Test text content is not binary."""
-        diff_utils = DiffUtils()
-        assert diff_utils._is_binary_content("hello world") is False
-
-    def test_null_bytes(self):
-        """Test null bytes indicate binary."""
-        diff_utils = DiffUtils()
-        assert diff_utils._is_binary_content("\x00hello") is True
-
-    def test_high_non_printable_ratio(self):
-        """Test high ratio of non-printable chars indicates binary."""
-        diff_utils = DiffUtils()
-        binary_like = "".join([chr(i) if i < 32 else " " for i in range(100)])
-        assert diff_utils._is_binary_content(binary_like) is True
-
-    def test_normal_text_with_newlines(self):
-        """Test normal text with newlines is not binary."""
-        diff_utils = DiffUtils()
-        text = "line1\nline2\rline3\ttab"
-        assert diff_utils._is_binary_content(text) is False
-
-
-class TestGetDiffUtils:
-    """Tests for get_diff_utils factory function."""
-
-    def test_returns_diff_utils(self):
-        """Test factory returns DiffUtils instance."""
-        result = get_diff_utils()
-        assert isinstance(result, DiffUtils)
-
-    def test_with_logger(self):
-        """Test factory with logger parameter."""
-        logger = Mock()
-        result = get_diff_utils(logger=logger)
-        assert isinstance(result, DiffUtils)
-
-    def test_with_config(self):
-        """Test factory with config parameter."""
-        config = DiffProcessingConfig(large_file_threshold=2000)
-        result = get_diff_utils(config=config)
-        assert result._config.large_file_threshold == 2000
-
-    def test_new_instance_each_call(self):
-        """Test that factory returns new instances."""
-        instance1 = get_diff_utils()
-        instance2 = get_diff_utils()
-        assert instance1 is not instance2
 
 
 class TestNoNewlineMarkers:

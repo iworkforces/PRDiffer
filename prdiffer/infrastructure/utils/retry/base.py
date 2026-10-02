@@ -7,7 +7,6 @@ from collections.abc import Callable
 from typing import Any
 
 from prdiffer.domain.services.retry import RetryServiceInterface
-from prdiffer.infrastructure.utils.logger_factory import LazyLoggerMixin
 from prdiffer.infrastructure.utils.retry_logger import (
     log_retry_attempt,
     log_permanent_failure,
@@ -32,7 +31,7 @@ from prdiffer.infrastructure.utils.retry.models import (
 from typing import cast
 
 
-class BaseUnifiedRetryHandler(LazyLoggerMixin, RetryServiceInterface):
+class BaseUnifiedRetryHandler(RetryServiceInterface):
     def __init__(
         self,
         max_retries: int = 3,
@@ -42,7 +41,6 @@ class BaseUnifiedRetryHandler(LazyLoggerMixin, RetryServiceInterface):
         retry_on_500: bool = True,
         retry_log_level: str = "DEBUG",
         permanent_failure_log_level: str = "INFO",
-        use_advanced_features: bool = False,
         circuit_breaker_enabled: bool = False,
         circuit_breaker_failure_threshold: int = 5,
         circuit_breaker_timeout: float = 60.0,
@@ -63,19 +61,12 @@ class BaseUnifiedRetryHandler(LazyLoggerMixin, RetryServiceInterface):
         self.retry_log_level = retry_log_level.upper()
         self.permanent_failure_log_level = permanent_failure_log_level.upper()
 
-        self._init_lazy_logger(logger, __name__)
+        self._logger = logger or logging.getLogger(__name__)
 
-        self.use_advanced_features = use_advanced_features
-        if use_advanced_features:
-            self.circuit_breaker_enabled = True
-            self.adaptive_retry_enabled = True
-            self.api_health_tracking = True
-            self.context_aware_retry = True
-        else:
-            self.circuit_breaker_enabled = circuit_breaker_enabled
-            self.adaptive_retry_enabled = adaptive_retry_enabled
-            self.api_health_tracking = api_health_tracking
-            self.context_aware_retry = context_aware_retry
+        self.circuit_breaker_enabled = circuit_breaker_enabled
+        self.adaptive_retry_enabled = adaptive_retry_enabled
+        self.api_health_tracking = api_health_tracking
+        self.context_aware_retry = context_aware_retry
 
         self.max_adaptive_delay = max_adaptive_delay
         self.rate_limit_remaining_threshold = rate_limit_remaining_threshold
@@ -86,14 +77,14 @@ class BaseUnifiedRetryHandler(LazyLoggerMixin, RetryServiceInterface):
         self._health_tracker: Any | None = None
 
         if self.circuit_breaker_enabled:
-            from prdiffer.infrastructure.utils.circuit_breaker.core import (
+            from prdiffer.infrastructure.utils.circuit_breaker_core import (
                 CircuitBreaker,
             )
 
             self._circuit_breaker = CircuitBreaker(
                 failure_threshold=circuit_breaker_failure_threshold,
                 timeout=circuit_breaker_timeout,
-                logger=self._get_logger(),
+                logger=self._logger,
             )
 
         if self.api_health_tracking:
@@ -101,7 +92,7 @@ class BaseUnifiedRetryHandler(LazyLoggerMixin, RetryServiceInterface):
                 APIHealthTracker,
             )
 
-            self._health_tracker = APIHealthTracker(logger=self._get_logger())
+            self._health_tracker = APIHealthTracker(logger=self._logger)
 
         self._context_configs: dict[OperationContext, dict[str, Any]] = {}
         if self.context_aware_retry:
@@ -147,7 +138,7 @@ class BaseUnifiedRetryHandler(LazyLoggerMixin, RetryServiceInterface):
     ) -> Any:
         if self._circuit_breaker and self.circuit_breaker_enabled:
             if not self._circuit_breaker.can_execute():
-                from prdiffer.infrastructure.utils.circuit_breaker.core import (
+                from prdiffer.infrastructure.utils.circuit_breaker_core import (
                     CircuitBreakerOpenException,
                 )
 
@@ -181,7 +172,7 @@ class BaseUnifiedRetryHandler(LazyLoggerMixin, RetryServiceInterface):
 
                 if not should_retry or is_last_attempt:
                     log_permanent_failure(
-                        self._get_logger(),
+                        self._logger,
                         exc,
                         self.permanent_failure_log_level,
                         should_retry,
@@ -202,7 +193,7 @@ class BaseUnifiedRetryHandler(LazyLoggerMixin, RetryServiceInterface):
                 )
 
                 log_retry_attempt(
-                    self._get_logger(),
+                    self._logger,
                     attempt,
                     delay,
                     exc,
@@ -307,7 +298,7 @@ class BaseUnifiedRetryHandler(LazyLoggerMixin, RetryServiceInterface):
             self._log_at_level(message, "ERROR")
 
     def _log_at_level(self, message: str, level: str):
-        logger = self._get_logger()
+        logger = self._logger
         level = level.upper()
         if level == "DEBUG":
             logger.debug(message)

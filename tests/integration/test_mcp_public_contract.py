@@ -27,8 +27,6 @@ from prdiffer.domain.interfaces.pr_diff_reader import PRDiffSnapshot
 from prdiffer.domain.repositories.pr_diff_repository import PRDiffRepositoryInterface
 from prdiffer.domain.services.cache import CacheServiceInterface
 from prdiffer.domain.services.logger import LoggerServiceInterface, LogLevel
-from prdiffer.domain.services.pr_diff_service import PRDiffServiceInterface
-from prdiffer.domain.services.repository_cache import RepositoryCacheServiceInterface
 from prdiffer.domain.services.settings import SettingsServiceInterface
 
 
@@ -72,15 +70,9 @@ class RecordingCache(CacheServiceInterface):
         self.reads: list[tuple[str, str]] = []
         self.writes: list[tuple[str, str, PRDiff]] = []
 
-    def get_cache_key(self, repo_owner: str, repo_name: str, pr_number: int) -> str:
-        return f"{repo_owner}/{repo_name}/pr/{pr_number}"
-
     async def get(self, cache_key: str, current_commit_sha: str) -> PRDiff | None:
         self.reads.append((cache_key, current_commit_sha))
         return None
-
-    async def get_optimistic(self, cache_key: str) -> tuple[PRDiff | None, str | None]:
-        return None, None
 
     async def set(self, cache_key: str, commit_sha: str, data: PRDiff) -> None:
         self.writes.append((cache_key, commit_sha, data))
@@ -92,12 +84,6 @@ class RecordingCache(CacheServiceInterface):
         return None
 
     async def invalidate_github_repository(self, owner: str, repo: str) -> None:
-        return None
-
-    def get_etag(self, cache_key: str) -> str | None:
-        return None
-
-    def set_etag(self, cache_key: str, etag: str) -> None:
         return None
 
     def get_stats(self) -> dict[str, int]:
@@ -125,7 +111,7 @@ class RecordingSession:
         self.close_calls += 1
 
 
-class RecordingReader(PRDiffServiceInterface):
+class RecordingReader:
     """Session-capable reader fake for one provider."""
 
     def __init__(self, provider: ProviderName, result: PRDiff, error: ProviderFailure | None = None) -> None:
@@ -167,15 +153,6 @@ class RecordingReader(PRDiffServiceInterface):
         self.sessions.append(session)
         return session
 
-    async def get_pr_diff(self, repo_owner: str, repo_name: str, pr_number: int) -> PRDiff:
-        raise AssertionError("strict session path required")
-
-    async def get_latest_commit_sha(self, repo_owner: str, repo_name: str, pr_number: int) -> str:
-        raise AssertionError("strict session path required")
-
-    def validate_repository_access(self, repo_owner: str, repo_name: str) -> bool:
-        return True
-
 
 class RecordingGitHubRepository(PRDiffRepositoryInterface):
     """Repository fake whose write calls and failures are observable."""
@@ -200,15 +177,6 @@ class RecordingGitHubRepository(PRDiffRepositoryInterface):
     @property
     def pr_number(self) -> int:
         return self._pr_number
-
-    async def initialize(self) -> None:
-        return None
-
-    async def get_pr_diff(self) -> PRDiff:
-        return sample_pr_diff()
-
-    async def get_latest_commit_sha(self) -> str:
-        return "c" * 40
 
     async def approve_pr_with_comment(self, pr_url: str, compliment: str) -> str:
         self.approve_calls.append((pr_url, compliment))
@@ -296,9 +264,6 @@ class StubSettings(SettingsServiceInterface):
     def get_github_config(self) -> GitHubConfig:
         return GitHubConfig()
 
-    def get_github_settings(self) -> dict[str, Any]:
-        return {}
-
     def get_cache_settings(self) -> dict[str, Any]:
         return {}
 
@@ -306,38 +271,6 @@ class StubSettings(SettingsServiceInterface):
         return {}
 
     def clear_cache(self) -> None:
-        return None
-
-
-class StubRepositoryCache(RepositoryCacheServiceInterface):
-    def insert(self, repository: PRDiffRepositoryInterface) -> bool:
-        return True
-
-    def retrieve(self, repo_owner: str, repo_name: str, pr_number: int) -> PRDiffRepositoryInterface | None:
-        return None
-
-    def validate(self, repo_owner: str, repo_name: str, pr_number: int) -> bool:
-        return False
-
-    def remove(self, repo_owner: str, repo_name: str, pr_number: int) -> bool:
-        return False
-
-    def clear(self) -> None:
-        return None
-
-    def size(self) -> int:
-        return 0
-
-    def stats(self) -> dict[str, int]:
-        return {"total_entries": 0}
-
-    def invalidate(self, cache_key: str) -> bool:
-        return False
-
-    def invalidate_github_pr(self, owner: str, repo: str, pr_number: int) -> None:
-        return None
-
-    def invalidate_github_repository(self, owner: str, repo: str) -> None:
         return None
 
 
@@ -395,27 +328,8 @@ class ContractValidator:
         assert url == GITLAB_URL
         return GITLAB_TARGET[:3]
 
-    def validate_repository_identifier(self, identifier: str) -> tuple[str, str]:
-        owner, repo = identifier.split("/", 1)
-        return owner, repo
-
     def sanitize_string(self, value: str, max_length: int = 1000) -> str:
         return value
-
-    def validate_pr_number(self, pr_number: int) -> int:
-        return pr_number
-
-    def validate_file_path(self, file_path: str) -> str:
-        return file_path
-
-    def validate_token(self, token: str) -> str:
-        return token
-
-    def validate_user_id(self, user_id: str) -> str:
-        return user_id
-
-    def validate_branch_name(self, branch: str) -> str:
-        return branch
 
     def sanitize_for_logging(self, value: str, max_length: int = 200) -> str:
         return value[:max_length]
@@ -457,11 +371,6 @@ class StubServerConfiguration:
         return "Contract test server"
 
 
-class StubPROperationHandler:
-    async def get_pr_diff(self, pr_url: str) -> dict[str, str]:
-        return {"url": pr_url}
-
-
 class ContractHarness:
     """Compose one isolated real FastMCPServer and its recording providers."""
 
@@ -490,13 +399,10 @@ class ContractHarness:
         self.server = FastMCPServer(
             settings_service=StubSettings(),
             cache_service=self.cache,
-            repository_cache_service=StubRepositoryCache(),
-            pr_diff_service=self.github_reader,
             logger=StubLogger(),
             provider_resolver=resolver,
             rate_limiter=AllowAllRateLimiter(),
             metrics_tracker=self.metrics,
-            pr_operation_handler=StubPROperationHandler(),
             health_monitor=HealthyMonitor(),
             server_configuration=StubServerConfiguration(),
             authentication=AllowAllAuthentication(),
@@ -576,9 +482,9 @@ async def test_health_call_public_contract() -> None:
         "service": "prdiffer",
         "authentication": {"authentication_enabled": False},
         "cache": {"size": 0},
-        "repository_cache": {"total_entries": 0},
         "request_coalescing": {"pending_count": 0, "pending_keys": [], "total_waiters": 0},
     }
+    assert "repository_cache" not in result.structured_content
     assert result.content
     assert isinstance(result.content[0], TextContent)
     assert "healthy" in result.content[0].text

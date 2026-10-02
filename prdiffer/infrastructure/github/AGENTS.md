@@ -6,47 +6,32 @@ PyGithub-backed API client, inventory admission, ordered file processing, full-c
 ## STRUCTURE
 ```
 prdiffer/infrastructure/github/
-├── client.py                # GitHubAPIClient facade (~280)
-├── client_operations.py     # File content / multi-ref batch / cache mixin (~441)
-├── client_models.py         # Exception tuples + cache defaults (~16)
-├── file_processor.py        # Ordered fetch/filter → FilePatchInfo (~593)
-├── diff_generator.py        # generate_ordered_file_diffs → GeneratedFileDiff (~514)
-├── etag_adapter.py          # Conditional requests / 304 (~121)
-├── inventory.py             # Authoritative inventory + admission (~130)
-├── git_objects.py           # Immutable tree/blob descriptors + load/resolve helpers
-├── mappers.py               # API → domain mapping (~88)
-├── pr_diff_session.py       # anyio session + merge-base capture + v3 cache_identity + revalidate
+├── client.py                # GitHubAPIClient: client init + retry/CB-wrapped repo/PR lookup (~174)
+├── client_models.py         # GITHUB_API_EXCEPTIONS (~13)
+├── file_processor.py        # Ordered selected files → FilePatchInfo from git trees/blobs (~285)
+├── diff_generator.py        # generate_ordered_file_diffs → GeneratedFileDiff (~198)
+├── inventory.py             # Authoritative inventory + admission (~115)
+├── git_objects.py           # Immutable tree/blob descriptors + load/resolve helpers (~431)
+├── pr_diff_session.py       # anyio session + merge-base capture + v3 cache_identity + revalidate (~368)
 └── __init__.py
 ```
 
 ## WHERE TO LOOK
 | Task | Location | Notes |
 |------|----------|-------|
-| **API client facade** | `client.py` | Implements `GitHubAPIServiceInterface`; retry/CB params |
-| **File content + batch** | `client_operations.py` | Typed content union; multi-ref batch; repo-scoped cache |
-| **Multi-ref batch** | `get_files_content_multi_ref_batch` | Ordered `FileContentResponse`; one capacity bound for all refs |
+| **API client** | `client.py` | Implements `GitHubAPIServiceInterface`; retry/CB-wrapped `_get_pygithub_repository` / `_get_pygithub_pull_request` |
 | **Inventory admission** | `inventory.py` | Authoritative `changed_files` vs enumeration; selected N+1 → E5020 |
 | **Immutable trees/objects** | `git_objects.py` | Recursive tree load; blob/symlink/gitlink resolve; rename previous check |
-| **Ordered file processing** | `file_processor.py` | Tree path when real `get_git_tree`; else multi-ref content batches |
+| **Ordered file processing** | `file_processor.py` | Merge-base/head recursive trees + blobs; missing `get_git_tree` → E5020 |
 | **Full-context diffs** | `diff_generator.py` | `GeneratedFileDiff` in provider order; hard-fail incompleteness |
 | **Request session** | `pr_diff_session.py` | anyio `to_thread` + CapacityLimiter; one metadata lookup per request |
-| **ETag bandwidth** | `etag_adapter.py` | Conditional GET / 304 |
-| **Domain mapping** | `mappers.py` | Repository / PR → domain entities |
 
 ## CONVENTIONS
 
-### Typed file content
-- `get_file_content` / batch APIs return `FileContentAvailable | FileContentUnavailable`.
-- Empty text is **available** (`text == ""`).
-- Cache key is `(repo_full_name, path, immutable_ref)`; **only available text** is cached.
-- Auth / rate-limit / transport / retry-exhausted failures raise operational exceptions — never become unavailable union values.
-
-### Multi-ref content batch
-- `get_files_content_multi_ref_batch(requests)` returns one `FileContentResponse` per request in **request order**.
-- Single-ref `get_files_content_batch` is implemented as a thin wrapper over multi-ref.
-- Parallel path uses `execute_indexed_batch` on cache misses only; mixed hit/miss preserves order and ref identity.
-- Operational failure → `IndexedBatchError` / raise — never a partial response list.
-- Deduplicates identical `FileContentRequest` values while still emitting one response per input slot.
+### File content (git trees/blobs)
+- Content comes from immutable recursive trees at the merge-base and head SHAs plus blobs by object id (`git_objects.py`).
+- `resolve_entry_text` returns `FileContentAvailable | FileContentUnavailable`; empty text is **available** (`text == ""`).
+- Binary / oversized / undecodable / missing entries → E5020; auth / rate-limit / transport failures raise operational exceptions.
 
 ### Inventory (strict)
 - Fully materialize provider file pages, then validate authoritative `changed_files` vs enumerated count.
@@ -55,9 +40,7 @@ prdiffer/infrastructure/github/
 
 ### Ordered processing + generation
 - `FileProcessor` assembles ordered `FilePatchInfo` (including deleted / rename-only). Renames require distinct `previous_filename` before content.
-- Prefer immutable trees when repository has a real `get_git_tree` (not MagicMock): merge-base/head trees, modes on patches, gitlinks without Contents.
-- When `parallel_head_base_fetch_enabled` and both head and base path sets are non-empty: one interleaved multi-ref batch (head/base alternating in provider order), then split into head/base maps.
-- Disabled flag or one-sided path sets: sequential single-ref batches.
+- Always uses immutable merge-base/head trees: modes on patches, symlinks, gitlinks; no Contents API path.
 - `DiffGenerator.generate_ordered_file_diffs` returns one full-context `GeneratedFileDiff` per selected file in order, or hard-fails.
 - Mode headers (before rename, then body): `new file mode` / `deleted file mode` / `old mode`+`new mode` for 100644/100755/120000/160000.
 - `DiffUtils` emits Git-style `\ No newline at end of file` when either side lacks a trailing newline.
@@ -67,7 +50,7 @@ prdiffer/infrastructure/github/
 ### Sessions
 - `GitHubPRDiffSession` / `GitHubSessionPRDiffReader`: request-local client/repo/PR handles.
 - Blocking PyGithub work: acquire session `CapacityLimiter` first, re-check request deadline after the queue wait, then `run_sync(..., abandon_on_cancel=False)` (capacity 1 when parallel fetch disabled).
-- Production `FileProcessor` sets `require_git_tree=True` so missing `get_git_tree` is E5020 (no silent mode-less Contents-API degrade).
+- A repository without `get_git_tree` (or a truncated tree) is E5020 `INVENTORY_TRUNCATED` — there is no Contents-API fallback.
 - One metadata lookup per request; always close/drop strong refs in `aclose`.
 - Open captures base tip + head + authoritative count, resolves **merge-base once** via Compare (no base-tip fallback), then returns the session.
 - `cache_identity` returns GitHub v3 key + `merge_base:head` token (`github_full_diff_v3_identity`); base-tip-only churn does not change identity.
@@ -84,4 +67,4 @@ prdiffer/infrastructure/github/
 - NO caching unavailable sentinels or empty-string error stand-ins.
 - NO completing full-diff with partial file sets when inventory/admission fails.
 - NO second metadata lookup inside an open session when handles already exist.
-- NO path-only batch identity when head and base share paths at different refs.
+- NO reintroducing a Contents-API / ETag content path alongside the tree path.

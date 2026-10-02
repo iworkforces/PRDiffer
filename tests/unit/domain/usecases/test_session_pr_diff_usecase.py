@@ -1,4 +1,4 @@
-"""Tests for session-capable vs legacy PRDiff reader dispatch."""
+"""Tests for the session-based GetPRDiffUseCase cache and lifecycle flow."""
 
 from __future__ import annotations
 
@@ -56,8 +56,6 @@ class SessionReader:
         self.session = session
         self.open_calls = 0
         self.open_kwargs: list[dict[str, object]] = []
-        self.get_pr_diff = AsyncMock(side_effect=AssertionError("legacy get_pr_diff must not be used"))
-        self.get_latest_commit_sha = AsyncMock(side_effect=AssertionError("legacy sha must not be used"))
 
     async def open_pr_diff_session(
         self,
@@ -73,18 +71,10 @@ class SessionReader:
         return self.session
 
 
-class LegacyReader:
-    def __init__(self):
-        self.get_latest_commit_sha = AsyncMock(return_value="sha1")
-        self.get_pr_diff = AsyncMock(return_value=_pr_diff())
-
-
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_session_path_uses_cache_identity_and_closes() -> None:
     cache = MagicMock()
-    cache.get_cache_key.return_value = "key"
-    cache.get_optimistic = AsyncMock(return_value=(None, None))
     cache.get = AsyncMock(return_value=None)
     cache.set = AsyncMock()
 
@@ -96,7 +86,7 @@ async def test_session_path_uses_cache_identity_and_closes() -> None:
         build=build,
     )
     reader = SessionReader(session)
-    use_case = GetPRDiffUseCase(reader, cache, cache_hit_optimization_enabled=False)
+    use_case = GetPRDiffUseCase(reader, cache)
 
     result = await use_case.execute("o", "r", 1)
 
@@ -115,8 +105,6 @@ async def test_session_cache_hit_closes_without_build() -> None:
     cached = _pr_diff()
     identity = github_full_diff_v3_identity("o", "r", 1, _MB, _HD)
     cache = MagicMock()
-    cache.get_cache_key.return_value = "key"
-    cache.get_optimistic = AsyncMock(return_value=(None, None))
     cache.get = AsyncMock(return_value=cached)
     cache.set = AsyncMock()
 
@@ -143,7 +131,6 @@ async def test_gitlab_session_identity_cache_miss_and_hit() -> None:
     identity = gitlab_full_diff_v1_identity("ns", "repo", 1, 9, "b", "s", "h")
     cached = _pr_diff()
     cache = MagicMock()
-    cache.get_optimistic = AsyncMock(return_value=(None, None))
     cache.get = AsyncMock(return_value=None)
     cache.set = AsyncMock()
     build = AsyncMock(return_value=cached)
@@ -177,30 +164,9 @@ async def test_gitlab_session_identity_cache_miss_and_hit() -> None:
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_legacy_path_unchanged_for_non_session_reader() -> None:
-    cache = MagicMock()
-    cache.get_cache_key.return_value = "key"
-    cache.get_optimistic = AsyncMock(return_value=(None, None))
-    cache.get = AsyncMock(return_value=None)
-    cache.set = AsyncMock()
-
-    reader = LegacyReader()
-    use_case = GetPRDiffUseCase(reader, cache)
-
-    result = await use_case.execute("o", "r", 1)
-
-    assert result is not None
-    reader.get_latest_commit_sha.assert_awaited()
-    reader.get_pr_diff.assert_awaited_once()
-    cache.set.assert_awaited_once()
-
-
-@pytest.mark.unit
-@pytest.mark.asyncio
 async def test_e5020_does_not_write_cache() -> None:
     identity = github_full_diff_v3_identity("o", "r", 1, _MB, _HD)
     cache = MagicMock()
-    cache.get_optimistic = AsyncMock(return_value=(None, None))
     cache.get = AsyncMock(return_value=None)
     cache.set = AsyncMock()
     build = AsyncMock(side_effect=FullDiffIncompleteError(FullDiffIncompleteReason.BINARY_CONTENT, path="x.bin"))
@@ -223,7 +189,6 @@ async def test_legacy_hunk_key_misses_on_strict_session() -> None:
     """Legacy gitlab:owner:repo:iid values must not unwrap under strict identity."""
     identity = gitlab_full_diff_v1_identity("o", "r", 1, 1, "b", "s", "h")
     cache = MagicMock()
-    cache.get_optimistic = AsyncMock(return_value=(None, None))
     # Simulate wrong legacy value under wrong key lookup returning junk
     cache.get = AsyncMock(return_value=_pr_diff())  # bare PRDiff under wrong schema path
     # Force get to return value but with wrong key semantics: use case passes identity key
@@ -250,7 +215,6 @@ async def test_legacy_hunk_key_misses_on_strict_session() -> None:
 @pytest.mark.asyncio
 async def test_session_path_passes_base_url_exactly_once() -> None:
     cache = MagicMock()
-    cache.get_optimistic = AsyncMock(return_value=(None, None))
     cache.get = AsyncMock(return_value=None)
     cache.set = AsyncMock()
     build = AsyncMock(return_value=_pr_diff())

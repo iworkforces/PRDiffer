@@ -1,9 +1,6 @@
 """Comprehensive tests for PatternMatcher."""
 
-from prdiffer.infrastructure.utils.pattern_matcher import (
-    PatternMatcher,
-    get_pattern_matcher,
-)
+from prdiffer.infrastructure.utils.pattern_matcher import PatternMatcher
 
 
 class TestPatternMatcherInit:
@@ -266,26 +263,6 @@ class TestFilterFiles:
         result = matcher.filter_files(files)
 
         assert result == ["src/main.py", "tests/test.py"]
-
-
-class TestGetPatternMatcher:
-    """Tests for get_pattern_matcher factory function."""
-
-    def test_factory_basic(self):
-        """Test factory creates matcher."""
-        matcher = get_pattern_matcher(["*.lock"])
-
-        assert isinstance(matcher, PatternMatcher)
-        assert matcher.ignore_patterns == ["*.lock"]
-
-    def test_factory_with_extensions(self):
-        """Test factory with extensions."""
-        matcher = get_pattern_matcher(
-            ignore_patterns=["*.lock"],
-            valid_extensions=[".py"],
-        )
-
-        assert matcher.valid_extensions == [".py"]
 
 
 class TestAgentsMdIgnorePatterns:

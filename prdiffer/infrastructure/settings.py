@@ -94,7 +94,6 @@ class SettingsService(SettingsServiceInterface):
         )
 
         self._cache_lock = RLock()
-        self._github_settings_cache: dict[str, Any] | None = None
         self._github_config_cache: GitHubConfig | None = None
         self._gitlab_config_cache: GitLabConfig | None = None
         self._cache_settings_cache: dict[str, Any] | None = None
@@ -135,50 +134,6 @@ class SettingsService(SettingsServiceInterface):
         except ValueError, TypeError:
             return default
 
-    def get_github_settings(self) -> dict[str, Any]:
-        """Get GitHub-related settings with caching.
-
-        GitHub token authentication is exclusively managed via the
-        GITHUB_TOKEN environment variable, not from settings files.
-        """
-        with self._cache_lock:
-            if self._github_settings_cache is not None:
-                return self._github_settings_cache
-
-            def get_with_fallback(key: str, default: Any = None) -> Any:
-                value = self.get(key)
-                if value is None and hasattr(self.settings, "from_env"):
-                    default_settings = self.settings.from_env("default")
-                    value = default_settings.get(key, default) if default_settings else default
-                return value or default
-
-            self._github_settings_cache = {
-                "rate_limit": get_with_fallback("github.rate_limit", 5000),
-                "timeout": get_with_fallback("github.timeout", 30),
-                "max_retries": get_with_fallback("github.max_retries", 3),
-                "retry_delay": get_with_fallback("github.retry_delay", 1),
-                "retry_on_404": get_with_fallback("github.retry_on_404", False),
-                "retry_on_403": get_with_fallback("github.retry_on_403", True),
-                "retry_on_500": get_with_fallback("github.retry_on_500", True),
-                "retry_log_level": get_with_fallback("github.retry_log_level", "DEBUG"),
-                "permanent_failure_log_level": get_with_fallback("github.permanent_failure_log_level", "INFO"),
-                "circuit_breaker_enabled": get_with_fallback("github.circuit_breaker_enabled", True),
-                "circuit_breaker_failure_threshold": get_with_fallback("github.circuit_breaker_failure_threshold", 5),
-                "circuit_breaker_timeout": get_with_fallback("github.circuit_breaker_timeout", 60),
-                "adaptive_retry_enabled": get_with_fallback("github.adaptive_retry_enabled", True),
-                "max_adaptive_delay": get_with_fallback("github.max_adaptive_delay", 30),
-                "api_health_tracking": get_with_fallback("github.api_health_tracking", True),
-                "context_aware_retry": get_with_fallback("github.context_aware_retry", True),
-                "ignore_patterns": self._resolve_ignore_patterns(get_with_fallback),
-                "valid_extensions": tuple(get_with_fallback("github.valid_extensions", [])),
-                "diff_parallel_enabled": get_with_fallback("github.diff_parallel_enabled", True),
-                "diff_parallel_threshold": get_with_fallback("github.diff_parallel_threshold", 3),
-                "diff_max_workers": get_with_fallback("github.diff_max_workers", 4),
-                "diff_worker_timeout": get_with_fallback("github.diff_worker_timeout", 30.0),
-                "max_concurrent": get_with_fallback("github.max_concurrent", 4),
-            }
-            return self._github_settings_cache
-
     def get_github_config(self) -> GitHubConfig:
         """Get centralized GitHub configuration as a GitHubConfig dataclass.
 
@@ -216,10 +171,8 @@ class SettingsService(SettingsServiceInterface):
                 context_aware_retry=bool(get_with_fallback("github.context_aware_retry", True)),
                 ignore_patterns=self._resolve_ignore_patterns(get_with_fallback),
                 valid_extensions=tuple(get_with_fallback("github.valid_extensions", [])),
-                diff_parallel_enabled=bool(get_with_fallback("github.diff_parallel_enabled", True)),
                 diff_parallel_threshold=int(get_with_fallback("github.diff_parallel_threshold", 3)),
                 diff_max_workers=int(get_with_fallback("github.diff_max_workers", 4)),
-                diff_worker_timeout=float(get_with_fallback("github.diff_worker_timeout", 30.0)),
                 max_files_allowed=self._resolve_max_files_allowed(get_with_fallback),
                 large_file_threshold=int(get_with_fallback("diff.large_file_threshold", 5000)),
                 chunk_size=int(get_with_fallback("diff.chunk_size", 1000)),
@@ -227,7 +180,6 @@ class SettingsService(SettingsServiceInterface):
                 max_file_size_bytes=int(get_with_fallback("github.max_file_size_bytes", 10_485_760)),
                 max_total_chars=self._resolve_max_total_chars(get_with_fallback),
                 parallel_file_fetch_enabled=bool(get_with_fallback("performance.parallel_file_fetch_enabled", True)),
-                parallel_head_base_fetch_enabled=bool(get_with_fallback("performance.parallel_head_base_fetch_enabled", True)),
                 parallel_diff_generation_enabled=bool(get_with_fallback("performance.parallel_diff_generation_enabled", True)),
                 pr_diff_request_timeout_seconds=float(get_with_fallback("mcp.pr_diff_request_timeout_seconds", 180.0)),
                 max_concurrent=int(get_with_fallback("github.max_concurrent", 4)),
@@ -455,7 +407,6 @@ class SettingsService(SettingsServiceInterface):
     def clear_cache(self) -> None:
         """Clear all cached settings in a thread-safe manner."""
         with self._cache_lock:
-            self._github_settings_cache = None
             self._github_config_cache = None
             self._gitlab_config_cache = None
             self._cache_settings_cache = None

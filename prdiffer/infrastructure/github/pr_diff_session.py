@@ -20,7 +20,7 @@ from prdiffer.domain.entities.pr_diff_cache import (
     StrictPRDiffCacheIdentity,
     github_full_diff_v3_identity,
 )
-from prdiffer.domain.errors import E5002_GITHUB_API_ERROR, E5004_TIMEOUT_ERROR, E5009_CONFIGURATION_ERROR
+from prdiffer.domain.error_codes import E5002_GITHUB_API_ERROR, E5004_TIMEOUT_ERROR, E5009_CONFIGURATION_ERROR
 from prdiffer.domain.exceptions import (
     FullDiffIncompleteError,
     FullDiffIncompleteReason,
@@ -284,21 +284,6 @@ class GitHubSessionPRDiffReader:
         capacity = max_concurrent if parallel_file_fetch_enabled else 1
         self._limiter = anyio.CapacityLimiter(capacity)
         self._logger = logger or get_logger()
-
-    async def get_pr_diff(self, repo_owner: str, repo_name: str, pr_number: int, /) -> PRDiff | None:
-        session = await self.open_pr_diff_session(repo_owner, repo_name, pr_number)
-        try:
-            return await session.build_pr_diff()
-        finally:
-            await session.aclose()
-
-    async def get_latest_commit_sha(self, repo_owner: str, repo_name: str, pr_number: int, /) -> str | None:
-        # Legacy surface for non-session callers; open a short session for metadata only.
-        session = await self.open_pr_diff_session(repo_owner, repo_name, pr_number)
-        try:
-            return session.snapshot.head_sha
-        finally:
-            await session.aclose()
 
     async def open_pr_diff_session(
         self,

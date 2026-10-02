@@ -3,8 +3,8 @@
 pytest suite: unit, integration, performance, root phase/client regression tests.
 
 ## OVERVIEW
-- **150** Python files under `tests/`
-- **~2565** `test_*` functions across **134** `test_*.py` files
+- **128** Python files under `tests/`
+- **~1874** `test_*` functions across **113** `test_*.py` files
 - Package under test: **prdiffer 0.6.2**
 - Shared fixtures: `tests/conftest.py` (auto env + singleton reset)
 - Largest suite remains under `unit/application/components/` (auth)
@@ -13,11 +13,10 @@ pytest suite: unit, integration, performance, root phase/client regression tests
 ```
 tests/
 ├── conftest.py                      # Markers, mocks, sample entities, auto-use env/singletons
-├── test_github_client.py            # Root client regression
 ├── test_cache_hashing.py            # Cache key hashing
 ├── test_phase{1-4}_improvements.py  # Historical phase regression suites
 ├── unit/
-│   ├── domain/                      # Entities, use cases, errors, registry, cache v2/v1, multi-ref
+│   ├── domain/                      # Entities, use cases, errors, strict cache identity, config
 │   ├── infrastructure/              # GitHub, GitLab (incl. vcs_providers/), cache, utils, DI, security, settings
 │   ├── application/                 # Tools, components, webhooks, health, factory GitLab ops wiring
 │   └── test_version_consistency.py / test_server_gitlab_composition.py
@@ -28,9 +27,9 @@ tests/
 ## WHERE TO LOOK
 | Task | Location | Notes |
 |------|----------|-------|
-| **Domain purity / entities** | `unit/domain/` | E5020, cache identity, session use case, GitLabConfig, multi-ref entities |
+| **Domain purity / entities** | `unit/domain/` | E5020, cache identity, session use case, GitLabConfig |
 | **Retry / CB / cache utils** | `unit/infrastructure/utils/` | Circuit breaker, retry, coalescing, cross-loop executor |
-| **GitHub adapters / full-diff** | `unit/infrastructure/github/` | Inventory, typed content, multi-ref batch, ordered processor, session |
+| **GitHub adapters / full-diff** | `unit/infrastructure/github/` | Inventory, git tree/blob content, ordered processor, generator, session |
 | **GitLab strict full-diff** | `unit/infrastructure/vcs_providers/`, `test_gitlab_*.py` | Runtime, session, assembler, inventory |
 | **GitLab MR approve/describe** | `unit/infrastructure/vcs_providers/test_gitlab_mr_operations.py` | Note-then-approve, empty body, error map, nested path, custom host |
 | **PR diff service / limits** | `unit/infrastructure/` | `test_pr_diff_service*`, `test_diff_limits`, concurrency defaults |
@@ -59,7 +58,7 @@ Registered in `conftest.pytest_configure` (and partially in `pyproject.toml`):
 - **Async**: production is anyio-first; tests largely use `@pytest.mark.asyncio` (pytest-asyncio). Some modules use `@pytest.mark.anyio`. Follow neighboring tests in the same package.
 - Auto-use fixtures: `set_test_environment` (`ENV_FOR_DYNACONF=testing`, dummy tokens), `reset_singletons` (cache/settings/logger).
 - GitLab allowlist tests may set `GITLAB_ALLOWED_HOSTS` via monkeypatch.
-- Multi-ref tests assert request order, capacity bounds, cache hit/miss identity, and fail-closed operational errors.
+- GitHub content tests use tree-capable fakes (`get_git_tree` / `get_git_blob`) and assert order, modes, and fail-closed E5020.
 - Live API suite `integration/test_real_github_api.py` is **always skipped** (`skipif(True)`); unit tests never require network.
 - CI: `.github/workflows/pr-quality.yml` runs `ruff check`, `ty check`, `pytest tests` on PRs to `main`/`develop` (`uv sync --frozen --group dev`).
 
@@ -74,7 +73,7 @@ uv run pytest tests -v --tb=short
 uv run pytest tests -m unit
 uv run pytest tests -m "not slow"
 uv run pytest tests/unit/infrastructure/vcs_providers/ -v
-uv run pytest tests/unit/infrastructure/github/ -k multi_ref -v
+uv run pytest tests/unit/infrastructure/github/ -k file_processor -v
 ```
 
 ## ANTI-PATTERNS

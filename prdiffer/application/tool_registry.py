@@ -10,7 +10,6 @@ from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 
 from prdiffer.domain.entities.pr_diff import PRDiff
-from prdiffer.domain.services.pr_diff_service import PRDiffServiceInterface
 from prdiffer.domain.services.cache import CacheServiceInterface
 from prdiffer.domain.services.logger import LoggerServiceInterface, LogLevel
 from prdiffer.domain.interfaces.protocols import (
@@ -21,7 +20,6 @@ from prdiffer.domain.interfaces.protocols import (
 from prdiffer.domain.interfaces.input_validation import InputValidatorProtocol
 from prdiffer.domain.interfaces.request_coalescing import RequestCoalescingProtocol
 from prdiffer.application.provider_resolver import ProviderCapabilityResolver
-from prdiffer.application.utils.pr_url_parser import parse_pr_url
 from prdiffer.application.pr_diff_executor import CoalescedPRDiffExecutionMixin
 
 from prdiffer.domain.exceptions import (
@@ -37,7 +35,7 @@ from prdiffer.domain.exceptions import (
     ProviderCapabilityUnavailableError,
     RateLimitError,
 )
-from prdiffer.domain.errors import (
+from prdiffer.domain.error_codes import (
     E1001_INVALID_URL,
     E2002_AUTH_FAILED,
     E3001_RATE_LIMITED,
@@ -54,7 +52,6 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
 
     def __init__(
         self,
-        pr_diff_service: PRDiffServiceInterface,
         cache_service: CacheServiceInterface,
         logger: LoggerServiceInterface,
         rate_limiter: RateLimiterProtocol,
@@ -63,16 +60,13 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
         authentication: AuthenticationProtocol | None = None,
         input_validator: InputValidatorProtocol | None = None,
         request_coalescing_service: RequestCoalescingProtocol | None = None,
-        cache_hit_optimization_enabled: bool = False,
         pr_diff_request_timeout_seconds: float | None = None,
     ):
-        self._pr_diff_service = pr_diff_service
         self._cache_service = cache_service
         self._logger = logger
         self._provider_resolver = provider_resolver
         self._rate_limiter = rate_limiter
         self._metrics_tracker = metrics_tracker
-        self._cache_hit_optimization_enabled = cache_hit_optimization_enabled
         self._pr_diff_request_timeout_seconds = pr_diff_request_timeout_seconds
         self._authentication = authentication
 
@@ -104,7 +98,7 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
             )
         self._rate_limiter.increment_rate_limit(client_id)
 
-    async def _authenticate_request(self, request_id: str, start_time: float, api_key: str | None) -> str | None:
+    async def _authenticate_request(self, request_id: str, start_time: float, api_key: str | None, *, operation: str) -> str | None:
         try:
             if self._authentication is None:
                 raise AuthenticationError(
@@ -114,7 +108,7 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
             is_authenticated, client_id = self._authentication.authenticate(api_key)
         except RuntimeError as e:
             execution_time = time.time() - start_time
-            self._metrics_tracker.track_request("get_pr_diff", False, execution_time)
+            self._metrics_tracker.track_request(operation, False, execution_time)
             self._logger.warning(
                 "Authentication rate limited",
                 request_id=request_id,
@@ -158,14 +152,6 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
             return safe_messages[exception_type]
 
         return "Request processing failed"
-
-    def _validate_and_sanitize_params(self, pr_url: str) -> tuple[str, str, int]:
-        if not pr_url:
-            raise InputSanitizationError("PR URL parameter is required")
-
-        pr_url = self._input_validator.sanitize_string(pr_url, max_length=2000)
-
-        return parse_pr_url(pr_url, self._input_validator)
 
     def _log_metrics_and_return_success(self, start_time: float, pr_diff: PRDiff) -> PRDiff:
         execution_time = time.time() - start_time
@@ -302,7 +288,7 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
                 pr_url=pr_url,
             )
 
-            client_id = await self._authenticate_request(request_id, start_time, api_key)
+            client_id = await self._authenticate_request(request_id, start_time, api_key, operation="get_pr_diff")
 
             rate_limit_client_id = client_id or "anonymous"
 
@@ -315,7 +301,6 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
                 target = self._provider_resolver.resolve_target(sanitized_pr_url, self._input_validator)
                 capability = self._provider_resolver.resolve_strict_diff(target)
                 pr_diff = await self._execute_use_case_with_coalescing(
-                    request_id,
                     target.repo_owner,
                     target.repo_name,
                     target.pr_number,
@@ -390,7 +375,7 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
                 pr_url=pr_url[:100] if pr_url else pr_url,
             )
 
-            client_id = await self._authenticate_request(request_id, start_time, api_key)
+            client_id = await self._authenticate_request(request_id, start_time, api_key, operation="approve_pr")
 
             rate_limit_client_id = client_id or "anonymous"
 
@@ -470,7 +455,7 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
                 pr_url=pr_url[:100] if pr_url else pr_url,
             )
 
-            client_id = await self._authenticate_request(request_id, start_time, api_key)
+            client_id = await self._authenticate_request(request_id, start_time, api_key, operation="describe_pr")
 
             rate_limit_client_id = client_id or "anonymous"
 

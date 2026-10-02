@@ -411,16 +411,6 @@ class TestCacheKeyConsistency:
 
         assert hash1 != hash2
 
-    @patch("prdiffer.infrastructure.settings.get_settings_service")
-    def test_get_cache_key_returns_original_format(self, mock_get_settings, mock_settings_hashing_enabled):
-        """Test that get_cache_key always returns original format."""
-        mock_get_settings.return_value = mock_settings_hashing_enabled
-        cache_service = CacheService()
-
-        # get_cache_key should return original format regardless of hashing config
-        cache_key = cache_service.get_cache_key("owner", "repo", 123)
-        assert cache_key == "owner/repo/pr/123"
-
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

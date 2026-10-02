@@ -6,7 +6,7 @@ Developer tooling: architecture analysis, full-diff benchmarks, git hooks.
 ```
 scripts/
 ├── analyze_dependencies.py    # Clean Architecture AST analyzer (264)
-├── bench_diff_generation.py   # Deterministic strict-v1 full-diff harness (~984; multi-ref API)
+├── bench_diff_generation.py   # Deterministic strict-v1 full-diff harness (git-tree fake repository)
 ├── setup-git-hooks.sh         # Install versioned hooks (82)
 └── git-hooks/
     ├── pre-push               # Runs type-check + lint

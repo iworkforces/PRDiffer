@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import Literal, assert_never
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from urllib.parse import urlparse
 
 import pytest
@@ -20,7 +20,6 @@ from prdiffer.domain.entities.pr_diff_cache import (
     gitlab_full_diff_v1_identity,
 )
 from prdiffer.domain.interfaces.pr_diff_reader import PRDiffReadSessionInterface, PRDiffSnapshot
-from prdiffer.domain.services.pr_diff_service import PRDiffServiceInterface
 from prdiffer.domain.exceptions import FullDiffIncompleteError, FullDiffIncompleteReason
 
 
@@ -57,12 +56,6 @@ class RecordingCache:
     def __init__(self) -> None:
         self.sets = 0
         self.store: dict[tuple[str, str], object] = {}
-
-    def get_cache_key(self, owner: str, repo: str, pr: int) -> str:
-        return f"{owner}/{repo}/{pr}"
-
-    async def get_optimistic(self, key: str):
-        return None, None
 
     async def get(self, key: str, token: str):
         return self.store.get((key, token))
@@ -143,7 +136,7 @@ class FakeSession(PRDiffReadSessionInterface):
         return None
 
 
-class FakeReader(PRDiffServiceInterface):
+class FakeReader:
     def __init__(self, pr_diff: PRDiff | None = None, *, provider: ProviderName = "github") -> None:
         self._pr_diff = pr_diff or PRDiff(files=())
         self._provider: ProviderName = provider
@@ -158,15 +151,6 @@ class FakeReader(PRDiffServiceInterface):
         base_url: str | None = None,
     ) -> PRDiffReadSessionInterface:
         return FakeSession(self._pr_diff, repo_owner, repo_name, pr_number, self._provider, base_url)
-
-    async def get_pr_diff(self, repo_owner: str, repo_name: str, pr_number: int) -> PRDiff | None:
-        return self._pr_diff
-
-    async def get_latest_commit_sha(self, repo_owner: str, repo_name: str, pr_number: int) -> str | None:
-        return "c" * 40
-
-    def validate_repository_access(self, repo_owner: str, repo_name: str) -> bool:
-        return True
 
 
 def _registry(
@@ -190,13 +174,12 @@ def _registry(
     validator.validate_gitlab_url.return_value = ("group/sub", "project", 42)
 
     cache_service = cache or RecordingCache()
-    pr_diff_service = FakeReader(pr_diff)
+    reader = FakeReader(pr_diff)
     registry = ToolRegistry(
-        pr_diff_service=pr_diff_service,
         cache_service=cache_service,
         logger=logger,
         provider_resolver=create_provider_capability_resolver(
-            github_reader=pr_diff_service,
+            github_reader=reader,
             github_repository_factory=MagicMock(),
             gitlab_reader=None,
             gitlab_operations=None,
@@ -206,7 +189,6 @@ def _registry(
         authentication=auth,
         input_validator=validator,
         request_coalescing_service=MagicMock(),
-        cache_hit_optimization_enabled=False,
     )
     registry._recording_cache = cache_service  # type: ignore[attr-defined]
     registry._metrics = metrics  # type: ignore[attr-defined]
@@ -233,16 +215,11 @@ async def test_registered_get_pr_diff_success_surface() -> None:
     names = {t.name for t in tools}
     assert "get_pr_diff" in names
 
-    with patch(
-        "prdiffer.application.tool_registry.parse_pr_target",
-        create=True,
-        return_value=MagicMock(provider="github", repo_owner="owner", repo_name="repo", pr_number=1),
-    ):
-        # Call tool through FastMCP call_tool if available
-        result = await mcp.call_tool(
-            "get_pr_diff",
-            {"pr_url": "https://github.com/owner/repo/pull/1"},
-        )
+    # Call tool through FastMCP call_tool if available
+    result = await mcp.call_tool(
+        "get_pr_diff",
+        {"pr_url": "https://github.com/owner/repo/pull/1"},
+    )
 
     # Prefer structured_content from FastMCP ToolResult
     if hasattr(result, "structured_content") and result.structured_content:
@@ -282,16 +259,11 @@ async def test_registered_get_pr_diff_strict_binary_failure() -> None:
     registry = _registry(fail=err)
     registry.register_tools(mcp)
 
-    with patch(
-        "prdiffer.application.tool_registry.parse_pr_target",
-        create=True,
-        return_value=MagicMock(provider="github", repo_owner="owner", repo_name="repo", pr_number=1),
-    ):
-        with pytest.raises(ToolError) as exc_info:
-            await mcp.call_tool(
-                "get_pr_diff",
-                {"pr_url": "https://github.com/owner/repo/pull/1"},
-            )
+    with pytest.raises(ToolError) as exc_info:
+        await mcp.call_tool(
+            "get_pr_diff",
+            {"pr_url": "https://github.com/owner/repo/pull/1"},
+        )
 
     # FastMCP.call_tool raises ToolError; wire protocol maps this to isError=true.
     # Body is compact JSON with stable top-level keys and safe E5020 details only.
@@ -330,15 +302,10 @@ async def test_gitlab_nested_success_and_e5020_surface() -> None:
     registry._provider_resolver.register_strict_diff("gitlab", StrictDiffCapability(gitlab_reader, "gitlab"))
     registry.register_tools(mcp)
 
-    with patch(
-        "prdiffer.application.tool_registry.parse_pr_target",
-        create=True,
-        return_value=MagicMock(provider="gitlab", repo_owner="group/sub", repo_name="project", pr_number=42),
-    ):
-        result = await mcp.call_tool(
-            "get_pr_diff",
-            {"pr_url": "https://gitlab.com/group/sub/project/-/merge_requests/42"},
-        )
+    result = await mcp.call_tool(
+        "get_pr_diff",
+        {"pr_url": "https://gitlab.com/group/sub/project/-/merge_requests/42"},
+    )
     if hasattr(result, "structured_content") and result.structured_content:
         payload = result.structured_content
     else:
@@ -375,16 +342,11 @@ async def test_gitlab_nested_success_and_e5020_surface() -> None:
     reg2 = _registry(fail=err)
     reg2._provider_resolver.register_strict_diff("gitlab", StrictDiffCapability(FakeReader(provider="gitlab"), "gitlab"))
     reg2.register_tools(mcp2)
-    with patch(
-        "prdiffer.application.tool_registry.parse_pr_target",
-        create=True,
-        return_value=MagicMock(provider="gitlab", repo_owner="group/sub", repo_name="project", pr_number=42),
-    ):
-        with pytest.raises(ToolError) as exc:
-            await mcp2.call_tool(
-                "get_pr_diff",
-                {"pr_url": "https://gitlab.com/group/sub/project/-/merge_requests/42"},
-            )
+    with pytest.raises(ToolError) as exc:
+        await mcp2.call_tool(
+            "get_pr_diff",
+            {"pr_url": "https://gitlab.com/group/sub/project/-/merge_requests/42"},
+        )
     body = json.loads(str(exc.value))
     assert body["error_code"] == "E5020_FULL_DIFF_INCOMPLETE"
     assert "files" not in body
@@ -403,13 +365,8 @@ async def test_all_e5020_reasons_nonpartial_uncached_metric(reason: FullDiffInco
     mcp = FastMCP(f"e5020-{reason.value}")
     registry.register_tools(mcp)
 
-    with patch(
-        "prdiffer.application.tool_registry.parse_pr_target",
-        create=True,
-        return_value=MagicMock(provider="github", repo_owner="owner", repo_name="repo", pr_number=1),
-    ):
-        with pytest.raises(ToolError) as ei:
-            await mcp.call_tool("get_pr_diff", {"pr_url": "https://github.com/owner/repo/pull/1"})
+    with pytest.raises(ToolError) as ei:
+        await mcp.call_tool("get_pr_diff", {"pr_url": "https://github.com/owner/repo/pull/1"})
 
     payload = json.loads(str(ei.value))
     assert payload["error_code"] == "E5020_FULL_DIFF_INCOMPLETE"
@@ -449,7 +406,6 @@ async def test_real_use_case_empty_success_writes_cache_once_via_coalescer() -> 
 
     reader = FakeReader(empty)
     registry = ToolRegistry(
-        pr_diff_service=reader,
         cache_service=cache,  # type: ignore[arg-type]
         logger=logger,
         provider_resolver=create_provider_capability_resolver(
@@ -463,19 +419,13 @@ async def test_real_use_case_empty_success_writes_cache_once_via_coalescer() -> 
         authentication=auth,
         input_validator=validator,
         request_coalescing_service=RequestCoalescingService(max_waiters=10),
-        cache_hit_optimization_enabled=False,
     )
     mcp = FastMCP("empty-real-uc")
     registry.register_tools(mcp)
 
-    with patch(
-        "prdiffer.application.tool_registry.parse_pr_target",
-        create=True,
-        return_value=MagicMock(provider="github", repo_owner="owner", repo_name="repo", pr_number=1),
-    ):
-        result = await mcp.call_tool("get_pr_diff", {"pr_url": "https://github.com/owner/repo/pull/1"})
-        # Second call should hit cache (no second set)
-        result2 = await mcp.call_tool("get_pr_diff", {"pr_url": "https://github.com/owner/repo/pull/1"})
+    result = await mcp.call_tool("get_pr_diff", {"pr_url": "https://github.com/owner/repo/pull/1"})
+    # Second call should hit cache (no second set)
+    result2 = await mcp.call_tool("get_pr_diff", {"pr_url": "https://github.com/owner/repo/pull/1"})
 
     if hasattr(result, "structured_content") and result.structured_content:
         payload = result.structured_content
@@ -501,12 +451,7 @@ async def test_authoritative_empty_success_writes_cache_once() -> None:
     empty = PRDiff(files=())
     registry = _registry(empty)
     registry.register_tools(mcp)
-    with patch(
-        "prdiffer.application.tool_registry.parse_pr_target",
-        create=True,
-        return_value=MagicMock(provider="github", repo_owner="owner", repo_name="repo", pr_number=1),
-    ):
-        result = await mcp.call_tool("get_pr_diff", {"pr_url": "https://github.com/owner/repo/pull/1"})
+    result = await mcp.call_tool("get_pr_diff", {"pr_url": "https://github.com/owner/repo/pull/1"})
     if hasattr(result, "structured_content") and result.structured_content:
         payload = result.structured_content
     else:
@@ -528,20 +473,15 @@ async def test_operational_rate_limit_not_remapped_to_e5020() -> None:
     import json
     from fastmcp.exceptions import ToolError
     from prdiffer.domain.exceptions import RateLimitError
-    from prdiffer.domain.errors import E3001_RATE_LIMITED
+    from prdiffer.domain.error_codes import E3001_RATE_LIMITED
 
     cache = RecordingCache()
     err = RateLimitError("slow down", retry_after=30, error_code=E3001_RATE_LIMITED)
     registry = _registry(fail=err, cache=cache)
     mcp = FastMCP("rate-limit")
     registry.register_tools(mcp)
-    with patch(
-        "prdiffer.application.tool_registry.parse_pr_target",
-        create=True,
-        return_value=MagicMock(provider="github", repo_owner="owner", repo_name="repo", pr_number=1),
-    ):
-        with pytest.raises(ToolError) as ei:
-            await mcp.call_tool("get_pr_diff", {"pr_url": "https://github.com/owner/repo/pull/1"})
+    with pytest.raises(ToolError) as ei:
+        await mcp.call_tool("get_pr_diff", {"pr_url": "https://github.com/owner/repo/pull/1"})
     body = str(ei.value)
     # Should not be structured E5020 incomplete
     if body.strip().startswith("{"):

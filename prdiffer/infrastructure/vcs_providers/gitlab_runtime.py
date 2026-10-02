@@ -281,18 +281,17 @@ class GitLabRuntime:
         timeout = min(float(self._config.timeout), remaining)
         url = (base_url or self._default_base_url or GITLAB_COM_URL).rstrip("/")
         self.ensure_host_allowed(url)
-        max_retry_after = max(0, int(math.floor(remaining)))
         client = self._client_factory(
             url,
             private_token=self._private_token,
             timeout=timeout,
             retry_transient_errors=self._config.retry_transient_errors,
         )
-        self._install_request_defaults(client, max_retry_after=max_retry_after)
+        self._install_request_defaults(client)
         return client
 
-    def _install_request_defaults(self, client: object, *, max_retry_after: int) -> None:
-        """Inject max_retries, obey_rate_limit, and bound Retry-After waits."""
+    def _install_request_defaults(self, client: object) -> None:
+        """Inject max_retries and obey_rate_limit defaults into SDK requests."""
         original = getattr(client, "http_request", None)
         if original is None or not callable(original):
             return
@@ -302,10 +301,6 @@ class GitLabRuntime:
         def http_request(*args: object, **kwargs: object) -> object:
             kwargs.setdefault("max_retries", max_retries)
             kwargs.setdefault("obey_rate_limit", obey)
-            # Bound SDK rate-limit sleep when callers pass through headers path;
-            # python-gitlab 8.5 has no max_retry_after ctor flag — clamp via
-            # remaining budget already applied as client timeout.
-            _ = max_retry_after
             return original(*args, **kwargs)
 
         setattr(client, "http_request", http_request)

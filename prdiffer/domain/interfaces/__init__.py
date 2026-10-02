@@ -1,6 +1,4 @@
-"""Domain interfaces module.
+"""Domain interfaces (ports) for PRDiffer.
 
-This module re-exports all protocol definitions from the domain layer,
-following Clean Architecture principles where domain interfaces should
-not depend on application or infrastructure layers.
+Import protocols from their concrete modules; this package has no re-exports.
 """

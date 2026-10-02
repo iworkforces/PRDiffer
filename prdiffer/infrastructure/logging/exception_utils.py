@@ -3,7 +3,6 @@
 import re
 import traceback
 from typing import Any
-from types import TracebackType
 
 
 class ExceptionSanitizer:
@@ -61,17 +60,13 @@ class ExceptionSanitizer:
     @classmethod
     def sanitize_traceback(
         cls,
-        exc_type: type | None = None,
         exc_value: BaseException | None = None,
-        exc_traceback: TracebackType | None = None,
         max_frames: int = 10,
     ) -> str:
         """Sanitize a traceback for safe logging.
 
         Args:
-            exc_type: Exception type
             exc_value: Exception instance
-            exc_traceback: Traceback object
             max_frames: Maximum number of stack frames to include
 
         Returns:
@@ -119,7 +114,7 @@ class ExceptionSanitizer:
         }
 
         if include_traceback and exc_traceback is not None:
-            result["traceback"] = cls.sanitize_traceback(exc_type, exc_value, exc_traceback)[:max_length]
+            result["traceback"] = cls.sanitize_traceback(exc_value)[:max_length]
 
         return result
 
@@ -235,17 +230,13 @@ def sanitize_exception_message(exception: Exception, max_length: int = 500) -> s
 
 
 def sanitize_traceback(
-    exc_type: type | None = None,
     exc_value: BaseException | None = None,
-    exc_traceback: TracebackType | None = None,
     max_frames: int = 10,
 ) -> str:
     """Convenience function for sanitizing tracebacks.
 
     Args:
-        exc_type: Exception type (kept for backward compatibility)
         exc_value: Exception instance
-        exc_traceback: Traceback object (kept for backward compatibility)
         max_frames: Maximum number of stack frames to include
 
     Returns:

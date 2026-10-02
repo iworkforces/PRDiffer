@@ -266,30 +266,18 @@ class TestStructuredErrorCodes:
 
     def test_error_code_string_format(self):
         """Test error code string representation."""
-        from prdiffer.domain.errors import E1001_INVALID_URL
+        from prdiffer.domain.error_codes import E1001_INVALID_URL
 
         assert str(E1001_INVALID_URL) == "E1001_INVALID_URL"
 
-    def test_error_code_to_dict(self):
-        """Test error code conversion to dictionary."""
-        from prdiffer.domain.errors import E1001_INVALID_URL
-
-        result = E1001_INVALID_URL.to_dict()
-
-        assert "error_code" in result
-        assert "message" in result
-        assert "remediation" in result
-        assert "category" in result
-        assert result["error_code"] == "E1001_INVALID_URL"
-
     def test_input_validation_errors(self):
         """Test input validation error codes."""
-        from prdiffer.domain.errors import (
+        from prdiffer.domain.errors import ErrorCategory
+        from prdiffer.domain.error_codes import (
             E1001_INVALID_URL,
             E1002_INVALID_REPOSITORY,
             E1003_INVALID_PR_NUMBER,
             E1004_SUSPICIOUS_INPUT,
-            ErrorCategory,
         )
 
         errors = [
@@ -305,11 +293,11 @@ class TestStructuredErrorCodes:
 
     def test_authentication_errors(self):
         """Test authentication error codes."""
-        from prdiffer.domain.errors import (
+        from prdiffer.domain.errors import ErrorCategory
+        from prdiffer.domain.error_codes import (
             E2001_AUTH_REQUIRED,
             E2002_AUTH_FAILED,
             E2003_INSUFFICIENT_PERMISSIONS,
-            ErrorCategory,
         )
 
         errors = [
@@ -324,10 +312,10 @@ class TestStructuredErrorCodes:
 
     def test_rate_limiting_errors(self):
         """Test rate limiting error codes."""
-        from prdiffer.domain.errors import (
+        from prdiffer.domain.errors import ErrorCategory
+        from prdiffer.domain.error_codes import (
             E3001_RATE_LIMITED,
             E3002_SECONDARY_RATE_LIMIT,
-            ErrorCategory,
         )
 
         errors = [E3001_RATE_LIMITED, E3002_SECONDARY_RATE_LIMIT]
@@ -338,11 +326,11 @@ class TestStructuredErrorCodes:
 
     def test_not_found_errors(self):
         """Test resource not found error codes."""
-        from prdiffer.domain.errors import (
+        from prdiffer.domain.errors import ErrorCategory
+        from prdiffer.domain.error_codes import (
             E4001_REPO_NOT_FOUND,
             E4002_PR_NOT_FOUND,
             E4003_FILE_NOT_FOUND,
-            ErrorCategory,
         )
 
         errors = [E4001_REPO_NOT_FOUND, E4002_PR_NOT_FOUND, E4003_FILE_NOT_FOUND]
@@ -353,11 +341,11 @@ class TestStructuredErrorCodes:
 
     def test_internal_errors(self):
         """Test internal server error codes."""
-        from prdiffer.domain.errors import (
+        from prdiffer.domain.errors import ErrorCategory
+        from prdiffer.domain.error_codes import (
             E5001_INTERNAL_ERROR,
             E5002_GITHUB_API_ERROR,
             E5003_DIFF_GENERATION_ERROR,
-            ErrorCategory,
         )
 
         errors = [
@@ -369,149 +357,6 @@ class TestStructuredErrorCodes:
         for error in errors:
             assert error.category == ErrorCategory.INTERNAL
             assert error.code.startswith("E5")
-
-
-class TestMCPErrorException:
-    """Tests for MCPError exception class."""
-
-    def test_mcp_error_creation(self):
-        """Test MCPError exception creation."""
-        from prdiffer.domain.errors import MCPError, E1001_INVALID_URL
-
-        error = MCPError(E1001_INVALID_URL)
-
-        assert error.error_code == E1001_INVALID_URL
-        assert error.detail is None
-        assert error.context == {}
-
-    def test_mcp_error_with_detail(self):
-        """Test MCPError with additional detail."""
-        from prdiffer.domain.errors import MCPError, E1001_INVALID_URL
-
-        error = MCPError(E1001_INVALID_URL, detail="URL missing protocol")
-
-        assert error.detail == "URL missing protocol"
-
-    def test_mcp_error_with_context(self):
-        """Test MCPError with context information."""
-        from prdiffer.domain.errors import MCPError, E1001_INVALID_URL
-
-        error = MCPError(E1001_INVALID_URL, context={"provided_url": "invalid://url"})
-
-        assert error.context["provided_url"] == "invalid://url"
-
-    def test_mcp_error_to_dict(self):
-        """Test MCPError conversion to dictionary."""
-        from prdiffer.domain.errors import MCPError, E1001_INVALID_URL
-
-        error = MCPError(E1001_INVALID_URL, detail="Missing protocol", context={"url": "test"})
-
-        result = error.to_dict()
-
-        assert "error_code" in result
-        assert "message" in result
-        assert "detail" in result
-        assert "context" in result
-        assert result["detail"] == "Missing protocol"
-
-    def test_category_specific_exceptions(self):
-        """Test category-specific exception classes."""
-        from prdiffer.domain.errors import (
-            InputValidationError,
-            AuthenticationError,
-            RateLimitError,
-            ResourceNotFoundError,
-            InternalServerError,
-            MCPError,
-            E1001_INVALID_URL,
-            E2001_AUTH_REQUIRED,
-            E3001_RATE_LIMITED,
-            E4001_REPO_NOT_FOUND,
-            E5001_INTERNAL_ERROR,
-        )
-
-        # All should be subclasses of MCPError
-        assert issubclass(InputValidationError, MCPError)
-        assert issubclass(AuthenticationError, MCPError)
-        assert issubclass(RateLimitError, MCPError)
-        assert issubclass(ResourceNotFoundError, MCPError)
-        assert issubclass(InternalServerError, MCPError)
-
-        # Create instances
-        errors = [
-            InputValidationError(E1001_INVALID_URL),
-            AuthenticationError(E2001_AUTH_REQUIRED),
-            RateLimitError(E3001_RATE_LIMITED),
-            ResourceNotFoundError(E4001_REPO_NOT_FOUND),
-            InternalServerError(E5001_INTERNAL_ERROR),
-        ]
-
-        for error in errors:
-            assert isinstance(error, MCPError)
-
-
-class TestErrorHandlingUtilities:
-    """Tests for error handling utility functions."""
-
-    def test_get_error_for_exception_known_types(self):
-        """Test mapping known exception types to error codes."""
-        from prdiffer.domain.errors import (
-            get_error_for_exception,
-            E1001_INVALID_URL,
-            E5004_TIMEOUT_ERROR,
-        )
-
-        # Simulate known exception types
-        class FakeInvalidURLError(Exception):
-            pass
-
-        class FakeRateLimitExceededException(Exception):
-            pass
-
-        # Note: We're testing the mapping by name, not actual exception types
-        # because we don't want to import github exceptions
-        assert get_error_for_exception(ValueError("test")).code == E1001_INVALID_URL.code
-        assert get_error_for_exception(TimeoutError("test")).code == E5004_TIMEOUT_ERROR.code
-
-    def test_get_error_for_exception_unknown_type(self):
-        """Test mapping unknown exception types to internal error."""
-        from prdiffer.domain.errors import (
-            get_error_for_exception,
-            E5001_INTERNAL_ERROR,
-        )
-
-        class CustomError(Exception):
-            pass
-
-        result = get_error_for_exception(CustomError("test"))
-        assert result == E5001_INTERNAL_ERROR
-
-    def test_create_error_response_basic(self):
-        """Test creating basic error response."""
-        from prdiffer.domain.errors import create_error_response, E1001_INVALID_URL
-
-        response = create_error_response(E1001_INVALID_URL)
-
-        assert response["success"] is False
-        assert "error" in response
-        assert response["error"]["error_code"] == "E1001_INVALID_URL"
-
-    def test_create_error_response_with_detail(self):
-        """Test creating error response with detail."""
-        from prdiffer.domain.errors import create_error_response, E1001_INVALID_URL
-
-        response = create_error_response(E1001_INVALID_URL, detail="Missing protocol in URL")
-
-        assert response["error"]["detail"] == "Missing protocol in URL"
-
-    def test_create_error_response_with_context(self):
-        """Test creating error response with context."""
-        from prdiffer.domain.errors import create_error_response, E1001_INVALID_URL
-
-        response = create_error_response(E1001_INVALID_URL, context={"provided_url": "invalid://url"})
-
-        assert "context" in response["error"]
-        assert response["error"]["context"]["provided_url"] == "invalid://url"
 
 
 # =============================================================================
@@ -568,21 +413,3 @@ class TestPhase3Integration:
         # Verify files array works correctly
         assert len(diff.files) == 1
         assert diff.files[0].diff.startswith("@@")
-
-    def test_error_handling_flow(self):
-        """Test complete error handling flow."""
-        from prdiffer.domain.errors import (
-            MCPError,
-            E1001_INVALID_URL,
-            create_error_response,
-        )
-
-        # Simulate error occurrence
-        try:
-            raise MCPError(E1001_INVALID_URL, detail="No PR number in URL")
-        except MCPError as e:
-            response = create_error_response(e.error_code, detail=e.detail, context=e.context)
-
-        assert response["success"] is False
-        assert response["error"]["detail"] == "No PR number in URL"
-        assert "remediation" in response["error"]

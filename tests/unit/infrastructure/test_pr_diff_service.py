@@ -1,6 +1,9 @@
+from typing import Any, cast
+
 import pytest
 
 from prdiffer.domain.entities.file_patch import FilePatchInfo, EDIT_TYPE
+from prdiffer.domain.entities.generated_file_diff import GeneratedFileDiff
 from prdiffer.infrastructure.services.pr_diff_service import GitHubPRDiffService
 
 
@@ -8,37 +11,19 @@ class DummyGitHubAPI:
     def initialize_client(self, github_token=None, timeout=30):
         return None
 
-    def get_repository(self, repo_full_name):
-        return object()
 
-    def get_pull_request(self, repository, pr_number):
-        return DummyPullRequest()
-
-    def _get_pygithub_repository(self, repo_full_name):
-        return object()
-
-    def _get_pygithub_pull_request(self, repository, pr_number):
-        return DummyPullRequest()
+class OversizedDiffGenerator:
+    def generate_ordered_file_diffs(self, file_patches: list[FilePatchInfo]) -> list[GeneratedFileDiff]:
+        return [GeneratedFileDiff(index=i, path=p.filename, previous_path=None, diff="+" * 50) for i, p in enumerate(file_patches)]
 
 
-class DummyHead:
-    def __init__(self, sha):
-        self.sha = sha
-
-
-class DummyPullRequest:
-    def __init__(self):
-        self.head = DummyHead("dummy-sha")
-
-
-@pytest.mark.asyncio
-async def test_get_pr_diff_rejects_oversized_response(monkeypatch):
+def test_build_pr_diff_strict_rejects_oversized_response():
     from prdiffer.domain.exceptions import FullDiffIncompleteError, FullDiffIncompleteReason
 
     service = GitHubPRDiffService(
-        github_api_client=DummyGitHubAPI(),
-        diff_generator=None,
-        file_processor=None,
+        github_api_client=cast(Any, DummyGitHubAPI()),
+        diff_generator=cast(Any, OversizedDiffGenerator()),
+        file_processor=cast(Any, object()),
         logger=None,
     )
 
@@ -52,27 +37,8 @@ async def test_get_pr_diff_rejects_oversized_response(monkeypatch):
         )
     ]
 
-    monkeypatch.setattr(
-        service,
-        "_generate_diff_content",
-        lambda *_: diff_files,
-    )
-
     service._diff_max_total_chars = 10
 
     with pytest.raises(FullDiffIncompleteError) as exc:
-        await service.get_pr_diff("owner", "repo", 1)
+        service._build_pr_diff_strict(diff_files)
     assert exc.value.reason is FullDiffIncompleteReason.RESPONSE_SIZE_LIMIT
-
-
-@pytest.mark.asyncio
-async def test_get_latest_commit_sha_uses_head_sha():
-    service = GitHubPRDiffService(
-        github_api_client=DummyGitHubAPI(),
-        diff_generator=None,
-        file_processor=None,
-        logger=None,
-    )
-
-    sha = await service.get_latest_commit_sha("owner", "repo", 1)
-    assert sha == "dummy-sha"

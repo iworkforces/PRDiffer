@@ -7,7 +7,6 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from prdiffer.domain.services.cache import CacheServiceInterface
-from prdiffer.domain.services.repository_cache import RepositoryCacheServiceInterface
 from prdiffer.domain.services.logger import LoggerServiceInterface
 from prdiffer.domain.interfaces.protocols import (
     MetricsTrackerProtocol,
@@ -25,7 +24,6 @@ class HealthEndpoints:
         health_monitor: HealthMonitorProtocol,
         metrics_tracker: MetricsTrackerProtocol,
         cache_service: CacheServiceInterface,
-        repository_cache_service: RepositoryCacheServiceInterface,
         authentication: AuthenticationProtocol,
         request_coalescing: RequestCoalescingProtocol,
         logger: LoggerServiceInterface,
@@ -33,7 +31,6 @@ class HealthEndpoints:
         self._health_monitor = health_monitor
         self._metrics_tracker = metrics_tracker
         self._cache_service = cache_service
-        self._repository_cache_service = repository_cache_service
         self._authentication = authentication
         self._request_coalescing = request_coalescing
         self._logger = logger
@@ -43,7 +40,6 @@ class HealthEndpoints:
         health_status = self._health_monitor.check_health()
         health_status["authentication"] = self._authentication.get_status()
         health_status["cache"] = self._cache_service.get_stats()
-        health_status["repository_cache"] = self._repository_cache_service.stats()
         health_status["request_coalescing"] = await self._request_coalescing.get_stats()
         return health_status
 

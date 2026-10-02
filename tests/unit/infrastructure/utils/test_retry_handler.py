@@ -20,7 +20,7 @@ class TestUnifiedRetryHandler:
 
     @pytest.fixture
     def retry_handler(self):
-        """Create RetryHandler instance for testing."""
+        """Create UnifiedRetryHandler instance for testing."""
         return UnifiedRetryHandler(
             max_retries=3,
             retry_delay=0.1,  # Short delay for testing
@@ -84,7 +84,7 @@ class TestRetryHandlerCircuitBreaker:
 
     @pytest.fixture
     def retry_handler_with_circuit_breaker(self):
-        """Create RetryHandler with circuit breaker enabled."""
+        """Create UnifiedRetryHandler with circuit breaker enabled."""
         return UnifiedRetryHandler(
             max_retries=3,
             retry_delay=0.1,
@@ -122,7 +122,7 @@ class TestRetryHandlerErrorClassification:
 
     @pytest.fixture
     def retry_handler(self):
-        """Create RetryHandler instance for testing."""
+        """Create UnifiedRetryHandler instance for testing."""
         return UnifiedRetryHandler()
 
     def test_should_retry_connection_error(self, retry_handler):
@@ -153,7 +153,7 @@ class TestRetryHandlerAsync:
 
     @pytest.fixture
     def retry_handler(self):
-        """Create RetryHandler instance for testing."""
+        """Create UnifiedRetryHandler instance for testing."""
         return UnifiedRetryHandler(
             max_retries=3,  # Total attempts = 3 (not initial + retries)
             retry_delay=0.1,

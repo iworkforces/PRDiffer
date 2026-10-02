@@ -12,7 +12,7 @@ from prdiffer.domain.entities.pr_diff_cache import (
     StrictPRDiffCacheIdentity,
     gitlab_full_diff_v1_identity,
 )
-from prdiffer.domain.errors import E5004_TIMEOUT_ERROR, E5009_CONFIGURATION_ERROR
+from prdiffer.domain.error_codes import E5004_TIMEOUT_ERROR, E5009_CONFIGURATION_ERROR
 from prdiffer.domain.exceptions import PRDifferException, TimeoutError as DomainTimeoutError
 from prdiffer.domain.interfaces.pr_diff_reader import PRDiffReadSessionInterface, PRDiffSnapshot
 from prdiffer.infrastructure.vcs_providers.gitlab_content import GitLabContentFetcher
@@ -195,33 +195,3 @@ class GitLabSessionPRDiffReader:
             deadline_monotonic=deadline,
             base_url=url,
         )
-
-    async def get_pr_diff(
-        self,
-        repo_owner: str,
-        repo_name: str,
-        pr_number: int,
-        /,
-        *,
-        base_url: str | None = None,
-    ) -> PRDiff | None:
-        session = await self.open_pr_diff_session(repo_owner, repo_name, pr_number, base_url=base_url)
-        try:
-            return await session.build_pr_diff()
-        finally:
-            await session.aclose()
-
-    async def get_latest_commit_sha(
-        self,
-        repo_owner: str,
-        repo_name: str,
-        pr_number: int,
-        /,
-        *,
-        base_url: str | None = None,
-    ) -> str | None:
-        session = await self.open_pr_diff_session(repo_owner, repo_name, pr_number, base_url=base_url)
-        try:
-            return session.snapshot.head_sha
-        finally:
-            await session.aclose()

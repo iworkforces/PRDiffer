@@ -185,7 +185,11 @@ class TestGitLabSessionReader:
             assembler=assembler,
             config=GitLabConfig(),
         )
-        result = await reader.get_pr_diff("group/sub", "project", 42)
+        session = await reader.open_pr_diff_session("group/sub", "project", 42)
+        try:
+            result = await session.build_pr_diff()
+        finally:
+            await session.aclose()
         assert result is not None
         runtime.ensure_host_allowed.assert_called()
         runtime.run_blocking.assert_awaited()

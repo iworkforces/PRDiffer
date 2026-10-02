@@ -1,135 +1,20 @@
 """Comprehensive tests for injection_detector.py."""
 
-from unittest.mock import Mock
-
 from prdiffer.infrastructure.security.injection_detector import (
-    SecurityPatterns,
     InjectionDetector,
     _detector,
 )
 
 
-class TestSecurityPatterns:
-    """Tests for SecurityPatterns dataclass."""
-
-    def test_create_with_patterns(self):
-        """Test creating SecurityPatterns with custom patterns."""
-        patterns = SecurityPatterns(
-            command_injection=[r"\$\(", r"`"],
-            path_traversal=[r"\.\.", r"~/"],
-            sql_injection=[r"--", r"UNION"],
-        )
-        assert patterns.command_injection == [r"\$\(", r"`"]
-        assert patterns.path_traversal == [r"\.\.", r"~/"]
-        assert patterns.sql_injection == [r"--", r"UNION"]
-
-    def test_from_settings_none(self):
-        """Test from_settings with None returns defaults."""
-        patterns = SecurityPatterns.from_settings(None)
-        assert patterns.command_injection is not None
-        assert patterns.path_traversal is not None
-        assert patterns.sql_injection is not None
-
-    def test_from_settings_empty_settings(self):
-        """Test from_settings with settings that have no patterns."""
-        mock_settings = Mock()
-        mock_settings.get.return_value = []
-        patterns = SecurityPatterns.from_settings(mock_settings)
-        assert len(patterns.command_injection) > 0
-
-    def test_from_settings_with_command_patterns(self):
-        """Test from_settings loads command injection patterns."""
-        mock_settings = Mock()
-        mock_settings.get.side_effect = lambda key, default: [r"custom_pattern"] if "command" in key else []
-        patterns = SecurityPatterns.from_settings(mock_settings)
-        assert r"custom_pattern" in patterns.command_injection
-
-    def test_from_settings_with_path_patterns(self):
-        """Test from_settings loads path traversal patterns."""
-        mock_settings = Mock()
-        mock_settings.get.side_effect = lambda key, default: [r"custom_path"] if "path" in key else []
-        patterns = SecurityPatterns.from_settings(mock_settings)
-        assert r"custom_path" in patterns.path_traversal
-
-    def test_from_settings_with_sql_patterns(self):
-        """Test from_settings loads SQL injection patterns."""
-        mock_settings = Mock()
-        mock_settings.get.side_effect = lambda key, default: [r"custom_sql"] if "sql" in key else []
-        patterns = SecurityPatterns.from_settings(mock_settings)
-        assert r"custom_sql" in patterns.sql_injection
-
-    def test_from_settings_exception_falls_back(self):
-        """Test from_settings falls back on exception."""
-        mock_settings = Mock()
-        mock_settings.get.side_effect = KeyError("test")
-        patterns = SecurityPatterns.from_settings(mock_settings)
-        assert patterns.command_injection is not None
-
-    def test_compile_command_injection(self):
-        """Test compiling command injection patterns."""
-        patterns = SecurityPatterns(
-            command_injection=[r"\$\(", r"`"],
-            path_traversal=[],
-            sql_injection=[],
-        )
-        compiled = patterns.compile_command_injection()
-        assert compiled.search("$(whoami)") is not None
-        assert compiled.search("`id`") is not None
-
-    def test_compile_path_traversal(self):
-        """Test compiling path traversal patterns."""
-        patterns = SecurityPatterns(
-            command_injection=[],
-            path_traversal=[r"\.\.", r"~/"],
-            sql_injection=[],
-        )
-        compiled = patterns.compile_path_traversal()
-        assert compiled.search("../../../etc/passwd") is not None
-        assert compiled.search("~/secret") is not None
-
-    def test_compile_sql_injection(self):
-        """Test compiling SQL injection patterns."""
-        patterns = SecurityPatterns(
-            command_injection=[],
-            path_traversal=[],
-            sql_injection=[r"--", r"UNION"],
-        )
-        compiled = patterns.compile_sql_injection()
-        assert compiled.search("SELECT * -- comment") is not None
-        assert compiled.search("1 UNION SELECT") is not None
-
-
 class TestInjectionDetectorInit:
     """Tests for InjectionDetector initialization."""
 
-    def test_init_default(self):
-        """Test default initialization uses class patterns."""
+    def test_init_uses_precompiled_default_patterns(self):
+        """Instances detect with the class-level precompiled default regexes."""
         detector = InjectionDetector()
-        assert detector._security_patterns is None
-        assert detector._command_injection_compiled is None
-
-    def test_init_with_custom_patterns(self):
-        """Test initialization with custom patterns."""
-        patterns = SecurityPatterns(
-            command_injection=[r"test"],
-            path_traversal=[r"test"],
-            sql_injection=[r"test"],
-        )
-        detector = InjectionDetector(security_patterns=patterns)
-        assert detector._security_patterns is patterns
-        assert detector._command_injection_compiled is not None
-
-    def test_init_compiles_custom_patterns(self):
-        """Test that custom patterns are compiled on init."""
-        patterns = SecurityPatterns(
-            command_injection=[r"\$\("],
-            path_traversal=[r"\.\."],
-            sql_injection=[r"--"],
-        )
-        detector = InjectionDetector(security_patterns=patterns)
-        assert detector._command_injection_compiled.search("$(test)") is not None
-        assert detector._path_traversal_compiled.search("../test") is not None
-        assert detector._sql_injection_compiled.search("-- comment") is not None
+        assert detector._COMMAND_INJECTION_COMPILED is InjectionDetector._COMMAND_INJECTION_COMPILED
+        assert detector._PATH_TRAVERSAL_COMPILED is InjectionDetector._PATH_TRAVERSAL_COMPILED
+        assert detector._SQL_INJECTION_COMPILED is InjectionDetector._SQL_INJECTION_COMPILED
 
 
 class TestCheckSuspiciousPatterns:
@@ -164,16 +49,12 @@ class TestCheckSuspiciousPatterns:
         assert detector.check_suspicious_patterns("-- comment") is True
         assert detector.check_suspicious_patterns("UNION SELECT") is True
 
-    def test_custom_patterns_used(self):
-        """Test custom patterns are used when provided."""
-        patterns = SecurityPatterns(
-            command_injection=[r"CUSTOM_PATTERN"],
-            path_traversal=[r"NEVER_MATCH"],
-            sql_injection=[r"NEVER_MATCH"],
-        )
-        detector = InjectionDetector(security_patterns=patterns)
-        assert detector.check_suspicious_patterns("CUSTOM_PATTERN") is True
-        assert detector.check_suspicious_patterns("safe input") is False
+    def test_windows_relative_and_unc_paths_detected(self):
+        """Default path-traversal regex flags `.\\`, `..\\` and UNC prefixes."""
+        detector = InjectionDetector()
+        assert detector.check_suspicious_patterns(".\\config") is True
+        assert detector.check_suspicious_patterns("..\\config") is True
+        assert detector.check_suspicious_patterns("\\\\server\\share") is True
 
     def test_empty_string(self):
         """Test empty string returns False."""
@@ -181,24 +62,20 @@ class TestCheckSuspiciousPatterns:
         assert detector.check_suspicious_patterns("") is False
 
 
-class TestContainsSuspiciousPatterns:
-    """Tests for contains_suspicious_patterns classmethod."""
+class TestGlobalDetectorDetection:
+    """Tests for the module-level detector used by InputSanitizer."""
 
     def test_clean_input_returns_false(self):
-        """Test clean input returns False via classmethod."""
-        assert InjectionDetector.contains_suspicious_patterns("normal text") is False
+        assert _detector.check_suspicious_patterns("normal text") is False
 
-    def test_command_injection_via_classmethod(self):
-        """Test command injection detected via classmethod."""
-        assert InjectionDetector.contains_suspicious_patterns("$(whoami)") is True
+    def test_command_injection_detected(self):
+        assert _detector.check_suspicious_patterns("$(whoami)") is True
 
-    def test_path_traversal_via_classmethod(self):
-        """Test path traversal detected via classmethod."""
-        assert InjectionDetector.contains_suspicious_patterns("../../../etc") is True
+    def test_path_traversal_detected(self):
+        assert _detector.check_suspicious_patterns("../../../etc") is True
 
-    def test_sql_injection_via_classmethod(self):
-        """Test SQL injection detected via classmethod."""
-        assert InjectionDetector.contains_suspicious_patterns("SELECT *") is True
+    def test_sql_injection_detected(self):
+        assert _detector.check_suspicious_patterns("SELECT *") is True
 
 
 class TestGlobalDetector:
@@ -210,8 +87,8 @@ class TestGlobalDetector:
         assert isinstance(_detector, InjectionDetector)
 
     def test_global_detector_uses_defaults(self):
-        """Test global detector uses default patterns."""
-        assert _detector._security_patterns is None
+        """Test global detector uses the precompiled default patterns."""
+        assert _detector._SQL_INJECTION_COMPILED is InjectionDetector._SQL_INJECTION_COMPILED
 
 
 class TestCommandInjectionPatterns:

@@ -30,10 +30,8 @@ class GitHubConfigDict(TypedDict, total=False):
     context_aware_retry: bool
     ignore_patterns: list[str] | tuple[str, ...]
     valid_extensions: list[str] | tuple[str, ...]
-    diff_parallel_enabled: bool
     diff_parallel_threshold: int
     diff_max_workers: int
-    diff_worker_timeout: float
     max_files_allowed: int
     large_file_threshold: int
     chunk_size: int
@@ -41,7 +39,6 @@ class GitHubConfigDict(TypedDict, total=False):
     max_file_size_bytes: int
     max_total_chars: int
     parallel_file_fetch_enabled: bool
-    parallel_head_base_fetch_enabled: bool
     parallel_diff_generation_enabled: bool
     pr_diff_request_timeout_seconds: float
     max_concurrent: int
@@ -63,7 +60,6 @@ class GitHubConfigInterface(Protocol):
     retry_on_403: bool
     retry_on_500: bool
     circuit_breaker_enabled: bool
-    diff_parallel_enabled: bool
     diff_parallel_threshold: int
     diff_max_workers: int
     ignore_patterns: tuple[str, ...]
@@ -72,7 +68,6 @@ class GitHubConfigInterface(Protocol):
     max_file_size_bytes: int
     max_total_chars: int
     parallel_file_fetch_enabled: bool
-    parallel_head_base_fetch_enabled: bool
     parallel_diff_generation_enabled: bool
     pr_diff_request_timeout_seconds: float
     max_concurrent: int
@@ -88,11 +83,6 @@ class GitHubConfigInterface(Protocol):
     @property
     def should_use_circuit_breaker(self) -> bool:
         """Check if circuit breaker should be used."""
-        ...
-
-    @property
-    def should_use_parallel_diff(self) -> bool:
-        """Check if parallel diff processing should be used."""
         ...
 
     def should_ignore_file(self, filename: str) -> bool:

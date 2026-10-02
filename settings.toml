@@ -62,9 +62,7 @@ gitlab.allowed_hosts = ["gitlab.com"]
 
 # Performance optimization feature flags (dotted keys under [default]; not a Dynaconf env)
 # Bounded concurrency (indexed batch, session CapacityLimiter, max_concurrent).
-performance.cache_hit_optimization_enabled = true  # Optimistic cache lookup before commit SHA check
-performance.parallel_file_fetch_enabled = true  # Bounded parallel file content fetch (github.max_concurrent)
-performance.parallel_head_base_fetch_enabled = true  # Concurrent head and base content loads
+performance.parallel_file_fetch_enabled = true  # GitHub session tree/blob capacity (github.max_concurrent; 1 when false)
 performance.parallel_diff_generation_enabled = true  # Parallel full-context per-file generation
 
 # File filtering patterns (GitHub only; GitLab has no ignore filter).
@@ -118,11 +116,9 @@ github.valid_extensions = [
     ".dockerfile", ".tf", ".tfvars"
 ]
 
-# Diff generator parallel processing settings
-github.diff_parallel_enabled = true  # Enable parallel diff generation
+# Diff generator parallel processing settings (enabled by performance.parallel_diff_generation_enabled)
 github.diff_parallel_threshold = 3   # Minimum files to trigger parallel processing
 github.diff_max_workers = 4          # Maximum worker threads for parallel processing
-github.diff_worker_timeout = 30.0    # Timeout per file in seconds
 
 # Cache settings
 cache.ttl = 600  # 10 minutes
@@ -140,10 +136,6 @@ mcp.port = 9102
 mcp.host = "127.0.0.1"
 mcp.path = "/mcp"
 
-# File processing settings
-file_processing.concurrent_downloads = 3
-file_processing.parallel_fetch_threshold = 10
-
 # File processor settings
 file_processor.max_workers = 4  # Maximum workers for parallel file processing
 
@@ -151,14 +143,12 @@ file_processor.max_workers = 4  # Maximum workers for parallel file processing
 # These control when to use chunked diff generation to avoid O(N²) complexity
 diff.large_file_threshold = 5000     # Lines - threshold for chunked processing
 diff.chunk_size = 1000               # Lines per chunk for large files
-diff.max_diff_size = 100000          # Maximum lines - files larger return truncated message
+diff.max_diff_size = 100000          # Maximum lines per file - larger files fail with E5020 RESPONSE_SIZE_LIMIT
 
-# Diff size limits
-diff.truncate_enabled = true
+# Diff size limits (strict: oversize fails closed, never truncates)
 # Aggregate public-diff char budget (E5020 RESPONSE_SIZE_LIMIT). Runtime override
 # via MAX_TOTAL_CHARS in .env (see .env.example / start-prdiffer-mcp-server.sh).
 diff.max_total_chars = 600000
-diff.truncation_notice = "[DIFF TRUNCATED]"
 
 # Request coalescing settings
 request_coalescing.max_waiters = 100
@@ -169,63 +159,14 @@ async_parallel_executor.max_concurrent = 10  # Maximum concurrent async operatio
 async_parallel_executor.timeout = 30.0  # Default timeout for batch operations (seconds)
 async_parallel_executor.error_strategy = "ignore"  # Options: ignore, raise, collect, continue
 
-# Circuit breaker registry settings
-circuit_breaker_registry.default_failure_threshold = 5  # Failures before opening circuit
-circuit_breaker_registry.default_timeout = 60.0  # Seconds to keep circuit open
-circuit_breaker_registry.global_threshold_multiplier = 2  # Global breaker threshold multiplier
-
-# File content cache settings
-cache.file_content_max_size = 1000
-cache.file_content_ttl = 600  # 10 minutes
-
-github.etag_enabled = true
-github.etag_ttl = 600  # 10 minutes
-github.etag_cache_size = 1000
-
-# Security pattern configuration (regex patterns for input validation)
-# NOTE: Patterns use TOML string escaping - backslashes must be doubled
-# Command injection patterns - shell metacharacters and command substitution
-security.command_injection_patterns = [
-    "[;&|`$]",  # Shell metacharacters (note: [ is literal char in regex)
-    "\\$\\(",  # Command substitution $(
-    "`",  # Backticks
-]
-
-# Path traversal patterns
-security.path_traversal_patterns = [
-    "\\.\\.",  # Parent directory (Unix)
-    "~/",  # Home directory (Unix)
-    "/etc/",  # System directories (Unix)
-    "/var/",
-    "/usr/",
-    "[a-zA-Z]:\\\\",  # Windows absolute paths like C:\
-    "\\.\\\\",  # Windows parent directory
-    "\\\\\\\\",  # UNC paths like \\server\share
-]
-
-# SQL injection patterns
-security.sql_injection_patterns = [
-    "(?:--|#|/\\*|\\*/)",  # SQL comments
-    "\\b(?:union|select|insert|update|delete|drop|create|alter)\\b",  # SQL keywords
-    "(?:exec|execute|xp_)",  # Stored procedures
-]
-
 # Logging settings
 logging.format = "simple"  # Options: simple, json, structured
 logging.json_pretty = false  # Pretty-print JSON output (development only)
 
-# Authentication settings (nested under default.auth)
-[default.auth]
-enabled = true  # Enable/disable API key authentication (SECURITY: enabled by default for production)
-# To disable authentication for development/local use, set MCP_AUTH_ENABLED=false environment variable
-# API keys can be configured via environment variable MCP_API_KEYS (comma-separated)
-# Or MCP_ADMIN_API_KEY for admin access
-# Example: MCP_API_KEYS="key1,key2,key3"
-
-# Authentication brute-force protection settings
-max_failures_per_minute = 5
-lockout_duration = 60  # seconds
-failure_window = 300  # 5 minutes
+# Authentication is configured only through environment variables (not this file):
+# - MCP_AUTH_ENABLED=true enables API key authentication (disabled when unset or false)
+# - MCP_API_KEYS="key1,key2,key3" (comma-separated) and/or MCP_ADMIN_API_KEY
+# Brute-force protection uses built-in defaults: 5 failures per minute, 60s lockout.
 
 # Security headers for HTTP/SSE transports
 # NOTE: FastMCP runs on uvicorn. For production deployments, use a reverse proxy

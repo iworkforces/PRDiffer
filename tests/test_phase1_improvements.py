@@ -12,100 +12,8 @@ from prdiffer.infrastructure.utils.circuit_breaker_core import (
     CircuitBreaker,
     CircuitState,
 )
-from prdiffer.infrastructure.utils.retry.handler import RetryHandler
+from prdiffer.infrastructure.utils.retry.handler import UnifiedRetryHandler
 from prdiffer.domain.entities.pr_diff import PRDiff
-
-
-class TestLRUCacheEviction:
-    @pytest.fixture
-    def mock_logger(self):
-        """Create mock logger."""
-        return Mock()
-
-    @patch("prdiffer.infrastructure.github.client.get_logger")
-    def test_cache_eviction_when_max_size_reached(self, mock_get_logger):
-        from prdiffer.infrastructure.github.client import GitHubAPIClient
-
-        mock_get_logger.return_value = Mock()
-
-        client = GitHubAPIClient(
-            max_retries=1,
-            retry_delay=0.1,
-            timeout=10,
-            file_content_cache_max_size=3,
-            file_content_cache_ttl=600,
-        )
-
-        client._cache_set(("file1.py", "branch1"), "content1")
-        client._cache_set(("file2.py", "branch1"), "content2")
-        client._cache_set(("file3.py", "branch1"), "content3")
-
-        assert len(client._file_content_cache) == 3
-
-        client._cache_set(("file4.py", "branch1"), "content4")
-
-        assert len(client._file_content_cache) == 3
-        assert client._normalize_cache_key(("file1.py", "branch1")) not in client._file_content_cache
-        assert client._normalize_cache_key(("file4.py", "branch1")) in client._file_content_cache
-
-    @patch("prdiffer.infrastructure.github.client.get_logger")
-    def test_cache_lru_ordering(self, mock_get_logger):
-        from prdiffer.infrastructure.github.client import GitHubAPIClient
-
-        mock_get_logger.return_value = Mock()
-
-        client = GitHubAPIClient(
-            max_retries=1,
-            retry_delay=0.1,
-            timeout=10,
-            file_content_cache_max_size=3,
-            file_content_cache_ttl=600,
-        )
-
-        client._cache_set(("file1.py", "branch1"), "content1")
-        client._cache_set(("file2.py", "branch1"), "content2")
-        client._cache_set(("file3.py", "branch1"), "content3")
-
-        result = client._cache_get(("file1.py", "branch1"))
-        assert result == "content1"
-
-        client._cache_set(("file4.py", "branch1"), "content4")
-
-        assert client._normalize_cache_key(("file2.py", "branch1")) not in client._file_content_cache
-        assert client._normalize_cache_key(("file1.py", "branch1")) in client._file_content_cache
-
-    @patch("prdiffer.infrastructure.github.client.get_logger")
-    def test_cache_statistics_tracking(self, mock_get_logger):
-        from prdiffer.infrastructure.github.client import GitHubAPIClient
-
-        mock_get_logger.return_value = Mock()
-
-        client = GitHubAPIClient(
-            max_retries=1,
-            retry_delay=0.1,
-            timeout=10,
-            file_content_cache_max_size=2,
-            file_content_cache_ttl=600,
-        )
-
-        assert client._cache_hits == 0
-        assert client._cache_misses == 0
-        assert client._cache_evictions == 0
-
-        result = client._cache_get(("nonexistent.py", "branch1"))
-        assert result is None
-        assert client._cache_misses == 1
-
-        client._cache_set(("file1.py", "branch1"), "content1")
-
-        result = client._cache_get(("file1.py", "branch1"))
-        assert result == "content1"
-        assert client._cache_hits == 1
-
-        client._cache_set(("file2.py", "branch1"), "content2")
-        client._cache_set(("file3.py", "branch1"), "content3")  # Triggers eviction
-
-        assert client._cache_evictions >= 1
 
 
 class TestTTLExpiration:
@@ -189,7 +97,7 @@ class TestAsyncRetryHandler:
     @pytest.fixture
     def retry_handler(self):
         """Create retry handler with short delays for testing."""
-        return RetryHandler(max_retries=3, retry_delay=0.1)
+        return UnifiedRetryHandler(max_retries=3, retry_delay=0.1)
 
     @pytest.mark.asyncio
     async def test_async_retry_success_first_attempt(self, retry_handler):
@@ -327,72 +235,44 @@ class TestThreadSafeCircuitBreaker:
 
         assert len(errors) == 0
 
-    @pytest.mark.asyncio
-    async def test_async_record_success(self, circuit_breaker):
-        circuit_breaker.record_failure()
-        circuit_breaker.record_failure()
-
-        await circuit_breaker.record_success_async()
-
-        assert circuit_breaker.failure_count == 0
-
-    @pytest.mark.asyncio
-    async def test_async_record_failure(self, circuit_breaker):
-        await circuit_breaker.record_failure_async()
-        await circuit_breaker.record_failure_async()
-        await circuit_breaker.record_failure_async()
-
-        assert circuit_breaker.state == CircuitState.OPEN
-
-    @pytest.mark.asyncio
-    async def test_async_can_execute(self, circuit_breaker):
-        result = await circuit_breaker.can_execute_async()
-        assert result is True
-
-        for _ in range(3):
-            await circuit_breaker.record_failure_async()
-
-        result = await circuit_breaker.can_execute_async()
-        assert result is False
-
 
 class TestReDoSPatternFixes:
     def test_sql_keyword_detection_with_whitespace(self):
         validator = InputValidator()
 
-        assert validator._contains_suspicious_patterns("select ")
-        assert validator._contains_suspicious_patterns("union ")
-        assert validator._contains_suspicious_patterns("drop ")
+        assert validator._detector.check_suspicious_patterns("select ")
+        assert validator._detector.check_suspicious_patterns("union ")
+        assert validator._detector.check_suspicious_patterns("drop ")
 
     def test_sql_keyword_detection_at_end(self):
         validator = InputValidator()
 
-        assert validator._contains_suspicious_patterns("test select")
-        assert validator._contains_suspicious_patterns("test union")
+        assert validator._detector.check_suspicious_patterns("test select")
+        assert validator._detector.check_suspicious_patterns("test union")
 
     def test_sql_keyword_not_detected_in_middle_of_word(self):
         validator = InputValidator()
 
-        assert not validator._contains_suspicious_patterns("selector")
-        assert not validator._contains_suspicious_patterns("reunion")
-        assert not validator._contains_suspicious_patterns("dropdown")
+        assert not validator._detector.check_suspicious_patterns("selector")
+        assert not validator._detector.check_suspicious_patterns("reunion")
+        assert not validator._detector.check_suspicious_patterns("dropdown")
 
     def test_windows_path_traversal_detection(self):
         validator = InputValidator()
 
-        assert validator._contains_suspicious_patterns("C:\\Windows\\System32")
-        assert validator._contains_suspicious_patterns("D:\\")
+        assert validator._detector.check_suspicious_patterns("C:\\Windows\\System32")
+        assert validator._detector.check_suspicious_patterns("D:\\")
 
-        assert validator._contains_suspicious_patterns("..\\config")
+        assert validator._detector.check_suspicious_patterns("..\\config")
 
-        assert validator._contains_suspicious_patterns("\\\\server\\share")
+        assert validator._detector.check_suspicious_patterns("\\\\server\\share")
 
     def test_unix_path_traversal_detection(self):
         validator = InputValidator()
 
-        assert validator._contains_suspicious_patterns("../etc/passwd")
-        assert validator._contains_suspicious_patterns("~/")
-        assert validator._contains_suspicious_patterns("/etc/passwd")
+        assert validator._detector.check_suspicious_patterns("../etc/passwd")
+        assert validator._detector.check_suspicious_patterns("~/")
+        assert validator._detector.check_suspicious_patterns("/etc/passwd")
 
     def test_no_redos_vulnerability(self):
         validator = InputValidator()
@@ -406,7 +286,7 @@ class TestReDoSPatternFixes:
         start_time = time.time()
 
         for input_str in malicious_inputs:
-            validator._contains_suspicious_patterns(input_str)
+            validator._detector.check_suspicious_patterns(input_str)
 
         elapsed = time.time() - start_time
 
@@ -420,14 +300,11 @@ class TestErrorMessageSanitization:
         return {
             "settings_service": Mock(),
             "cache_service": Mock(),
-            "repository_cache_service": Mock(),
-            "pr_diff_service": Mock(),
             "logger": Mock(),
             "provider_resolver": ProviderCapabilityResolver(),
             "input_validator": Mock(),
             "rate_limiter": Mock(),
             "metrics_tracker": Mock(),
-            "pr_operation_handler": Mock(),
             "health_monitor": Mock(),
             "server_configuration": Mock(),
         }

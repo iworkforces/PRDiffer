@@ -71,21 +71,6 @@ class MetricsTrackerProtocol(Protocol):
         ...
 
 
-class PROperationHandlerProtocol(Protocol):
-    """Protocol for handling PR-related operations."""
-
-    async def get_pr_diff(self, pr_url: str) -> dict[str, Any]:
-        """Get PR diff information.
-
-        Args:
-            pr_url: GitHub PR URL (e.g., https://github.com/owner/repo/pull/123)
-
-        Returns:
-            Dictionary containing PR diff data
-        """
-        ...
-
-
 class GitLabPROperationsProtocol(Protocol):
     """Provider-side GitLab MR approve / description operations for MCP tools."""
 

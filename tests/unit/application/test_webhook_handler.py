@@ -21,14 +21,12 @@ def webhook_handler():
     settings_service.get.return_value = "test_webhook_secret"
 
     cache_service = AsyncMock()
-    repository_cache_service = Mock()
     logger = Mock()
     input_validator = Mock()
 
     return WebhookHandler(
         settings_service=settings_service,
         cache_service=cache_service,
-        repository_cache_service=repository_cache_service,
         logger=logger,
         input_validator=input_validator,
     )
@@ -89,7 +87,6 @@ class TestWebhookSignatureVerification:
         handler = WebhookHandler(
             settings_service=settings_service,
             cache_service=AsyncMock(),
-            repository_cache_service=Mock(),
             logger=Mock(),
             input_validator=Mock(),
         )
@@ -157,7 +154,6 @@ class TestWebhookCacheInvalidation:
 
         result = await webhook_handler.webhook_invalidate_cache(payload_bytes, signature, "pull_request")
         assert result["status"] == "success"
-        webhook_handler._repository_cache_service.invalidate_github_pr.assert_called_once_with("owner", "repo", 42)
         webhook_handler._cache_service.invalidate_github_pr.assert_awaited_once_with("owner", "repo", 42)
 
     @pytest.mark.anyio
@@ -173,7 +169,6 @@ class TestWebhookCacheInvalidation:
 
         result = await webhook_handler.webhook_invalidate_cache(payload_bytes, signature, "pull_request")
         assert result["status"] == "success"
-        webhook_handler._repository_cache_service.invalidate_github_pr.assert_called_once_with("org", "project", 100)
         webhook_handler._cache_service.invalidate_github_pr.assert_awaited_once_with("org", "project", 100)
 
     @pytest.mark.anyio
@@ -189,7 +184,6 @@ class TestWebhookCacheInvalidation:
 
         result = await webhook_handler.webhook_invalidate_cache(payload_bytes, signature, "pull_request")
         assert result["status"] == "success"
-        webhook_handler._repository_cache_service.invalidate_github_pr.assert_called_once_with("owner", "repo", 55)
         webhook_handler._cache_service.invalidate_github_pr.assert_awaited_once_with("owner", "repo", 55)
 
     @pytest.mark.anyio
@@ -205,7 +199,6 @@ class TestWebhookCacheInvalidation:
 
         result = await webhook_handler.webhook_invalidate_cache(payload_bytes, signature, "pull_request")
         assert result["status"] == "success"
-        webhook_handler._repository_cache_service.invalidate_github_pr.assert_not_called()
         webhook_handler._cache_service.invalidate_github_pr.assert_not_awaited()
 
     @pytest.mark.anyio
@@ -217,7 +210,6 @@ class TestWebhookCacheInvalidation:
 
         assert result["status"] == "success"
         webhook_handler._cache_service.invalidate_github_pr.assert_not_awaited()
-        webhook_handler._repository_cache_service.invalidate_github_pr.assert_not_called()
 
     @pytest.mark.anyio
     async def test_push_invalidates_repo_cache(self, webhook_handler):
@@ -231,7 +223,6 @@ class TestWebhookCacheInvalidation:
 
         result = await webhook_handler.webhook_invalidate_cache(payload_bytes, signature, "push")
         assert result["status"] == "success"
-        webhook_handler._repository_cache_service.invalidate_github_repository.assert_called_once_with("owner", "repo")
         webhook_handler._cache_service.invalidate_github_repository.assert_awaited_once_with("owner", "repo")
 
 
@@ -282,7 +273,6 @@ class TestWebhookPayloadParsing:
         result = await webhook_handler.webhook_invalidate_cache(payload_bytes, _make_signature("test_webhook_secret", payload_bytes), "pull_request")
         assert result == {"status": "error", "message": "Missing repository info"}
         webhook_handler._cache_service.invalidate_github_pr.assert_not_awaited()
-        webhook_handler._repository_cache_service.invalidate_github_pr.assert_not_called()
 
     @pytest.mark.anyio
     @pytest.mark.parametrize("number", [None, 0, -1, True, False, "42", 4.2])
@@ -291,7 +281,6 @@ class TestWebhookPayloadParsing:
         result = await webhook_handler.webhook_invalidate_cache(payload_bytes, _make_signature("test_webhook_secret", payload_bytes), "pull_request")
         assert result == {"status": "error", "message": "Invalid PR number"}
         webhook_handler._cache_service.invalidate_github_pr.assert_not_awaited()
-        webhook_handler._repository_cache_service.invalidate_github_pr.assert_not_called()
 
 
 @pytest.mark.unit
@@ -304,22 +293,23 @@ class TestGetWebhookHandler:
         assert callable(handler)
 
     @pytest.mark.anyio
-    async def test_handler_missing_signature_uses_fallback(self, webhook_handler):
-        """Handler falls back to X-Hub-Signature when X-Hub-Signature-256 missing."""
+    async def test_handler_ignores_legacy_x_hub_signature_header(self, webhook_handler):
+        """Only X-Hub-Signature-256 is read; the legacy X-Hub-Signature header is ignored."""
         mock_headers = Mock()
         mock_headers.get.side_effect = lambda k, d="": {
-            "X-Hub-Signature-256": "",
             "X-Hub-Signature": "sha256=some_sig",
             "X-GitHub-Event": "push",
         }.get(k, d)
         mock_request = Mock()
         mock_request.headers = mock_headers
         mock_request.body = AsyncMock(return_value=b"{}")
+        webhook_handler.webhook_invalidate_cache = AsyncMock(return_value={"status": "error", "message": "Invalid signature"})
 
         handler = webhook_handler.get_webhook_handler()
         result = await handler(mock_request)
-        # Should process (even if signature fails)
-        assert result.status_code in (200, 400, 401)
+
+        webhook_handler.webhook_invalidate_cache.assert_awaited_once_with(b"{}", "", "push")
+        assert result.status_code == 401
 
     @pytest.mark.anyio
     async def test_handler_exception_returns_500(self, webhook_handler):

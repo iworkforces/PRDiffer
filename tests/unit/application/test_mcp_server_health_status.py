@@ -16,14 +16,9 @@ def test_health_status_includes_cache_and_coalescing():
     cache_service = Mock()
     cache_service.get_stats.return_value = {"size": 1}
 
-    repository_cache_service = Mock()
-    repository_cache_service.stats.return_value = {"total_entries": 2}
-
-    pr_diff_service = Mock()
     logger = Mock()
     rate_limiter = Mock()
     metrics_tracker = Mock()
-    pr_operation_handler = Mock()
     health_monitor = Mock()
     health_monitor.check_health.return_value = {"status": "healthy"}
     server_configuration = Mock()
@@ -38,13 +33,10 @@ def test_health_status_includes_cache_and_coalescing():
         server = FastMCPServer(
             settings_service=settings_service,
             cache_service=cache_service,
-            repository_cache_service=repository_cache_service,
-            pr_diff_service=pr_diff_service,
             logger=logger,
             provider_resolver=ProviderCapabilityResolver(),
             rate_limiter=rate_limiter,
             metrics_tracker=metrics_tracker,
-            pr_operation_handler=pr_operation_handler,
             health_monitor=health_monitor,
             server_configuration=server_configuration,
             authentication=authentication,
@@ -55,6 +47,6 @@ def test_health_status_includes_cache_and_coalescing():
     health = anyio.run(server._health_endpoints._get_health_status)
 
     assert health["cache"] == {"size": 1}
-    assert health["repository_cache"] == {"total_entries": 2}
+    assert "repository_cache" not in health
     assert health["request_coalescing"]["pending_count"] == 0
     assert health["authentication"]["authentication_enabled"] is False

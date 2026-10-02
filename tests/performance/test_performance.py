@@ -9,7 +9,7 @@ import pytest
 from collections import deque
 
 from prdiffer.infrastructure.utils.api_health_tracker import APIHealthTracker
-from prdiffer.infrastructure.cache.cache_decorators import CachingMixin, cached_method
+from prdiffer.infrastructure.security.injection_detector import _detector
 from prdiffer.infrastructure.security.input_validator import InputValidator
 from prdiffer.infrastructure.utils.coalescing_service import RequestCoalescingService
 from prdiffer.application.components.authentication import AuthenticationMiddleware
@@ -57,61 +57,6 @@ class TestInputValidatorPerformance:
         # CI shared runners can be ~2x slower than local; keep a wide margin.
         assert elapsed < 5.0, f"Sanitization too slow: {elapsed:.3f}s for {total_ops} operations"
         print(f"Sanitization: {total_ops} operations in {elapsed:.3f}s ({total_ops / elapsed:.0f} ops/sec)")
-
-
-class TestCachingPerformance:
-    """Performance tests for caching utilities."""
-
-    def test_caching_mixin_performance(self):
-        """Test that caching mixin provides significant speedup."""
-        call_count = [0]
-
-        class TestService(CachingMixin):
-            def __init__(self):
-                super().__init__(max_cache_size=100, default_ttl=60)
-
-            @cached_method(ttl=60)
-            def expensive_operation(self, param: str) -> str:
-                call_count[0] += 1
-                return f"result_{param}"
-
-        service = TestService()
-
-        # First call - cache miss
-        start = time.perf_counter()
-        iterations = 10000
-        for i in range(iterations):
-            service.expensive_operation("same_param")
-        elapsed_cached = time.perf_counter() - start
-
-        # Only first call should have been executed
-        assert call_count[0] == 1, f"Cache not working: {call_count[0]} calls instead of 1"
-
-        # Should be very fast (all cache hits)
-        assert elapsed_cached < 0.1, f"Cached calls too slow: {elapsed_cached:.3f}s"
-        print(f"Caching: {iterations} cached calls in {elapsed_cached:.3f}s")
-
-    def test_cache_memory_efficiency(self):
-        """Test that cache properly limits memory usage."""
-
-        class TestService(CachingMixin):
-            def __init__(self):
-                super().__init__(max_cache_size=10, default_ttl=60)
-
-            @cached_method(ttl=60)
-            def operation(self, param: str) -> str:
-                return f"result_{param}"
-
-        service = TestService()
-
-        # Add more entries than cache size
-        for i in range(20):
-            service.operation(f"param_{i}")
-
-        # Cache should not exceed max size
-        # (Note: some implementations may evict older entries)
-        stats = service.get_cache_stats()
-        assert stats["size"] <= 10, f"Cache size exceeded limit: {stats['size']}"
 
 
 class TestAuthenticationPerformance:
@@ -213,7 +158,7 @@ class TestSecurityPatternMatchingPerformance:
         iterations = 10000
         for _ in range(iterations):
             for inp in test_inputs:
-                InputValidator._contains_suspicious_patterns(inp)
+                _detector.check_suspicious_patterns(inp)
         elapsed = time.perf_counter() - start
 
         total_ops = iterations * len(test_inputs)
@@ -233,7 +178,7 @@ class TestSecurityPatternMatchingPerformance:
         iterations = 5000
         for _ in range(iterations):
             for inp in test_inputs:
-                InputValidator._contains_suspicious_patterns(inp)
+                _detector.check_suspicious_patterns(inp)
         elapsed = time.perf_counter() - start
 
         total_ops = iterations * len(test_inputs)
@@ -333,7 +278,7 @@ class TestBenchmark:
                     validator.validate_github_url(url)
                 except Exception:
                     pass
-                InputValidator._contains_suspicious_patterns(url)
+                _detector.check_suspicious_patterns(url)
         elapsed = time.perf_counter() - start
 
         total_ops = iterations * len(test_cases)

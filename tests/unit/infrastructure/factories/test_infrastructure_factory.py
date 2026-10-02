@@ -17,7 +17,6 @@ from prdiffer.domain.services.diff import DiffServiceInterface
 from prdiffer.domain.services.pattern_matching import (
     PatternMatchingServiceInterface,
 )
-from prdiffer.domain.services.retry import RetryServiceInterface
 
 
 class TestInfrastructureFactoryLayerIsolation:
@@ -84,11 +83,3 @@ class TestInfrastructureFactoryLayerIsolation:
 
         assert isinstance(pattern_matching_service, PatternMatchingServiceInterface)
         assert pattern_matching_service is not None
-
-    def test_creates_retry_service(self):
-        """Test that create_retry_service returns RetryServiceInterface."""
-        factory = InfrastructureFactory()
-        retry_service = factory.create_retry_service()
-
-        assert isinstance(retry_service, RetryServiceInterface)
-        assert retry_service is not None

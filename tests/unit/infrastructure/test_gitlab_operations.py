@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
-from prdiffer.domain.error_codes import E1001_INVALID_URL, E4001_REPO_NOT_FOUND, E4002_PR_NOT_FOUND
-from prdiffer.domain.exceptions import FullDiffIncompleteError, FullDiffIncompleteReason, InvalidURLError, PRDifferException
+from prdiffer.domain.error_codes import E4001_REPO_NOT_FOUND, E4002_PR_NOT_FOUND
+from prdiffer.domain.exceptions import FullDiffIncompleteError, FullDiffIncompleteReason, PRDifferException
 import prdiffer.infrastructure.vcs_providers.gitlab_operations as gitlab_operations
 from prdiffer.infrastructure.vcs_providers.gitlab_operations import GitLabOperations
 
@@ -89,29 +89,6 @@ class FakeProjects:
 class FakeGitLab:
     def __init__(self, projects: FakeProjects) -> None:
         self.projects = projects
-        self.events: list[str] = []
-
-    def __enter__(self) -> FakeGitLab:
-        self.events.append("enter")
-        return self
-
-    def __exit__(self, *_: object) -> None:
-        self.events.append("exit")
-
-    def auth(self) -> None:
-        self.events.append("auth")
-
-
-class GitLabFactory:
-    def __init__(self, client: FakeGitLab) -> None:
-        self.client = client
-        self.calls: list[tuple[str, str | None]] = []
-
-    def __call__(self, *args: Any, **kwargs: Any) -> FakeGitLab:
-        url = args[0] if args else kwargs.get("url", "")
-        token = kwargs.get("private_token")
-        self.calls.append((str(url), token))
-        return self.client
 
 
 def _version(vid: int, base: str, start: str, head: str) -> dict[str, Any]:
@@ -159,15 +136,13 @@ def _payload(
     }
 
 
-def install(monkeypatch: pytest.MonkeyPatch, client: FakeGitLab) -> GitLabFactory:
-    factory = GitLabFactory(client)
-    monkeypatch.setattr(gitlab_operations.gitlab, "Gitlab", factory)
-    return factory
+def select(client: FakeGitLab, project_path: str, iid: int) -> Any:
+    return GitLabOperations().select_with_client(cast(Any, client), project_path, iid)
 
 
 @pytest.mark.unit
 class TestSelectDiffSnapshot:
-    def test_exact_match_independent_of_list_order(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_exact_match_independent_of_list_order(self) -> None:
         refs = {"base_sha": "b1", "start_sha": "s1", "head_sha": "h1"}
         versions = [
             _version(10, "old", "old", "old"),
@@ -179,9 +154,8 @@ class TestSelectDiffSnapshot:
         payloads = {99: _payload(99, "b1", "s1", "h1", real_size=1)}
         mr = FakeMergeRequests(diff_refs=refs, versions=versions, version_payloads=payloads)
         client = FakeGitLab(FakeProjects(FakeProject(mr)))
-        install(monkeypatch, client)
 
-        snapshot = GitLabOperations("tok").select_diff_snapshot("group/subgroup/project", 42)
+        snapshot = select(client, "group/subgroup/project", 42)
 
         assert snapshot.version_id == 99
         assert snapshot.base_sha == "b1"
@@ -195,77 +169,73 @@ class TestSelectDiffSnapshot:
         assert mr.diffs.get_calls == [99]
         assert mr.diffs.current_diffs_calls == 0
 
-    def test_zero_match_fails_inventory(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_zero_match_fails_inventory(self) -> None:
         refs = {"base_sha": "b", "start_sha": "s", "head_sha": "h"}
         versions = [_version(1, "other", "s", "h")]
         mr = FakeMergeRequests(diff_refs=refs, versions=versions, version_payloads={})
-        install(monkeypatch, FakeGitLab(FakeProjects(FakeProject(mr))))
+        client = FakeGitLab(FakeProjects(FakeProject(mr)))
 
         with pytest.raises(FullDiffIncompleteError) as exc:
-            GitLabOperations().select_diff_snapshot("o/r", 1)
+            select(client, "o/r", 1)
         assert exc.value.reason is FullDiffIncompleteReason.INVENTORY_TRUNCATED
         assert mr.diffs.get_calls == []
 
-    def test_multiple_match_fails_inventory(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_multiple_match_fails_inventory(self) -> None:
         refs = {"base_sha": "b", "start_sha": "s", "head_sha": "h"}
         versions = [_version(1, "b", "s", "h"), _version(2, "b", "s", "h")]
         mr = FakeMergeRequests(diff_refs=refs, versions=versions, version_payloads={})
-        install(monkeypatch, FakeGitLab(FakeProjects(FakeProject(mr))))
+        client = FakeGitLab(FakeProjects(FakeProject(mr)))
 
         with pytest.raises(FullDiffIncompleteError) as exc:
-            GitLabOperations().select_diff_snapshot("o/r", 1)
+            select(client, "o/r", 1)
         assert exc.value.reason is FullDiffIncompleteReason.INVENTORY_TRUNCATED
         assert mr.diffs.get_calls == []
 
-    def test_missing_diff_refs_fails(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_missing_diff_refs_fails(self) -> None:
         mr = FakeMergeRequests(diff_refs=None, versions=[], version_payloads={})
-        install(monkeypatch, FakeGitLab(FakeProjects(FakeProject(mr))))
+        client = FakeGitLab(FakeProjects(FakeProject(mr)))
         with pytest.raises(FullDiffIncompleteError) as exc:
-            GitLabOperations().select_diff_snapshot("o/r", 1)
+            select(client, "o/r", 1)
         assert exc.value.reason is FullDiffIncompleteReason.INVENTORY_TRUNCATED
 
-    def test_fetched_version_drift_fails(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_fetched_version_drift_fails(self) -> None:
         refs = {"base_sha": "b", "start_sha": "s", "head_sha": "h"}
         versions = [_version(7, "b", "s", "h")]
         # Fetched version has different head
         payloads = {7: _payload(7, "b", "s", "different")}
         mr = FakeMergeRequests(diff_refs=refs, versions=versions, version_payloads=payloads)
-        install(monkeypatch, FakeGitLab(FakeProjects(FakeProject(mr))))
+        client = FakeGitLab(FakeProjects(FakeProject(mr)))
         with pytest.raises(FullDiffIncompleteError) as exc:
-            GitLabOperations().select_diff_snapshot("o/r", 1)
+            select(client, "o/r", 1)
         assert exc.value.reason is FullDiffIncompleteReason.INVENTORY_TRUNCATED
 
-    def test_project_404_maps_e4001(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_fetched_version_malformed_metadata_fails_closed(self) -> None:
+        refs = {"base_sha": "b", "start_sha": "s", "head_sha": "h"}
+        versions = [_version(7, "b", "s", "h")]
+        payload = _payload(7, "b", "s", "h")
+        payload["head_commit_sha"] = None
+        mr = FakeMergeRequests(diff_refs=refs, versions=versions, version_payloads={7: payload})
+        client = FakeGitLab(FakeProjects(FakeProject(mr)))
+        with pytest.raises(FullDiffIncompleteError) as exc:
+            select(client, "o/r", 1)
+        assert exc.value.reason is FullDiffIncompleteReason.INVENTORY_TRUNCATED
+
+    def test_project_404_maps_e4001(self) -> None:
         err = gitlab_operations.gitlab.GitlabGetError("nf", response_code=404)
         client = FakeGitLab(FakeProjects(error=err))
-        install(monkeypatch, client)
         with pytest.raises(Exception) as exc:
-            GitLabOperations().select_diff_snapshot("missing/project", 1)
+            select(client, "missing/project", 1)
         code = getattr(exc.value, "error_code", None)
         assert code is E4001_REPO_NOT_FOUND or (isinstance(exc.value, PRDifferException) and "not found" in exc.value.message.lower())
 
-    def test_mr_404_maps_e4002(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_mr_404_maps_e4002(self) -> None:
         err = gitlab_operations.gitlab.GitlabGetError("nf", response_code=404)
         mr = FakeMergeRequests(diff_refs={}, versions=[], version_payloads={}, error=err)
-        install(monkeypatch, FakeGitLab(FakeProjects(FakeProject(mr))))
+        client = FakeGitLab(FakeProjects(FakeProject(mr)))
         with pytest.raises(Exception) as exc:
-            GitLabOperations().select_diff_snapshot("o/r", 99)
+            select(client, "o/r", 99)
         code = getattr(exc.value, "error_code", None)
         assert code is E4002_PR_NOT_FOUND
-
-
-class TestGitLabOperationsHostAllowlist:
-    def test_select_diff_snapshot_rejects_disallowed_host(self) -> None:
-        ops = GitLabOperations(allowed_hosts=("gitlab.com",))
-        with pytest.raises(InvalidURLError) as exc:
-            ops.select_diff_snapshot("o/r", 1, base_url="https://evil.internal")
-        assert exc.value.error_code is E1001_INVALID_URL
-
-    def test_initialize_rejects_disallowed_host(self) -> None:
-        ops = GitLabOperations(allowed_hosts=("gitlab.com",))
-        with pytest.raises(InvalidURLError) as exc:
-            ops.initialize(base_url="https://evil.internal")
-        assert exc.value.error_code is E1001_INVALID_URL
 
 
 class TestParseGitlabRealSize:

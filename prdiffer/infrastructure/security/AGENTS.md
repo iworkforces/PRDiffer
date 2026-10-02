@@ -1,30 +1,29 @@
 # AGENTS.md - Infrastructure/Security
 
 **Package:** 0.6.2  
-Input validation, injection detection, and sanitization (~961 lines).
+Input validation, injection detection, and sanitization (~200 lines).
 
 ## STRUCTURE
 ```
 prdiffer/infrastructure/security/
-├── input_validator.py            # InputValidator + helpers mixin (326)
-├── input_validation_helpers.py   # Shared validation helpers (279)
-├── injection_detector.py         # SecurityPatterns + InjectionDetector (216)
-└── sanitizer.py                  # InputSanitizer (140)
+├── input_validator.py            # InputValidator — implements InputValidatorProtocol (~88)
+├── injection_detector.py         # InjectionDetector + module `_detector` (~37)
+└── sanitizer.py                  # InputSanitizer (~71)
 ```
 
 ## WHERE TO LOOK
 | Task | Location | Notes |
 |------|----------|-------|
-| **Validate PR URL / params** | `input_validator.py` | Orchestrates checks; domain `InputValidatorProtocol` |
+| **Validate PR URL / params** | `input_validator.py` | Domain `InputValidatorProtocol` (4 methods) |
 | **GitHub URL** | `validate_github_url` | github.com PR paths |
 | **GitLab URL** | `validate_gitlab_url` | Delegates to `parse_gitlab_merge_request_url` (custom hosts) |
-| **Module-level helpers** | `input_validation_helpers.py` | Token, branch, path, PR number helpers |
-| **Threat patterns** | `injection_detector.py` | Command, path traversal, SQL-ish |
-| **Sanitize for logs** | `sanitizer.py` | Length-limited safe strings |
+| **Free-text input** | `sanitize_string` | Length, null bytes, injection patterns → E1xxx |
+| **Threat patterns** | `injection_detector.py` | Precompiled command / path traversal / SQL-ish regexes |
+| **Sanitize for logs** | `sanitize_for_logging` → `InputSanitizer` | Length-limited printable strings |
 
 ## CONVENTIONS
-- Implements `InputValidatorProtocol` (domain).
-- Configurable patterns may come from settings.
+- Implements `InputValidatorProtocol` (domain): `validate_github_url`, `validate_gitlab_url`, `sanitize_string`, `sanitize_for_logging`.
+- Detection patterns are the precompiled class regexes in `InjectionDetector` (not configurable via settings).
 - Fail closed on suspicious input with domain validation errors / **E1xxx** codes.
 - Prefer orchestration through `InputValidator` rather than calling detector/sanitizer ad hoc from tools.
 - GitLab host **allowlist** is enforced later in `GitLabRuntime` / session open (not only here).

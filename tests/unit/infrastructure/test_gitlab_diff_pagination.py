@@ -1,14 +1,13 @@
-"""Legacy pagination tests replaced by immutable version selection.
+"""Pagination and ordering tests for immutable GitLab MR diff version selection.
 
-Strict full-diff no longer uses current `/diffs` or manual page fallbacks.
+Strict full-diff uses one pinned diff version; it never calls the current `/diffs` endpoint.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from prdiffer.domain.exceptions import FullDiffIncompleteError, FullDiffIncompleteReason, PRDifferException
-from prdiffer.infrastructure.vcs_providers.gitlab_operations import GitLabOperations
+from prdiffer.domain.exceptions import FullDiffIncompleteError, PRDifferException
 from tests.unit.infrastructure.test_gitlab_operations import (
     FakeGitLab,
     FakeMergeRequests,
@@ -16,28 +15,13 @@ from tests.unit.infrastructure.test_gitlab_operations import (
     FakeProjects,
     _payload,
     _version,
-    install,
+    select,
 )
 
 
 @pytest.mark.unit
-class TestNoCurrentDiffsEndpoint:
-    def test_never_calls_current_file_diffs_list_on_mr(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        refs = {"base_sha": "b", "start_sha": "s", "head_sha": "h"}
-        versions = [_version(3, "b", "s", "h")]
-        payloads = {3: _payload(3, "b", "s", "h")}
-        mr = FakeMergeRequests(diff_refs=refs, versions=versions, version_payloads=payloads)
-        client = FakeGitLab(FakeProjects(FakeProject(mr)))
-        install(monkeypatch, client)
-
-        GitLabOperations().get_diff_records("owner", "repo", 17)
-
-        # Only version list + version get; no http_list to /diffs
-        assert mr.diffs.list_calls == 1
-        assert mr.diffs.get_calls == [3]
-        assert not hasattr(client, "http_list") or not getattr(client, "http_list_calls", None)
-
-    def test_get_diff_records_uses_pinned_version_records(self, monkeypatch: pytest.MonkeyPatch) -> None:
+class TestPinnedVersionRecords:
+    def test_records_preserve_pinned_version_order(self) -> None:
         refs = {"base_sha": "b", "start_sha": "s", "head_sha": "h"}
         diffs = [
             {
@@ -68,19 +52,13 @@ class TestNoCurrentDiffsEndpoint:
         versions = [_version(1, "b", "s", "h")]
         payloads = {1: _payload(1, "b", "s", "h", real_size=2, diffs=diffs)}
         mr = FakeMergeRequests(diff_refs=refs, versions=versions, version_payloads=payloads)
-        install(monkeypatch, FakeGitLab(FakeProjects(FakeProject(mr))))
 
-        records = GitLabOperations().get_diff_records("owner", "repo", 17)
+        records = select(FakeGitLab(FakeProjects(FakeProject(mr))), "owner/repo", 17).records
+
         assert [r.new_path for r in records] == ["one.py", "two.py"]
         assert records[1].new_file is True
-
-    def test_incomplete_selection_raises_before_content(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        refs = {"base_sha": "b", "start_sha": "s", "head_sha": "h"}
-        mr = FakeMergeRequests(diff_refs=refs, versions=[], version_payloads={})
-        install(monkeypatch, FakeGitLab(FakeProjects(FakeProject(mr))))
-        with pytest.raises(FullDiffIncompleteError) as exc:
-            GitLabOperations().get_diff_records("o", "r", 1)
-        assert exc.value.reason is FullDiffIncompleteReason.INVENTORY_TRUNCATED
+        assert mr.diffs.list_calls == 1
+        assert mr.diffs.get_calls == [1]
 
 
 class _PageTwoFailVersions:
@@ -117,7 +95,7 @@ class FailingPageDiffsManager:
 
 @pytest.mark.unit
 class TestDiffVersionListPaginationFailure:
-    def test_later_page_failure_is_operational_and_no_snapshot(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_later_page_failure_is_operational_and_no_snapshot(self) -> None:
         from prdiffer.domain.error_codes import E5019_CONNECTION_ERROR
 
         refs = {"base_sha": "b", "start_sha": "s", "head_sha": "h"}
@@ -125,22 +103,11 @@ class TestDiffVersionListPaginationFailure:
         diffs = FailingPageDiffsManager(first)
         mr = FakeMergeRequests(diff_refs=refs, versions=[first], version_payloads={})
         mr.diffs = diffs  # type: ignore[assignment]
-        install(monkeypatch, FakeGitLab(FakeProjects(FakeProject(mr))))
 
         with pytest.raises(PRDifferException) as exc:
-            GitLabOperations().select_diff_snapshot("owner/repo", 3)
+            select(FakeGitLab(FakeProjects(FakeProject(mr))), "owner/repo", 3)
         assert not isinstance(exc.value, FullDiffIncompleteError)
         assert exc.value.error_code is E5019_CONNECTION_ERROR
         assert diffs.list_calls == 1
         assert diffs.last_get_all is True
         assert diffs.get_calls == []
-
-    def test_get_all_true_is_asserted_on_success_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        refs = {"base_sha": "b", "start_sha": "s", "head_sha": "h"}
-        versions = [_version(3, "b", "s", "h")]
-        payloads = {3: _payload(3, "b", "s", "h")}
-        mr = FakeMergeRequests(diff_refs=refs, versions=versions, version_payloads=payloads)
-        install(monkeypatch, FakeGitLab(FakeProjects(FakeProject(mr))))
-        GitLabOperations().select_diff_snapshot("owner/repo", 1)
-        # FakeDiffsManager.list receives get_all=True from production
-        assert mr.diffs.list_calls == 1

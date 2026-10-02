@@ -1,15 +1,13 @@
 # AGENTS.md - Domain/Services
 
-Service interfaces (ABC) only — 9 ports, ~569 lines. Package 0.6.2.
+Service interfaces (ABC) only — 7 ports. Package 0.6.2.
 
 ## STRUCTURE
 ```
 prdiffer/domain/services/
-├── cache.py                 # CacheServiceInterface (~100)
-├── repository_cache.py      # RepositoryCacheServiceInterface (~107)
-├── github_api.py            # GitHubAPIServiceInterface (~83) — incl. multi-ref batch
-├── diff.py                  # DiffServiceInterface (~50)
-├── pr_diff_service.py       # PRDiffServiceInterface (~79)
+├── cache.py                 # CacheServiceInterface (~64)
+├── github_api.py            # GitHubAPIServiceInterface (~21) — client initialization only
+├── diff.py                  # DiffServiceInterface (~27)
 ├── pattern_matching.py      # PatternMatchingServiceInterface (~35)
 ├── retry.py                 # RetryServiceInterface (~17)
 ├── settings.py              # SettingsServiceInterface (~63; get_github_config / get_gitlab_config)
@@ -21,20 +19,15 @@ prdiffer/domain/services/
 | Task | Location | Notes |
 |------|----------|-------|
 | **Add service port** | New `*.py` ABC here | Implement under infrastructure |
-| **PR orchestration port** | `pr_diff_service.py` | High-level diff + commit SHA |
-| **Typed file content** | `github_api.py` | `get_file_content` → `FileContentResult` |
-| **Multi-ref content batch** | `github_api.py` | `get_files_content_multi_ref_batch` → ordered `FileContentResponse` |
-| **Commit-based cache** | `cache.py` | get/set with commit SHA; optimistic get |
-| **Full-context patches** | `diff.py` | `build_full_file_patch`, `extend_patch` |
+| **Snapshot-keyed cache** | `cache.py` | get/set with validation token; scoped GitHub invalidation |
+| **Full-context patches** | `diff.py` | `build_full_file_patch` (+ `build_full_file_patch_chunked` default) |
 
 ## CODE MAP
 | Symbol | Type | Location | Role |
 |--------|------|----------|------|
-| `CacheServiceInterface` | ABC | `cache.py` | Commit-keyed PRDiff cache |
-| `RepositoryCacheServiceInterface` | ABC | `repository_cache.py` | Cache of repository instances |
-| `GitHubAPIServiceInterface` | ABC | `github_api.py` | Repo/PR/content API (+ multi-ref batch) |
-| `DiffServiceInterface` | ABC | `diff.py` | Full-file / extended patches |
-| `PRDiffServiceInterface` | ABC | `pr_diff_service.py` | Domain-level PR diff ops |
+| `CacheServiceInterface` | ABC | `cache.py` | Snapshot-keyed PRDiff cache |
+| `GitHubAPIServiceInterface` | ABC | `github_api.py` | `initialize_client` |
+| `DiffServiceInterface` | ABC | `diff.py` | Full-file patches |
 | `PatternMatchingServiceInterface` | ABC | `pattern_matching.py` | File filter/validation |
 | `RetryServiceInterface` | ABC | `retry.py` | Retry with backoff |
 | `SettingsServiceInterface` | ABC | `settings.py` | Config access (`get_github_config` / `get_gitlab_config`) |
@@ -44,13 +37,9 @@ prdiffer/domain/services/
 ## CONVENTIONS
 - Abstract methods only; no default I/O.
 - Implementations registered via `InfrastructureFactory`.
-- `GitHubAPIServiceInterface.get_file_content` returns `FileContentAvailable | FileContentUnavailable`; operational failures raise (auth, rate limit, transport, retry exhaustion).
-- Single-ref batch: `get_files_content_batch` → `dict[str, FileContentResult]`; only available texts should be cached by adapters.
-- Multi-ref batch: `get_files_content_multi_ref_batch(requests)` → `tuple[FileContentResponse, ...]` in **request order**; same path at different refs is distinct; no partial success list on operational failure.
-- Single-ref batch may be implemented as a thin wrapper over multi-ref (infrastructure does this today).
+- The PR diff read port is the session Protocol in `domain/interfaces/pr_diff_reader.py` (`SessionPRDiffReader`), not a service ABC.
 
 ## ANTI-PATTERNS
 - NO concrete classes with network/cache logic here.
-- NO mapping operational API failures into `FileContentUnavailable`.
 - NO SDK types in method signatures.
-- NO dropping request identity / order from multi-ref batch results.
+- NO re-exports from `__init__.py`; import from the defining module.

@@ -190,17 +190,3 @@ class TestGenerateOrderedFileDiffs:
         assert len(results) == 1
         assert "[DIFF TRUNCATED]" in results[0].diff
         assert "truncation_notice" in results[0].diff
-
-    def test_whole_body_truncation_sentinel_still_raises_e5020(self) -> None:
-        class TruncatingUtils(DiffUtils):
-            def build_full_file_patch(self, original_file_str: str, new_file_str: str) -> str:
-                return "[DIFF TRUNCATED]"
-
-            def build_full_file_patch_chunked(self, original_file_str: str, new_file_str: str, **kwargs) -> str:
-                return "[DIFF TRUNCATED]"
-
-        generator = DiffGenerator(diff_utils=TruncatingUtils(), parallel_enabled=False)
-        files = [_patch(name="x.py", edit=EDIT_TYPE.MODIFIED, base="a\n", head="b\n")]
-        with pytest.raises(FullDiffIncompleteError) as exc:
-            generator.generate_ordered_file_diffs(files)
-        assert exc.value.reason is FullDiffIncompleteReason.RESPONSE_SIZE_LIMIT

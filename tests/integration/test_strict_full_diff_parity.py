@@ -151,9 +151,7 @@ async def test_github_failure_mode_matches_serial_parallel() -> None:
         repo = TruncRepo(trees={}, blobs={}, pr=pr)
         api = FakeAPI(repo, pr)
         processor = FileProcessor(
-            github_api_service=api,  # type: ignore[arg-type]
             pattern_matcher=SimpleNamespace(is_valid_file=lambda p: True),  # type: ignore[arg-type]
-            diff_utils=DiffUtils(),
         )
         service = GitHubPRDiffService.__new__(GitHubPRDiffService)
         service._github_api = api  # type: ignore[attr-defined]

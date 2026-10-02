@@ -1,13 +1,9 @@
-"""Tests for InputSanitizer and convenience functions."""
+"""Tests for InputSanitizer."""
 
 import pytest
 from unittest.mock import Mock
 
-from prdiffer.infrastructure.security.sanitizer import (
-    InputSanitizer,
-    sanitize_string,
-    sanitize_for_logging,
-)
+from prdiffer.infrastructure.security.sanitizer import InputSanitizer
 from prdiffer.domain.exceptions import InputSanitizationError, SuspiciousOperationError
 
 
@@ -90,23 +86,25 @@ class TestSanitizeString:
         with pytest.raises(InputSanitizationError):
             InputSanitizer.sanitize_string("a" * 1001)
 
-    def test_custom_detector_used(self):
-        """Custom detector is used when provided."""
+    def test_consults_module_detector(self, monkeypatch):
+        """sanitize_string checks input with the module-level injection detector."""
         mock_detector = Mock()
         mock_detector.check_suspicious_patterns.return_value = False
+        monkeypatch.setattr("prdiffer.infrastructure.security.sanitizer._detector", mock_detector)
 
-        result = InputSanitizer.sanitize_string("test input", detector=mock_detector)
+        result = InputSanitizer.sanitize_string("test input")
 
         assert result == "test input"
         mock_detector.check_suspicious_patterns.assert_called_once_with("test input")
 
-    def test_custom_detector_detects_threat(self):
-        """Custom detector raising suspicious blocks the input."""
+    def test_detector_flag_blocks_input(self, monkeypatch):
+        """A detector hit blocks otherwise innocuous input."""
         mock_detector = Mock()
         mock_detector.check_suspicious_patterns.return_value = True
+        monkeypatch.setattr("prdiffer.infrastructure.security.sanitizer._detector", mock_detector)
 
         with pytest.raises(SuspiciousOperationError):
-            InputSanitizer.sanitize_string("looks safe", detector=mock_detector)
+            InputSanitizer.sanitize_string("looks safe")
 
     def test_unicode_string_passes(self):
         """Unicode strings pass sanitization."""
@@ -185,49 +183,3 @@ class TestSanitizeForLogging:
         """Default max_length is 200."""
         result = InputSanitizer.sanitize_for_logging("a" * 201)
         assert len(result) == 203  # 200 + '...'
-
-
-@pytest.mark.unit
-class TestInputSanitizerInit:
-    """Tests for InputSanitizer __init__."""
-
-    def test_default_detector(self):
-        """Default detector uses global instance."""
-        sanitizer = InputSanitizer()
-        assert sanitizer._detector is not None
-
-    def test_custom_detector(self):
-        """Custom detector is stored."""
-        mock_detector = Mock()
-        sanitizer = InputSanitizer(detector=mock_detector)
-        assert sanitizer._detector is mock_detector
-
-
-@pytest.mark.unit
-class TestConvenienceFunctions:
-    """Tests for module-level convenience functions."""
-
-    def test_sanitize_string_function(self):
-        """Module-level sanitize_string works."""
-        result = sanitize_string("hello world")
-        assert result == "hello world"
-
-    def test_sanitize_string_raises_on_null(self):
-        """Module-level sanitize_string raises on null bytes."""
-        with pytest.raises(InputSanitizationError):
-            sanitize_string("hello\x00world")
-
-    def test_sanitize_string_max_length(self):
-        """Module-level sanitize_string respects max_length."""
-        with pytest.raises(InputSanitizationError):
-            sanitize_string("a" * 1001)
-
-    def test_sanitize_for_logging_function(self):
-        """Module-level sanitize_for_logging works."""
-        result = sanitize_for_logging("hello world")
-        assert result == "hello world"
-
-    def test_sanitize_for_logging_truncation(self):
-        """Module-level sanitize_for_logging truncates."""
-        result = sanitize_for_logging("a" * 300, max_length=50)
-        assert len(result) == 53  # 50 + '...'

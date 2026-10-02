@@ -109,10 +109,6 @@ class MockSettingsService(SettingsServiceInterface):
                 return default
         return value
 
-    def get_github_settings(self) -> dict[str, Any]:
-        """Get GitHub-related settings."""
-        return {}
-
     def get_cache_settings(self) -> dict[str, Any]:
         """Get cache-related settings."""
         return {}

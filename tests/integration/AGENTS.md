@@ -35,7 +35,7 @@ tests/integration/
 - Mark with `@pytest.mark.integration` (and `@pytest.mark.anyio` where async FastMCP surface needs it).
 - Keep secrets out of fixtures; use env only for opt-in real API runs.
 - Default local/CI path must not require network.
-- GitLab fakes must implement `select_with_client` (session path uses runtime, not sync `select_diff_snapshot` alone).
+- GitLab fakes must implement `select_with_client` (the session path pins versions via `GitLabRuntime.run_blocking`).
 
 ## ANTI-PATTERNS
 - NO committing tokens or API keys.
