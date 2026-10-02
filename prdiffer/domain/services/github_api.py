@@ -2,16 +2,12 @@
 
 from abc import ABC, abstractmethod
 
-from prdiffer.domain.entities.file_content import FileContentRequest, FileContentResponse, FileContentResult
-from prdiffer.domain.entities.pull_request import PullRequest
-from prdiffer.domain.entities.repository import Repository
-
 
 class GitHubAPIServiceInterface(ABC):
     """Abstract base class for GitHub API services.
 
-    This interface defines the contract for services that provide
-    GitHub API interactions for repository and pull request operations.
+    The strict full-diff path reads immutable git trees/blobs through the
+    provider SDK objects obtained after client initialization.
     """
 
     @abstractmethod
@@ -22,62 +18,4 @@ class GitHubAPIServiceInterface(ABC):
             github_token: GitHub personal access token for authentication
             timeout: API timeout in seconds
         """
-        pass
-
-    @abstractmethod
-    def get_repository(self, repo_full_name: str) -> Repository | None:
-        """Get a GitHub repository instance.
-
-        Args:
-            repo_full_name: Repository full name in format "owner/repo"
-
-        Returns:
-            Repository instance if found, None otherwise
-        """
-        pass
-
-    @abstractmethod
-    def get_pull_request(self, repo_full_name: str, pr_number: int) -> PullRequest | None:
-        """Get a pull request instance.
-
-        Args:
-            repo_full_name: Repository full name in format "owner/repo"
-            pr_number: Pull request number
-
-        Returns:
-            PullRequest instance if found, None otherwise
-        """
-        pass
-
-    @abstractmethod
-    def get_file_content(self, repo_full_name: str, file_path: str, branch: str) -> FileContentResult:
-        """Get typed file content from a specific branch/ref.
-
-        Returns:
-            FileContentAvailable for successful text (including empty string),
-            or FileContentUnavailable for deterministic content limitations.
-
-        Raises:
-            Operational provider exceptions (auth, rate limit, transport, retry exhaustion)
-            rather than mapping them into FileContentUnavailable.
-        """
-        pass
-
-    @abstractmethod
-    def get_files_content_batch(
-        self,
-        repo_full_name: str,
-        file_paths: list[str],
-        branch: str,
-    ) -> dict[str, FileContentResult]:
-        """Batch retrieve typed file contents from a specific branch/ref.
-
-        Returns:
-            Mapping of path → FileContentResult. Only available texts are cached.
-        """
-        pass
-
-    @abstractmethod
-    def get_files_content_multi_ref_batch(self, requests: tuple[FileContentRequest, ...]) -> tuple[FileContentResponse, ...]:
-        """Batch retrieve typed content across immutable refs in request order."""
         pass

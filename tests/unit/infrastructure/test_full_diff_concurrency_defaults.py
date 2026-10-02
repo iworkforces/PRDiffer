@@ -11,7 +11,6 @@ def test_settings_toml_parallel_flags_default_enabled() -> None:
     service.clear_cache()
     config = service.get_github_config()
     assert config.parallel_file_fetch_enabled is True
-    assert config.parallel_head_base_fetch_enabled is True
     assert config.parallel_diff_generation_enabled is True
     assert config.github_worker_capacity == 4
 

@@ -39,20 +39,3 @@ class FileContentUnavailable:
 
 
 FileContentResult = FileContentAvailable | FileContentUnavailable
-
-
-@dataclass(frozen=True, slots=True)
-class FileContentRequest:
-    """Immutable provider content lookup identity."""
-
-    repo_full_name: str
-    path: str
-    ref: str
-
-
-@dataclass(frozen=True, slots=True)
-class FileContentResponse:
-    """Ref-qualified content result paired with its request identity."""
-
-    request: FileContentRequest
-    content: FileContentResult

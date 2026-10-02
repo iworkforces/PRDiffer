@@ -27,8 +27,6 @@ class TestCacheServiceInterface:
             "get",
             "set",
             "invalidate",
-            "get_etag",
-            "set_etag",
             "get_stats",
         }
 
@@ -137,8 +135,6 @@ class TestDiffServiceInterface:
 
         required_methods = {
             "build_full_file_patch",
-            "decode_if_bytes",
-            "extend_patch",
         }
 
         assert required_methods.issubset(abstract_methods)
@@ -289,12 +285,6 @@ class TestMockImplementationCompliance:
             def clear(self):
                 self._data.clear()
 
-            def get_etag(self, cache_key: str):
-                return None
-
-            def set_etag(self, cache_key: str, etag: str):
-                pass
-
             def get_stats(self):
                 return {"size": len(self._data)}
 
@@ -397,14 +387,6 @@ class TestMockImplementationCompliance:
             def build_full_file_patch(self, original_file_str, new_file_str):
                 return f"@@ -1,1 +1,1 @@\n-{original_file_str}\n+{new_file_str}\n"
 
-            def decode_if_bytes(self, content):
-                if isinstance(content, bytes):
-                    return content.decode("utf-8")
-                return str(content)
-
-            def extend_patch(self, original_file_str, patch_str, new_file_str=""):
-                return patch_str
-
         mock = MockDiffService()
         assert isinstance(mock, DiffServiceInterface)
 
@@ -461,21 +443,6 @@ class TestMockImplementationCompliance:
 
             def initialize_client(self, github_token=None, timeout=30):
                 self.initialized = True
-
-            def get_repository(self, repo_full_name):
-                return None
-
-            def get_pull_request(self, repository, pr_number):
-                return None
-
-            def get_file_content(self, repository, file_path, branch):
-                return ""
-
-            def get_files_content_batch(self, repository, file_paths, branch):
-                return {}
-
-            def get_files_content_multi_ref_batch(self, requests):
-                return ()
 
         mock = MockGitHubAPIService()
         assert isinstance(mock, GitHubAPIServiceInterface)

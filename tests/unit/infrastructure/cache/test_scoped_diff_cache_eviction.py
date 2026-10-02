@@ -165,31 +165,11 @@ async def test_optimistic_expiry_removes_live_key_metadata(cache_service: CacheS
 
 
 @pytest.mark.asyncio
-async def test_scoped_eviction_handles_etag_entries_without_harming_other_etags(cache_service: CacheService) -> None:
-    # Given raw ETag entries coexisting with hashed diff data.
-    selected = github_full_diff_v3_key("owner", "repo", 8, "base", "head")
-    unrelated = "gitlab:owner/repo/pr/8"
-    value = PRDiff(files=())
-    await cache_service.set(selected, "sha", value)
-    cache_service.set_etag(selected, "selected-etag")
-    cache_service.set_etag(unrelated, "gitlab-etag")
-
-    # When the matching PR is evicted.
-    await cache_service.invalidate_github_pr("owner", "repo", 8)
-
-    # Then its data and ETag disappear, but the GitLab ETag survives.
-    assert await cache_service.get(selected, "sha") is None
-    assert cache_service.get_etag(selected) is None
-    assert cache_service.get_etag(unrelated) == "gitlab-etag"
-    assert_live_metadata(cache_service)
-
-
-@pytest.mark.asyncio
 async def test_clear_removes_live_key_index(cache_service: CacheService) -> None:
-    # Given a populated cache with an ETag.
+    # Given a populated cache with entries for two repositories.
     key = github_full_diff_v3_key("owner", "repo", 1, "base", "head")
     await cache_service.set(key, "sha", PRDiff(files=()))
-    cache_service.set_etag("elsewhere/repo/pr/1", "etag")
+    await cache_service.set(github_full_diff_v3_key("elsewhere", "repo", 1, "base", "head"), "sha", PRDiff(files=()))
 
     # When the existing clear API is used.
     await cache_service.clear()

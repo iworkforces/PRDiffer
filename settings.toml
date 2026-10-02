@@ -63,8 +63,7 @@ gitlab.allowed_hosts = ["gitlab.com"]
 # Performance optimization feature flags (dotted keys under [default]; not a Dynaconf env)
 # Bounded concurrency (indexed batch, session CapacityLimiter, max_concurrent).
 performance.cache_hit_optimization_enabled = true  # Optimistic cache lookup before commit SHA check
-performance.parallel_file_fetch_enabled = true  # Bounded parallel file content fetch (github.max_concurrent)
-performance.parallel_head_base_fetch_enabled = true  # Concurrent head and base content loads
+performance.parallel_file_fetch_enabled = true  # GitHub session tree/blob capacity (github.max_concurrent; 1 when false)
 performance.parallel_diff_generation_enabled = true  # Parallel full-context per-file generation
 
 # File filtering patterns (GitHub only; GitLab has no ignore filter).
@@ -173,14 +172,6 @@ async_parallel_executor.error_strategy = "ignore"  # Options: ignore, raise, col
 circuit_breaker_registry.default_failure_threshold = 5  # Failures before opening circuit
 circuit_breaker_registry.default_timeout = 60.0  # Seconds to keep circuit open
 circuit_breaker_registry.global_threshold_multiplier = 2  # Global breaker threshold multiplier
-
-# File content cache settings
-cache.file_content_max_size = 1000
-cache.file_content_ttl = 600  # 10 minutes
-
-github.etag_enabled = true
-github.etag_ttl = 600  # 10 minutes
-github.etag_cache_size = 1000
 
 # Security pattern configuration (regex patterns for input validation)
 # NOTE: Patterns use TOML string escaping - backslashes must be doubled

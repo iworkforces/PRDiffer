@@ -63,7 +63,6 @@ class TestGitHubConfigDefaults:
         assert config.max_total_chars == 600_000
         assert config.pr_diff_request_timeout_seconds == 180.0
         assert config.parallel_file_fetch_enabled is True
-        assert config.parallel_head_base_fetch_enabled is True
         assert config.parallel_diff_generation_enabled is True
 
 
@@ -236,7 +235,6 @@ class TestGitHubConfigToDict:
             "max_file_size_bytes",
             "max_total_chars",
             "parallel_file_fetch_enabled",
-            "parallel_head_base_fetch_enabled",
             "parallel_diff_generation_enabled",
             "pr_diff_request_timeout_seconds",
             "max_concurrent",

@@ -22,10 +22,7 @@ from prdiffer.infrastructure.cache.cache_repository import (
 from prdiffer.infrastructure.github.client import GitHubAPIClient
 from prdiffer.infrastructure.utils.diff_utils import DiffUtils, DiffProcessingConfig
 from prdiffer.infrastructure.utils.pattern_matcher import PatternMatcher
-from prdiffer.infrastructure.github.diff_generator import (
-    DiffGenerator,
-    get_diff_generator,
-)
+from prdiffer.infrastructure.github.diff_generator import get_diff_generator
 from prdiffer.infrastructure.github.file_processor import FileProcessor
 
 from prdiffer.infrastructure.services.pr_diff_service import GitHubPRDiffService
@@ -55,10 +52,7 @@ class InfrastructureFactory(InfrastructureFactoryInterface):
 
     def create_github_api_service(self) -> GitHubAPIServiceInterface:
         """Create GitHub API service instance from authoritative GitHubConfig."""
-        settings_service = get_settings_service()
-        config = settings_service.get_github_config()
-        # Serialized capacity is 1 when parallel fetch is disabled.
-        max_concurrent = config.github_worker_capacity
+        config = get_settings_service().get_github_config()
         return GitHubAPIClient(
             max_retries=config.max_retries,
             retry_delay=config.retry_delay,
@@ -76,9 +70,6 @@ class InfrastructureFactory(InfrastructureFactoryInterface):
             api_health_tracking=config.api_health_tracking,
             context_aware_retry=config.context_aware_retry,
             use_advanced_retry=True,
-            max_concurrent=max_concurrent,
-            max_file_size_bytes=config.max_file_size_bytes,
-            parallel_file_fetch_enabled=config.parallel_file_fetch_enabled,
         )
 
     def create_diff_service(self) -> DiffServiceInterface:
@@ -114,21 +105,14 @@ class InfrastructureFactory(InfrastructureFactoryInterface):
         pattern_matching_service = self.create_pattern_matching_service()
         logger_service = self.create_logger_service()
 
-        max_workers = config.github_worker_capacity
         file_processor = FileProcessor(
-            github_api_service=github_api_service,
             pattern_matcher=pattern_matching_service,
-            diff_utils=diff_service,
             max_files_allowed=config.max_files_allowed,
-            parallel_fetch_threshold=10 if config.parallel_file_fetch_enabled else 10**9,
-            max_parallel_workers=max_workers,
-            parallel_head_base_fetch_enabled=config.parallel_head_base_fetch_enabled,
-            require_git_tree=True,
+            max_file_size_bytes=config.max_file_size_bytes,
         )
 
         diff_generator = get_diff_generator(
             diff_utils=diff_service,
-            parallel_executor=None,
             parallel_enabled=config.parallel_diff_generation_enabled,
             parallel_threshold=config.diff_parallel_threshold,
             max_workers=config.diff_max_workers,
@@ -142,37 +126,6 @@ class InfrastructureFactory(InfrastructureFactoryInterface):
             max_total_chars=config.max_total_chars,
             github_timeout_seconds=config.timeout,
             pr_diff_request_timeout_seconds=config.pr_diff_request_timeout_seconds,
-        )
-
-    def create_file_processor(self) -> FileProcessor:
-        """Create file processor instance from GitHubConfig."""
-        config = get_settings_service().get_github_config()
-        github_api_service = self.create_github_api_service()
-        diff_service = self.create_diff_service()
-        pattern_matching_service = self.create_pattern_matching_service()
-
-        return FileProcessor(
-            github_api_service=github_api_service,
-            pattern_matcher=pattern_matching_service,
-            diff_utils=diff_service,
-            max_files_allowed=config.max_files_allowed,
-            parallel_fetch_threshold=10 if config.parallel_file_fetch_enabled else 10**9,
-            require_git_tree=True,
-            max_parallel_workers=config.github_worker_capacity,
-            parallel_head_base_fetch_enabled=config.parallel_head_base_fetch_enabled,
-        )
-
-    def create_diff_generator(self) -> DiffGenerator:
-        """Create diff generator instance from GitHubConfig parallel flag."""
-        config = get_settings_service().get_github_config()
-        diff_service = self.create_diff_service()
-
-        return get_diff_generator(
-            diff_utils=diff_service,
-            parallel_executor=None,
-            parallel_enabled=config.parallel_diff_generation_enabled,
-            parallel_threshold=config.diff_parallel_threshold,
-            max_workers=config.diff_max_workers,
         )
 
     def create_input_validator(self) -> InputValidatorProtocol:

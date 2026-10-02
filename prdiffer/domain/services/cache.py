@@ -70,23 +70,6 @@ class CacheServiceInterface(ABC):
         pass
 
     @abstractmethod
-    def get_etag(self, cache_key: str) -> str | None:
-        """Get stored ETag for a cache key."""
-        pass
-
-    @abstractmethod
-    def set_etag(self, cache_key: str, etag: str) -> None:
-        """Cache ETag for a specific PR key.
-
-        Args:
-            cache_key: The cache key to store ETag under
-            etag: The ETag value from HTTP response
-
-        Store ETag for conditional requests.
-        """
-        pass
-
-    @abstractmethod
     def get_stats(self) -> dict[str, Any]:
         """Get cache statistics.
 

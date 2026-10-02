@@ -69,7 +69,6 @@ class GitHubConfig(GitHubConfigInterface):
     max_total_chars: int = DEFAULT_MAX_TOTAL_CHARS
     # Bounded concurrency defaults (CapacityLimiter / max_concurrent when enabled).
     parallel_file_fetch_enabled: bool = True
-    parallel_head_base_fetch_enabled: bool = True
     parallel_diff_generation_enabled: bool = True
     pr_diff_request_timeout_seconds: float = DEFAULT_PR_DIFF_REQUEST_TIMEOUT_SECONDS
     max_concurrent: int = 4
@@ -155,7 +154,6 @@ class GitHubConfig(GitHubConfigInterface):
             max_file_size_bytes=int(config.get("max_file_size_bytes", DEFAULT_MAX_FILE_SIZE_BYTES)),
             max_total_chars=int(config.get("max_total_chars", DEFAULT_MAX_TOTAL_CHARS)),
             parallel_file_fetch_enabled=bool(config.get("parallel_file_fetch_enabled", True)),
-            parallel_head_base_fetch_enabled=bool(config.get("parallel_head_base_fetch_enabled", True)),
             parallel_diff_generation_enabled=bool(config.get("parallel_diff_generation_enabled", True)),
             pr_diff_request_timeout_seconds=float(config.get("pr_diff_request_timeout_seconds", DEFAULT_PR_DIFF_REQUEST_TIMEOUT_SECONDS)),
             max_concurrent=int(config.get("max_concurrent", 4)),
@@ -193,7 +191,6 @@ class GitHubConfig(GitHubConfigInterface):
             "max_file_size_bytes": self.max_file_size_bytes,
             "max_total_chars": self.max_total_chars,
             "parallel_file_fetch_enabled": self.parallel_file_fetch_enabled,
-            "parallel_head_base_fetch_enabled": self.parallel_head_base_fetch_enabled,
             "parallel_diff_generation_enabled": self.parallel_diff_generation_enabled,
             "pr_diff_request_timeout_seconds": self.pr_diff_request_timeout_seconds,
             "max_concurrent": self.max_concurrent,

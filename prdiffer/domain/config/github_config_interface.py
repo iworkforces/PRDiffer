@@ -41,7 +41,6 @@ class GitHubConfigDict(TypedDict, total=False):
     max_file_size_bytes: int
     max_total_chars: int
     parallel_file_fetch_enabled: bool
-    parallel_head_base_fetch_enabled: bool
     parallel_diff_generation_enabled: bool
     pr_diff_request_timeout_seconds: float
     max_concurrent: int
@@ -72,7 +71,6 @@ class GitHubConfigInterface(Protocol):
     max_file_size_bytes: int
     max_total_chars: int
     parallel_file_fetch_enabled: bool
-    parallel_head_base_fetch_enabled: bool
     parallel_diff_generation_enabled: bool
     pr_diff_request_timeout_seconds: float
     max_concurrent: int

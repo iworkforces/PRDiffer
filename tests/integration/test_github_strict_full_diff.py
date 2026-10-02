@@ -40,10 +40,6 @@ class MemoryCache:
         self.store: dict[tuple[str, str], Any] = {}
         self.sets = 0
         self.gets = 0
-
-    def get_cache_key(self, owner: str, repo: str, pr: int) -> str:
-        return f"{owner}/{repo}/{pr}"
-
     async def get_optimistic(self, key: str) -> tuple[Any, None]:
         return None, None
 
@@ -171,9 +167,7 @@ def _build_stack(
 
     pattern = SimpleNamespace(is_valid_file=lambda path: True)
     processor = FileProcessor(
-        github_api_service=api,  # type: ignore[arg-type]
         pattern_matcher=pattern,  # type: ignore[arg-type]
-        diff_utils=DiffUtils(),
         max_files_allowed=50,
     )
     generator = DiffGenerator(diff_utils=DiffUtils(), parallel_enabled=False)
@@ -320,7 +314,7 @@ async def test_page_two_inventory_failure_no_cache() -> None:
     repo = FakeRepo(trees=trees, blobs=blobs, pr=pr)
     api = FakeAPI(repo, pr)
     pattern = SimpleNamespace(is_valid_file=lambda path: True)
-    processor = FileProcessor(github_api_service=api, pattern_matcher=pattern, diff_utils=DiffUtils())  # type: ignore[arg-type]
+    processor = FileProcessor(pattern_matcher=pattern)  # type: ignore[arg-type]
     service = GitHubPRDiffService.__new__(GitHubPRDiffService)
     service._github_api = api  # type: ignore[attr-defined]
     service._file_processor = processor
@@ -408,9 +402,7 @@ async def test_truncated_tree_no_cache() -> None:
     repo = TruncRepo(trees={}, blobs={}, pr=pr)
     api = FakeAPI(repo, pr)
     processor = FileProcessor(
-        github_api_service=api,  # type: ignore[arg-type]
         pattern_matcher=SimpleNamespace(is_valid_file=lambda p: True),  # type: ignore[arg-type]
-        diff_utils=DiffUtils(),
     )
     service = GitHubPRDiffService.__new__(GitHubPRDiffService)
     service._github_api = api  # type: ignore[attr-defined]

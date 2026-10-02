@@ -90,12 +90,6 @@ class RecordingCache(CacheServiceInterface):
     async def invalidate_github_repository(self, owner: str, repo: str) -> None:
         return None
 
-    def get_etag(self, cache_key: str) -> str | None:
-        return None
-
-    def set_etag(self, cache_key: str, etag: str) -> None:
-        return None
-
     def get_stats(self) -> dict[str, int]:
         return {"size": len(self.writes)}
 

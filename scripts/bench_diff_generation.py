@@ -8,6 +8,7 @@ post-change comparisons. No network calls. Baseline artifacts refuse overwrite.
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import json
 import os
@@ -19,21 +20,15 @@ import tracemalloc
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
 import anyio
 
-from prdiffer.domain.entities.file_content import FileContentAvailable, FileContentRequest, FileContentResponse, FileContentResult
 from prdiffer.domain.entities.file_patch import FilePatchInfo
-from prdiffer.domain.entities.pull_request import PullRequest as DomainPullRequest
-from prdiffer.domain.entities.repository import Repository as DomainRepository
-from prdiffer.domain.services.github_api import GitHubAPIServiceInterface
 from prdiffer.domain.services.pattern_matching import PatternMatchingServiceInterface
 from prdiffer.infrastructure.github.diff_generator import DiffGenerator
 from prdiffer.infrastructure.github.file_processor import FileProcessor
 from prdiffer.infrastructure.utils.diff_utils import DiffUtils
-from github.File import File
-from github.Repository import Repository as PyGithubRepository
 
 MATRIX_NAME = "strict-v1"
 DEFAULT_SEED = 5020
@@ -153,100 +148,83 @@ class DummyPatternMatcher(PatternMatchingServiceInterface):
         return list(filenames)
 
 
-class InstrumentedAPIService(GitHubAPIServiceInterface):
-    """In-memory GitHub content API with counters and optional artificial delay."""
+@dataclass(frozen=True)
+class FakeTreeItem:
+    """Recursive git tree leaf shaped like PyGithub ``GitTreeElement``."""
+
+    path: str
+    mode: str
+    type: str
+    sha: str
+
+
+@dataclass(frozen=True)
+class FakeTree:
+    """Immutable recursive git tree shaped like PyGithub ``GitTree``."""
+
+    tree: tuple[FakeTreeItem, ...]
+    truncated: bool = False
+
+
+@dataclass(frozen=True)
+class FakeBlob:
+    """Git blob shaped like PyGithub ``GitBlob`` (base64 content)."""
+
+    content: str
+    encoding: str = "base64"
+
+
+def _git_blob_sha(data: bytes) -> str:
+    """Git object id for a blob payload (deterministic 40-hex SHA-1)."""
+    return hashlib.sha1(b"blob %d\x00" % len(data) + data).hexdigest()
+
+
+class InstrumentedGitRepository:
+    """In-memory immutable git trees/blobs with counters and optional artificial delay."""
 
     def __init__(
         self,
+        full_name: str,
         content_map: dict[tuple[str, str], str],
         counters: ApiCounters,
         *,
         block_ms: float = 0.0,
     ) -> None:
-        self._content_map = content_map
+        if full_name.startswith("http"):
+            raise RuntimeError("Network access is forbidden in the benchmark harness")
+        self.full_name = full_name
         self._counters = counters
         self._block_ms = block_ms
-        self._network_guard_enabled = True
-
-    def initialize_client(self, github_token: str | None = None, timeout: int = 30) -> None:
-        return None
-
-    def get_repository(self, repo_full_name: str) -> DomainRepository | None:
-        return None
-
-    def get_pull_request(self, repo_full_name: str, pr_number: int) -> DomainPullRequest | None:
-        return None
+        self._blobs: dict[str, bytes] = {}
+        items_by_ref: dict[str, list[FakeTreeItem]] = {}
+        for (path, ref), text in content_map.items():
+            data = text.encode("utf-8")
+            sha = _git_blob_sha(data)
+            self._blobs[sha] = data
+            items_by_ref.setdefault(ref, []).append(FakeTreeItem(path=path, mode="100644", type="blob", sha=sha))
+        self._trees = {ref: FakeTree(tree=tuple(items)) for ref, items in items_by_ref.items()}
 
     def _maybe_block(self) -> None:
         if self._block_ms > 0:
             # Intentional sync sleep for event-loop blocking negative control.
             time.sleep(self._block_ms / 1000.0)
 
-    def get_file_content(self, repo_full_name: str, file_path: str, branch: str) -> FileContentResult:
-        if self._network_guard_enabled and repo_full_name.startswith("http"):
-            raise RuntimeError("Network access is forbidden in the benchmark harness")
+    def get_git_tree(self, sha: str, recursive: bool = False) -> FakeTree:
         self._counters.begin()
         try:
             self._maybe_block()
-            content = self._content_map.get((file_path, branch), "")
-            self._counters.end(len(content.encode("utf-8")))
-            return FileContentAvailable(text=content)
-        except Exception:
-            self._counters.end(0)
-            raise
-
-    def get_files_content_batch(
-        self,
-        repo_full_name: str,
-        file_paths: list[str],
-        branch: str,
-    ) -> dict[str, FileContentResult]:
-        if self._network_guard_enabled and repo_full_name.startswith("http"):
-            raise RuntimeError("Network access is forbidden in the benchmark harness")
-        self._counters.begin()
-        try:
-            self._maybe_block()
-            result: dict[str, FileContentResult] = {}
-            total = 0
-            for path in file_paths:
-                content = self._content_map.get((path, branch), "")
-                result[path] = FileContentAvailable(text=content)
-                total += len(content.encode("utf-8"))
-            self._counters.end(total)
-            return result
-        except Exception:
-            self._counters.end(0)
-            raise
-
-    def get_files_content_multi_ref_batch(self, requests: tuple[FileContentRequest, ...]) -> tuple[FileContentResponse, ...]:
-        byte_count = 0
-        self._counters.begin()
-        try:
-            self._maybe_block()
-            responses = tuple(
-                FileContentResponse(
-                    request=request,
-                    content=FileContentAvailable(text=self._content_map.get((request.path, request.ref), "")),
-                )
-                for request in requests
-            )
-            byte_count = sum(
-                len(response.content.text.encode("utf-8"))
-                for response in responses
-                if isinstance(response.content, FileContentAvailable)
-            )
-            return responses
+            return self._trees[sha]
         finally:
-            self._counters.end(byte_count)
+            self._counters.end(0)
 
-    def get_files_content_batch_parallel(
-        self,
-        repo_full_name: str,
-        file_paths: list[str],
-        branch: str,
-        max_workers: int = 4,
-    ) -> dict[str, FileContentResult]:
-        return self.get_files_content_batch(repo_full_name, file_paths, branch)
+    def get_git_blob(self, sha: str) -> FakeBlob:
+        data = b""
+        self._counters.begin()
+        try:
+            data = self._blobs[sha]
+            return FakeBlob(content=base64.b64encode(data).decode("ascii"))
+        finally:
+            self._counters.end(len(data))
 
 
 @dataclass(frozen=True)
@@ -288,8 +266,8 @@ def build_fixture(workload: WorkloadSpec, seed: int = DEFAULT_SEED) -> FixtureBu
         owner="bench-owner",
         name="bench-repo",
     )
-    base_sha = f"base{seed:08x}"
-    head_sha = f"head{seed:08x}"
+    base_sha = hashlib.sha1(f"base:{seed}".encode()).hexdigest()
+    head_sha = hashlib.sha1(f"head:{seed}".encode()).hexdigest()
 
     diff_utils = DiffUtils()
     files: list[FakeFile] = []
@@ -486,35 +464,30 @@ def _run_sync_pipeline(
     counters: ApiCounters,
     *,
     block_ms: float = 0.0,
-    max_workers: int = 1,
-    parallel_threshold: int = 10**9,
 ) -> tuple[list[FilePatchInfo], list[str]]:
-    """Execute the current sync file-processor + diff-generator path."""
-    api = InstrumentedAPIService(bundle.content_map, counters, block_ms=block_ms)
+    """Execute the strict git-tree file-processor + ordered diff-generator path."""
+    repository = InstrumentedGitRepository(
+        bundle.repository.full_name,
+        bundle.content_map,
+        counters,
+        block_ms=block_ms,
+    )
     # Page fetches are simulated from the fixture page layout (no network).
     for _page in bundle.pages:
         counters.record_page()
 
     processor = FileProcessor(
-        github_api_service=api,
         pattern_matcher=DummyPatternMatcher(),
-        diff_utils=DiffUtils(),
-        # Current processor treats max_files_allowed as a soft cap that skips
-        # full content once the counter reaches the limit. Use files+1 so every
-        # selected fixture file is fully loaded for an honest full-diff baseline.
         max_files_allowed=bundle.workload.files + 1,
-        parallel_fetch_threshold=parallel_threshold,
-        max_parallel_workers=max_workers,
     )
-    fake_repo = cast(PyGithubRepository, type("R", (), {"full_name": bundle.repository.full_name})())
     patches = processor.process_files_to_patches(
-        cast(list[File], list(bundle.files)),
-        repository=fake_repo,
+        list(bundle.files),
+        repository=repository,
         head_sha=bundle.head_sha,
         base_sha=bundle.base_sha,
     )
-    generator = DiffGenerator(diff_utils=DiffUtils(), parallel_executor=None, parallel_enabled=False)
-    diffs = generator.generate_extended_diff(patches)
+    generator = DiffGenerator(diff_utils=DiffUtils(), parallel_enabled=False)
+    diffs = [generated.diff for generated in generator.generate_ordered_file_diffs(patches)]
     return patches, diffs
 
 
@@ -627,18 +600,9 @@ def run_mode(
     samples: list[SampleResult] = []
     validity: dict[str, Any] = {"status": "ok", "mode": mode}
 
-    def make_sync_runner(
-        counters: ApiCounters,
-        *,
-        max_workers: int = 1,
-    ) -> Callable[[], tuple[list[FilePatchInfo], list[str], int, bool | None]]:
+    def make_sync_runner(counters: ApiCounters) -> Callable[[], tuple[list[FilePatchInfo], list[str], int, bool | None]]:
         def _run() -> tuple[list[FilePatchInfo], list[str], int, bool | None]:
-            patches, diffs = _run_sync_pipeline(
-                bundle,
-                counters,
-                max_workers=max_workers,
-                parallel_threshold=10 if max_workers > 1 else 10**9,
-            )
+            patches, diffs = _run_sync_pipeline(bundle, counters)
             return patches, diffs, 0, None
 
         return _run
@@ -650,22 +614,15 @@ def run_mode(
 
         return _run
 
-    def _workers_for_mode(name: str) -> int:
-        if name == "serialized-worker-1":
-            return 1
-        if name.startswith("bounded-worker-"):
-            return int(name.rsplit("-", 1)[-1])
-        return 1
-
     total_runs = WARMUPS + bundle.workload.samples
     for run_idx in range(total_runs):
         counters = ApiCounters()
         if mode == "sync-current":
-            runner = make_sync_runner(counters, max_workers=1)
+            runner = make_sync_runner(counters)
         elif mode == "async-current-negative-control":
             runner = make_negative_runner(counters)
         elif mode in POST_CHANGE_MODES:
-            runner = make_sync_runner(counters, max_workers=_workers_for_mode(mode))
+            runner = make_sync_runner(counters)
         else:
             raise AssertionError(f"Supported mode not implemented: {mode}")
 

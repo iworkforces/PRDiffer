@@ -318,26 +318,6 @@ class CacheService(CacheServiceInterface):
             self._entry_keys.clear()
         self.logger.info("Cache cleared")
 
-    def set_etag(self, cache_key: str, etag: str) -> None:
-        """Cache ETag for a specific PR key."""
-        cache_entry: dict[str, Any] | None = self.cache.get(cache_key)
-        if cache_entry is None:
-            cache_entry = {
-                "etag": etag,
-                "timestamp": time.time(),
-            }
-            self.cache[cache_key] = cache_entry
-        else:
-            cache_entry["etag"] = etag
-            cache_entry["timestamp"] = time.time()
-
-    def get_etag(self, cache_key: str) -> str | None:
-        """Get stored ETag for a cache key."""
-        cache_entry = self.cache.get(cache_key)
-        if cache_entry is None:
-            return None
-        return cache_entry.get("etag")
-
     def get_stats(self) -> dict[str, Any]:
         """Get cache statistics."""
         base_stats: dict[str, Any] = {
