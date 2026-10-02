@@ -276,10 +276,10 @@ class TestWebhookHTTPHandler:
         mock_repository_cache_service.invalidate_github_pr.assert_not_called()
 
 
-def _signed_request(payload: Mapping[str, object], event: str, *, valid_signature: bool = True, fallback: bool = False) -> Request:
+def _signed_request(payload: Mapping[str, object], event: str, *, valid_signature: bool = True, legacy_header: bool = False) -> Request:
     raw_body = json.dumps(payload).encode()
     signature = f"sha256={hmac.new(b'test_webhook_secret', raw_body, 'sha256').hexdigest()}" if valid_signature else "sha256=invalid"
-    signature_header = b"x-hub-signature" if fallback else b"x-hub-signature-256"
+    signature_header = b"x-hub-signature" if legacy_header else b"x-hub-signature-256"
     headers = [(signature_header, signature.encode()), (b"x-github-event", event.encode())]
 
     async def receive() -> dict[str, object]:
@@ -326,8 +326,8 @@ async def test_signed_pr_http_evicts_all_target_versions_only(real_webhook_cache
     entries = await _seed_webhook_caches(diff_cache, repository_cache)
     endpoint = handler.get_webhook_handler()
     payload = {"action": action, "number": 42, "repository": {"full_name": "owner/repo"}}
-    assert (await endpoint(_signed_request(payload, "pull_request", fallback=True))).status_code == 200
-    removed = {"first_version", "second_version", "legacy"}
+    assert (await endpoint(_signed_request(payload, "pull_request"))).status_code == 200
+    removed = {"first_version", "second_version"}
     await _assert_entries(diff_cache, entries, removed)
     assert repository_cache.retrieve("owner", "repo", 42) is None
     assert repository_cache.retrieve("owner", "repo", 43) is not None
@@ -386,5 +386,19 @@ async def test_http_rejections_and_unsupported_action_preserve_real_cache(real_w
     entries = await _seed_webhook_caches(diff_cache, repository_cache)
     response = await handler.get_webhook_handler()(_signed_request(payload, event, valid_signature=status != 401))
     assert response.status_code == status
+    await _assert_entries(diff_cache, entries, set())
+    assert repository_cache.size() == 3
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_validly_signed_legacy_x_hub_signature_header_is_rejected(real_webhook_caches):
+    handler, diff_cache, repository_cache = real_webhook_caches
+    entries = await _seed_webhook_caches(diff_cache, repository_cache)
+    payload = {"action": "opened", "number": 42, "repository": {"full_name": "owner/repo"}}
+
+    response = await handler.get_webhook_handler()(_signed_request(payload, "pull_request", legacy_header=True))
+
+    assert response.status_code == 401
     await _assert_entries(diff_cache, entries, set())
     assert repository_cache.size() == 3

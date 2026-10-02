@@ -304,11 +304,10 @@ class TestGetWebhookHandler:
         assert callable(handler)
 
     @pytest.mark.anyio
-    async def test_handler_missing_signature_uses_fallback(self, webhook_handler):
-        """Handler falls back to X-Hub-Signature when X-Hub-Signature-256 missing."""
+    async def test_handler_ignores_legacy_x_hub_signature_header(self, webhook_handler):
+        """Only X-Hub-Signature-256 is read; the legacy X-Hub-Signature header is ignored."""
         mock_headers = Mock()
         mock_headers.get.side_effect = lambda k, d="": {
-            "X-Hub-Signature-256": "",
             "X-Hub-Signature": "sha256=some_sig",
             "X-GitHub-Event": "push",
         }.get(k, d)

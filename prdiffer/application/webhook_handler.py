@@ -137,8 +137,6 @@ class WebhookHandler:
             """Handle GitHub webhook events for cache invalidation."""
             try:
                 signature = request.headers.get("X-Hub-Signature-256", "")
-                if not signature:
-                    signature = request.headers.get("X-Hub-Signature", "")
 
                 github_event = request.headers.get("X-GitHub-Event", "")
 
