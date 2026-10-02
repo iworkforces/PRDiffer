@@ -257,7 +257,7 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
 
         @mcp.tool()
         async def get_pr_diff(pr_url: str, api_key: str | None = None) -> PRDiff:
-            """Get a complete structured full-context PR/MR diff (all-or-nothing).
+            """Get a complete structured full-context GitHub PR/GitLab MR diff (all-or-nothing).
 
             Successful responses include every selected file in provider order with:
             - ``path`` / optional ``previous_path`` (renames only)
@@ -360,7 +360,7 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
                 api_key: Optional API key for authentication (required if authentication is enabled)
 
             Returns:
-                str: Success message indicating the PR/MR was approved
+                str: Success message indicating the GitHub PR/GitLab MR was approved
 
             Raises:
                 ValidationError: If the URL is invalid or compliment is empty
@@ -436,7 +436,7 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
             Args:
                 pr_url: GitHub PR URL (e.g. https://github.com/owner/repo/pull/123)
                     or GitLab MR URL (e.g. https://gitlab.com/group/project/-/merge_requests/42)
-                pr_description: Non-empty description text to set on the PR/MR
+                pr_description: Non-empty description text to set on the GitHub PR/GitLab MR
                 api_key: Optional API key for authentication (required if authentication is enabled)
 
             Returns:
