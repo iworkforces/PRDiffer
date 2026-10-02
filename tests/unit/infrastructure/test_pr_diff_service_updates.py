@@ -1,35 +1,29 @@
 """Unit tests for pr_diff_service returning FilePatchInfo list.
 
-Tests that PRDiffService returns List[FilePatchInfo] instead of concatenated string.
-Breaking change for structured file-level output.
-
-WAVE 1 & 2 COMPLETE: Domain entities updated with new structure
+Tests that the session content step returns List[FilePatchInfo] for the snapshot refs.
 """
 
-import pytest
-from unittest.mock import Mock, AsyncMock
+from unittest.mock import Mock
 
-from prdiffer.infrastructure.services.pr_diff_service import GitHubPRDiffService
 from prdiffer.domain.entities.file_patch import FilePatchInfo, EDIT_TYPE
+from prdiffer.domain.interfaces.pr_diff_reader import PRDiffSnapshot
+from prdiffer.infrastructure.services.pr_diff_service import GitHubPRDiffService
+
+_BASE_TIP = "a" * 40
+_MERGE_BASE = "b" * 40
+_HEAD = "c" * 40
 
 
-@pytest.mark.asyncio
 class TestGenerateDiffContentReturnsFilePatchList:
     """Test that _generate_diff_content returns FilePatchInfo list."""
 
-    async def test_generate_diff_content_returns_file_patch_list(self):
-        """Test _generate_diff_content returns List[FilePatchInfo] not concatenated string."""
+    def test_generate_diff_content_returns_file_patch_list(self):
+        """Test _generate_diff_content returns List[FilePatchInfo] built at snapshot refs."""
         # Arrange
         mock_github_api_client = Mock()
         mock_file_processor = Mock()
         mock_diff_generator = Mock()
 
-        # Setup mock to return FilePatchInfo list
-        mock_github_api_client = Mock()
-        mock_file_processor = Mock()
-        mock_diff_generator = Mock()
-
-        # Create FilePatchInfo objects (domain entity from domain layer)
         file_patch_1 = FilePatchInfo(
             filename="file1.ts",
             edit_type=EDIT_TYPE.ADDED,
@@ -46,18 +40,12 @@ class TestGenerateDiffContentReturnsFilePatchList:
             patch="@@ -1,3 +1,8 @@\n-old\n+new\n",
         )
 
-        # Setup mock to return FilePatchInfo list (both sync and async methods)
         mock_file_processor.process_files_to_patches.return_value = [
             file_patch_1,
             file_patch_2,
         ]
-        mock_file_processor.process_files_to_patches_async = AsyncMock(return_value=[file_patch_1, file_patch_2])
-
-        # Setup diff generator to return list of strings
-        mock_diff_generator.generate_extended_diff.return_value = [
-            "diff content for file1",
-            "diff content for file2",
-        ]
+        mock_file_processor.max_files_allowed = 50
+        mock_file_processor._pattern_matcher.is_valid_file.return_value = True
 
         service = GitHubPRDiffService(
             github_api_client=mock_github_api_client,
@@ -65,26 +53,19 @@ class TestGenerateDiffContentReturnsFilePatchList:
             diff_generator=mock_diff_generator,
         )
 
-        # Create mock repository and PR
         mock_repository = Mock()
         mock_pull_request = Mock()
-        mock_pull_request.head = Mock()
-        mock_pull_request.head.sha = "commit123"
-        mock_pull_request.get_files.return_value = [Mock(), Mock()]  # 2 mock files
-        mock_pull_request.base = Mock()
-        mock_pull_request.base.sha = "base123"
-
-        mock_github_api_client.get_repository.return_value = mock_repository
-        mock_github_api_client.get_pull_request.return_value = mock_pull_request
+        provider_files = [Mock(filename="file1.ts"), Mock(filename="file2.ts")]
+        mock_pull_request.get_files.return_value = provider_files
+        snapshot = PRDiffSnapshot("o", "r", 1, _BASE_TIP, _MERGE_BASE, _HEAD, 2)
 
         # Act
-        result = await service._generate_diff_content_async(mock_repository, mock_pull_request)
+        diff_files = service._generate_diff_content(mock_repository, mock_pull_request, snapshot=snapshot)
 
-        # Assert - expecting tuple[str, list[FilePatchInfo]] after breaking change
-        assert isinstance(result, tuple)
-        diff_content, diff_files = result
+        # Assert
         assert isinstance(diff_files, list)
         assert len(diff_files) == 2
         assert all(isinstance(f, FilePatchInfo) for f in diff_files)
         assert diff_files[0].filename == "file1.ts"
         assert diff_files[1].filename == "file2.ts"
+        mock_file_processor.process_files_to_patches.assert_called_once_with(provider_files, mock_repository, _HEAD, _MERGE_BASE)

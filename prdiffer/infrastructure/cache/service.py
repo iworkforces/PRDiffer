@@ -7,7 +7,7 @@ from collections import OrderedDict
 from typing import Any, cast
 
 from prdiffer.domain.entities.pr_diff import PRDiff
-from prdiffer.domain.entities.pr_diff_cache import GITHUB_FULL_DIFF_CACHE_PREFIX_V3
+from prdiffer.domain.entities.pr_diff_cache import GITHUB_FULL_DIFF_CACHE_PREFIX
 from prdiffer.domain.services.cache import CacheServiceInterface
 from prdiffer.domain.exceptions import ValidationError
 from prdiffer.domain.error_codes import E1010_INVALID_CONFIGURATION
@@ -45,10 +45,6 @@ class CacheService(CacheServiceInterface):
 
         if self._use_hashed_keys:
             self.logger.info(f"Cache key hashing enabled (algorithm={self._hash_algorithm}, mapping={self._store_key_mapping}, ttl={self._ttl}s)")
-
-    def get_cache_key(self, repo_owner: str, repo_name: str, pr_number: int) -> str:
-        """Generate a cache key for the given repository and PR."""
-        return f"{repo_owner}/{repo_name}/pr/{pr_number}"
 
     def _hash_key(self, key: str) -> str:
         """Hash cache key using configured algorithm."""
@@ -291,13 +287,9 @@ class CacheService(CacheServiceInterface):
             for internal_key in list(self.cache):
                 original_key = self._entry_keys.get(internal_key, internal_key)
                 strict_parts = original_key.split(":")
-                legacy_parts = original_key.split("/")
-                if len(strict_parts) == 6 and strict_parts[0] == GITHUB_FULL_DIFF_CACHE_PREFIX_V3:
-                    entry_owner, entry_repo, entry_pr = strict_parts[1:4]
-                elif len(legacy_parts) == 4 and legacy_parts[2] == "pr":
-                    entry_owner, entry_repo, entry_pr = legacy_parts[0], legacy_parts[1], legacy_parts[3]
-                else:
+                if len(strict_parts) != 6 or strict_parts[0] != GITHUB_FULL_DIFF_CACHE_PREFIX:
                     continue
+                entry_owner, entry_repo, entry_pr = strict_parts[1:4]
                 if (
                     entry_owner.casefold() == owner_key
                     and entry_repo.casefold() == repo_key
@@ -311,11 +303,11 @@ class CacheService(CacheServiceInterface):
                     self._entry_keys.pop(internal_key, None)
 
     async def invalidate_github_pr(self, owner: str, repo: str, pr_number: int) -> None:
-        """Evict all GitHub snapshots and the legacy entry for one PR."""
+        """Evict all GitHub snapshots for one PR."""
         await self._invalidate_github_scope(owner, repo, pr_number)
 
     async def invalidate_github_repository(self, owner: str, repo: str) -> None:
-        """Evict GitHub snapshots and legacy entries for one repository."""
+        """Evict GitHub snapshots for one repository."""
         await self._invalidate_github_scope(owner, repo, None)
 
     async def clear(self) -> None:

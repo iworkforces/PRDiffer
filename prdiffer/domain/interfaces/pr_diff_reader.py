@@ -1,8 +1,4 @@
-"""Session-capable PR diff reader contracts (strict full-diff path).
-
-Non-session readers keep the legacy PRDiffReader protocol
-in ``domain.usecases.pr_diff_usecases``.
-"""
+"""Session-capable PR diff reader contracts (strict full-diff path)."""
 
 from __future__ import annotations
 
@@ -12,7 +8,6 @@ from typing import Protocol, runtime_checkable
 
 from prdiffer.domain.entities.pr_diff import PRDiff
 from prdiffer.domain.entities.pr_diff_cache import StrictPRDiffCacheIdentity
-from prdiffer.domain.usecases.pr_diff_usecases import PRDiffReader
 
 _GIT_OBJECT_SHA_RE = re.compile(r"^[0-9a-f]{40}$|^[0-9a-f]{64}$")
 
@@ -89,7 +84,7 @@ class PRDiffReadSessionInterface(Protocol):
 
 
 @runtime_checkable
-class SessionPRDiffReader(PRDiffReader, Protocol):
+class SessionPRDiffReader(Protocol):
     """Structural capability: open a request-local PR diff session."""
 
     async def open_pr_diff_session(

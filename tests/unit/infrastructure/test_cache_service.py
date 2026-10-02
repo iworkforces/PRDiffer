@@ -9,9 +9,13 @@ from unittest.mock import patch
 import pytest
 from prdiffer.infrastructure.cache.service import CacheService, get_cache_service
 from prdiffer.domain.entities.pr_diff import PRDiff
+from prdiffer.domain.entities.pr_diff_cache import github_full_diff_v3_key
 from prdiffer.domain.entities.file_diff_response import FileDiffResponse, FileStats
 from prdiffer.domain.entities.file_patch import EDIT_TYPE
 from prdiffer.domain.exceptions import ValidationError
+
+
+CACHE_KEY = github_full_diff_v3_key("owner", "repo", 123, "b" * 40, "c" * 40)
 
 
 @pytest.fixture
@@ -77,26 +81,6 @@ class TestCacheServiceInitialization:
         assert service._cache_expirations == 0
 
 
-class TestCacheServiceGetCacheKey:
-    """Test suite for get_cache_key method."""
-
-    def test_get_cache_key_format(self, reset_cache_service):
-        """Test cache key format."""
-        service = CacheService()
-
-        key = service.get_cache_key("owner", "repo", 123)
-
-        assert key == "owner/repo/pr/123"
-
-    def test_get_cache_key_with_special_chars(self, reset_cache_service):
-        """Test cache key with special characters in names."""
-        service = CacheService()
-
-        key = service.get_cache_key("owner-name", "repo.name", 456)
-
-        assert key == "owner-name/repo.name/pr/456"
-
-
 class TestCacheServiceHashKey:
     """Test suite for _hash_key method."""
 
@@ -154,7 +138,7 @@ class TestCacheServiceGetSet:
     async def test_set_and_get_cache_hit(self, reset_cache_service, sample_pr_diff):
         """Test setting and getting cached data."""
         service = CacheService()
-        cache_key = service.get_cache_key("owner", "repo", 123)
+        cache_key = CACHE_KEY
 
         await service.set(cache_key, "abc123", sample_pr_diff)
         result = await service.get(cache_key, "abc123")
@@ -168,7 +152,7 @@ class TestCacheServiceGetSet:
     async def test_get_cache_miss(self, reset_cache_service):
         """Test getting non-existent key returns None."""
         service = CacheService()
-        cache_key = service.get_cache_key("owner", "repo", 123)
+        cache_key = CACHE_KEY
 
         result = await service.get(cache_key, "abc123")
 
@@ -178,7 +162,7 @@ class TestCacheServiceGetSet:
     async def test_get_commit_sha_mismatch(self, reset_cache_service, sample_pr_diff):
         """Test cache miss when commit SHA doesn't match."""
         service = CacheService()
-        cache_key = service.get_cache_key("owner", "repo", 123)
+        cache_key = CACHE_KEY
 
         await service.set(cache_key, "abc123", sample_pr_diff)
         result = await service.get(cache_key, "def456")  # Different SHA
@@ -189,7 +173,7 @@ class TestCacheServiceGetSet:
     async def test_set_overwrites_existing(self, reset_cache_service, sample_pr_diff):
         """Test setting same key overwrites existing data."""
         service = CacheService()
-        cache_key = service.get_cache_key("owner", "repo", 123)
+        cache_key = CACHE_KEY
 
         new_diff = PRDiff(
             files=(
@@ -213,7 +197,7 @@ class TestCacheServiceGetSet:
     async def test_statistics_updated(self, reset_cache_service, sample_pr_diff):
         """Test cache hit/miss statistics are updated."""
         service = CacheService()
-        cache_key = service.get_cache_key("owner", "repo", 123)
+        cache_key = CACHE_KEY
 
         await service.set(cache_key, "abc123", sample_pr_diff)
         await service.get(cache_key, "abc123")  # Hit
@@ -231,7 +215,7 @@ class TestCacheServiceInvalidate:
     async def test_invalidate_existing_key(self, reset_cache_service, sample_pr_diff):
         """Test invalidating an existing cache entry."""
         service = CacheService()
-        cache_key = service.get_cache_key("owner", "repo", 123)
+        cache_key = CACHE_KEY
 
         await service.set(cache_key, "abc123", sample_pr_diff)
         await service.invalidate(cache_key)
@@ -244,7 +228,7 @@ class TestCacheServiceInvalidate:
     async def test_invalidate_nonexistent_key(self, reset_cache_service):
         """Test invalidating a non-existent key doesn't raise error."""
         service = CacheService()
-        cache_key = service.get_cache_key("owner", "repo", 123)
+        cache_key = CACHE_KEY
 
         # Should not raise
         await service.invalidate(cache_key)
@@ -285,7 +269,7 @@ class TestCacheServiceGetStats:
     async def test_get_stats_with_data(self, reset_cache_service, sample_pr_diff):
         """Test stats with cached data."""
         service = CacheService()
-        cache_key = service.get_cache_key("owner", "repo", 123)
+        cache_key = CACHE_KEY
 
         await service.set(cache_key, "abc123", sample_pr_diff)
 
@@ -297,7 +281,7 @@ class TestCacheServiceGetStats:
     async def test_get_stats_hit_rate(self, reset_cache_service, sample_pr_diff):
         """Test hit rate calculation."""
         service = CacheService()
-        cache_key = service.get_cache_key("owner", "repo", 123)
+        cache_key = CACHE_KEY
 
         await service.set(cache_key, "abc123", sample_pr_diff)
         await service.get(cache_key, "abc123")  # Hit
@@ -320,7 +304,7 @@ class TestCacheServiceTTL:
         service = CacheService()
         service._ttl = 0.1  # 100ms TTL
 
-        cache_key = service.get_cache_key("owner", "repo", 123)
+        cache_key = CACHE_KEY
         await service.set(cache_key, "abc123", sample_pr_diff)
 
         # Wait for TTL to expire
@@ -336,7 +320,7 @@ class TestCacheServiceTTL:
         service = CacheService()
         service._ttl = 10  # 10 second TTL
 
-        cache_key = service.get_cache_key("owner", "repo", 123)
+        cache_key = CACHE_KEY
         await service.set(cache_key, "abc123", sample_pr_diff)
 
         await anyio.sleep(0.05)  # Small sleep
@@ -351,7 +335,7 @@ class TestCacheServiceTTL:
         service = CacheService()
         service._ttl = 0.1
 
-        cache_key = service.get_cache_key("owner", "repo", 123)
+        cache_key = CACHE_KEY
         await service.set(cache_key, "abc123", sample_pr_diff)
 
         await anyio.sleep(0.15)
@@ -386,7 +370,7 @@ class TestCacheServiceThreadSafety:
     async def test_concurrent_get_operations(self, reset_cache_service, sample_pr_diff):
         """Test concurrent get operations are thread-safe using anyio."""
         service = CacheService()
-        cache_key = service.get_cache_key("owner", "repo", 123)
+        cache_key = CACHE_KEY
         await service.set(cache_key, "abc123", sample_pr_diff)
 
         num_tasks = 10
@@ -407,7 +391,7 @@ class TestCacheServiceThreadSafety:
     async def test_statistics_thread_safe(self, reset_cache_service, sample_pr_diff):
         """Test statistics are thread-safe using anyio."""
         service = CacheService()
-        cache_key = service.get_cache_key("owner", "repo", 123)
+        cache_key = CACHE_KEY
         await service.set(cache_key, "abc123", sample_pr_diff)
 
         num_tasks = 10

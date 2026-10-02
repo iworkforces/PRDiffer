@@ -7,10 +7,7 @@ import pytest
 from unittest.mock import Mock
 import time
 
-from prdiffer.infrastructure.github.file_processor import (
-    FileProcessor,
-    get_file_processor,
-)
+from prdiffer.infrastructure.github.file_processor import FileProcessor
 from prdiffer.domain.entities.file_content import FileContentAvailable, FileContentRequest, FileContentResponse, FileContentResult
 from prdiffer.domain.entities.file_patch import EDIT_TYPE
 
@@ -477,33 +474,6 @@ class TestFileProcessorStatusMapping:
     def test_status_renamed_mapping(self, file_processor):
         """Test 'renamed' status maps to RENAMED."""
         assert file_processor.STATUS_TO_EDIT_TYPE["renamed"] == EDIT_TYPE.RENAMED
-
-
-class TestGetFileProcessor:
-    """Tests for get_file_processor factory function."""
-
-    def test_get_file_processor_returns_instance(self, mock_github_api, mock_pattern_matcher, mock_diff_utils):
-        """Test factory returns FileProcessor instance."""
-        processor = get_file_processor(
-            github_api_service=mock_github_api,
-            pattern_matcher=mock_pattern_matcher,
-            diff_utils=mock_diff_utils,
-        )
-
-        assert isinstance(processor, FileProcessor)
-
-    def test_get_file_processor_with_custom_values(self, mock_github_api, mock_pattern_matcher, mock_diff_utils):
-        """Test factory with custom configuration."""
-        processor = get_file_processor(
-            github_api_service=mock_github_api,
-            pattern_matcher=mock_pattern_matcher,
-            diff_utils=mock_diff_utils,
-            max_files_allowed=100,
-            parallel_fetch_threshold=20,
-            max_parallel_workers=8,
-        )
-
-        assert processor.max_files_allowed == 100
 
 
 class TestFileProcessorRenamedFiles:

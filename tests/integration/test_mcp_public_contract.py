@@ -27,7 +27,6 @@ from prdiffer.domain.interfaces.pr_diff_reader import PRDiffSnapshot
 from prdiffer.domain.repositories.pr_diff_repository import PRDiffRepositoryInterface
 from prdiffer.domain.services.cache import CacheServiceInterface
 from prdiffer.domain.services.logger import LoggerServiceInterface, LogLevel
-from prdiffer.domain.services.pr_diff_service import PRDiffServiceInterface
 from prdiffer.domain.services.repository_cache import RepositoryCacheServiceInterface
 from prdiffer.domain.services.settings import SettingsServiceInterface
 
@@ -71,9 +70,6 @@ class RecordingCache(CacheServiceInterface):
     def __init__(self) -> None:
         self.reads: list[tuple[str, str]] = []
         self.writes: list[tuple[str, str, PRDiff]] = []
-
-    def get_cache_key(self, repo_owner: str, repo_name: str, pr_number: int) -> str:
-        return f"{repo_owner}/{repo_name}/pr/{pr_number}"
 
     async def get(self, cache_key: str, current_commit_sha: str) -> PRDiff | None:
         self.reads.append((cache_key, current_commit_sha))
@@ -125,7 +121,7 @@ class RecordingSession:
         self.close_calls += 1
 
 
-class RecordingReader(PRDiffServiceInterface):
+class RecordingReader:
     """Session-capable reader fake for one provider."""
 
     def __init__(self, provider: ProviderName, result: PRDiff, error: ProviderFailure | None = None) -> None:
@@ -167,15 +163,6 @@ class RecordingReader(PRDiffServiceInterface):
         self.sessions.append(session)
         return session
 
-    async def get_pr_diff(self, repo_owner: str, repo_name: str, pr_number: int) -> PRDiff:
-        raise AssertionError("strict session path required")
-
-    async def get_latest_commit_sha(self, repo_owner: str, repo_name: str, pr_number: int) -> str:
-        raise AssertionError("strict session path required")
-
-    def validate_repository_access(self, repo_owner: str, repo_name: str) -> bool:
-        return True
-
 
 class RecordingGitHubRepository(PRDiffRepositoryInterface):
     """Repository fake whose write calls and failures are observable."""
@@ -200,15 +187,6 @@ class RecordingGitHubRepository(PRDiffRepositoryInterface):
     @property
     def pr_number(self) -> int:
         return self._pr_number
-
-    async def initialize(self) -> None:
-        return None
-
-    async def get_pr_diff(self) -> PRDiff:
-        return sample_pr_diff()
-
-    async def get_latest_commit_sha(self) -> str:
-        return "c" * 40
 
     async def approve_pr_with_comment(self, pr_url: str, compliment: str) -> str:
         self.approve_calls.append((pr_url, compliment))
@@ -457,11 +435,6 @@ class StubServerConfiguration:
         return "Contract test server"
 
 
-class StubPROperationHandler:
-    async def get_pr_diff(self, pr_url: str) -> dict[str, str]:
-        return {"url": pr_url}
-
-
 class ContractHarness:
     """Compose one isolated real FastMCPServer and its recording providers."""
 
@@ -491,12 +464,10 @@ class ContractHarness:
             settings_service=StubSettings(),
             cache_service=self.cache,
             repository_cache_service=StubRepositoryCache(),
-            pr_diff_service=self.github_reader,
             logger=StubLogger(),
             provider_resolver=resolver,
             rate_limiter=AllowAllRateLimiter(),
             metrics_tracker=self.metrics,
-            pr_operation_handler=StubPROperationHandler(),
             health_monitor=HealthyMonitor(),
             server_configuration=StubServerConfiguration(),
             authentication=AllowAllAuthentication(),

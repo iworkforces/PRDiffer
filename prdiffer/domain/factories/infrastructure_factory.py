@@ -16,8 +16,7 @@ from prdiffer.domain.services.repository_cache import RepositoryCacheServiceInte
 from prdiffer.domain.services.github_api import GitHubAPIServiceInterface
 from prdiffer.domain.services.diff import DiffServiceInterface
 from prdiffer.domain.services.pattern_matching import PatternMatchingServiceInterface
-from prdiffer.domain.services.retry import RetryServiceInterface
-from prdiffer.domain.services.pr_diff_service import PRDiffServiceInterface
+from prdiffer.domain.interfaces.pr_diff_reader import SessionPRDiffReader
 from prdiffer.domain.interfaces.input_validation import InputValidatorProtocol
 
 
@@ -53,11 +52,7 @@ class InfrastructureFactoryInterface(ABC):
         pass
 
     @abstractmethod
-    def create_retry_service(self) -> RetryServiceInterface:
-        pass
-
-    @abstractmethod
-    def create_pr_diff_service(self) -> PRDiffServiceInterface:
+    def create_pr_diff_service(self) -> SessionPRDiffReader:
         pass
 
     @abstractmethod

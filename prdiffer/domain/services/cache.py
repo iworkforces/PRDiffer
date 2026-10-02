@@ -12,20 +12,6 @@ class CacheServiceInterface(ABC):
     """
 
     @abstractmethod
-    def get_cache_key(self, repo_owner: str, repo_name: str, pr_number: int) -> str:
-        """Generate a cache key for the given repository and PR.
-
-        Args:
-            repo_owner: Repository owner/organization
-            repo_name: Repository name
-            pr_number: Pull request number
-
-        Returns:
-            str: Cache key in format "owner/repo/pr/number"
-        """
-        pass
-
-    @abstractmethod
     async def get(self, cache_key: str, current_commit_sha: str) -> PRDiff | None:
         """Get cached PR diff data if it exists and commit SHA matches.
 
@@ -75,12 +61,12 @@ class CacheServiceInterface(ABC):
 
     @abstractmethod
     async def invalidate_github_pr(self, owner: str, repo: str, pr_number: int) -> None:
-        """Invalidate GitHub strict snapshots and legacy entries for one PR."""
+        """Invalidate GitHub strict snapshots for one PR."""
         pass
 
     @abstractmethod
     async def invalidate_github_repository(self, owner: str, repo: str) -> None:
-        """Invalidate GitHub strict snapshots and legacy entries for a repository."""
+        """Invalidate GitHub strict snapshots for a repository."""
         pass
 
     @abstractmethod

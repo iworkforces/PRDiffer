@@ -30,12 +30,11 @@ def assert_live_metadata(cache_service: CacheService) -> None:
 
 
 @pytest.mark.asyncio
-async def test_pr_scope_removes_every_snapshot_and_legacy_without_prefix_collisions(cache_service: CacheService) -> None:
+async def test_pr_scope_removes_every_snapshot_without_prefix_collisions(cache_service: CacheService) -> None:
     # Given snapshots for one PR alongside similarly named PRs, repos and providers.
     selected = [
         github_full_diff_v3_key("OWNER", "Repo", 12, "base-a", "head-a"),
         github_full_diff_v3_key("owner", "repo", 12, "base-b", "head-b"),
-        "Owner/Repo/pr/12",
     ]
     retained = [
         github_full_diff_v3_key("owner", "repo", 123, "base", "head"),
@@ -65,7 +64,7 @@ async def test_pr_scope_removes_every_snapshot_and_legacy_without_prefix_collisi
 @pytest.mark.asyncio
 async def test_repository_scope_removes_all_prs_only_in_that_repository(cache_service: CacheService) -> None:
     # Given multiple PR identities and an unrelated GitLab MR.
-    selected = [github_full_diff_v3_key("owner", "repo", 1, "a", "b"), github_full_diff_v3_key("owner", "repo", 20, "c", "d"), "OWNER/REPO/pr/1"]
+    selected = [github_full_diff_v3_key("owner", "repo", 1, "a", "b"), github_full_diff_v3_key("owner", "repo", 20, "c", "d")]
     retained = [github_full_diff_v3_key("owner", "repository", 1, "a", "b"), "owner/repository/pr/1", "gitlab:owner/repo/pr/1"]
     value = PRDiff(files=())
     for key in selected + retained:

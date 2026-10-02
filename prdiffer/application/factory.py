@@ -1,6 +1,5 @@
 """Factory for creating FastMCPServer with all dependencies properly injected."""
 
-from prdiffer.domain.services.pr_diff_service import PRDiffServiceInterface
 from prdiffer.domain.interfaces.pr_diff_reader import SessionPRDiffReader
 from prdiffer.domain.interfaces.protocols import GitLabPROperationsProtocol
 from prdiffer.application.provider_resolver import create_provider_capability_resolver
@@ -39,7 +38,7 @@ def create_mcp_server(
     settings_service: SettingsServiceInterface | None = None,
     cache_service: CacheServiceInterface | None = None,
     repository_cache_service: RepositoryCacheServiceInterface | None = None,
-    pr_diff_service: PRDiffServiceInterface | None = None,
+    pr_diff_service: SessionPRDiffReader | None = None,
     gitlab_reader: SessionPRDiffReader | None = None,
     gitlab_pr_operations: GitLabPROperationsProtocol | None = None,
     logger: LoggerServiceInterface | None = None,
@@ -64,16 +63,6 @@ def create_mcp_server(
     metrics_tracker = application_factory.create_metrics_tracker(logger)
     server_configuration = application_factory.create_server_configuration(settings_service, logger)
     authentication = application_factory.create_authentication(logger)
-
-    pr_operation_handler = application_factory.create_pr_operation_handler(
-        github_repository_class=github_repository_class,
-        cache_service=cache_service,
-        repository_cache_service=repository_cache_service,
-        diff_service=infrastructure_factory.create_diff_service(),
-        pattern_matching_service=infrastructure_factory.create_pattern_matching_service(),
-        retry_service=infrastructure_factory.create_retry_service(),
-        logger=logger,
-    )
 
     health_monitor = application_factory.create_health_monitor(
         metrics_tracker=metrics_tracker,
@@ -106,12 +95,10 @@ def create_mcp_server(
         settings_service=settings_service,
         cache_service=cache_service,
         repository_cache_service=repository_cache_service,
-        pr_diff_service=pr_diff_service,
         provider_resolver=provider_resolver,
         logger=logger,
         rate_limiter=rate_limiter,
         metrics_tracker=metrics_tracker,
-        pr_operation_handler=pr_operation_handler,
         health_monitor=health_monitor,
         server_configuration=server_configuration,
         authentication=authentication,

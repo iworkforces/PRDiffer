@@ -10,7 +10,6 @@ from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 
 from prdiffer.domain.entities.pr_diff import PRDiff
-from prdiffer.domain.services.pr_diff_service import PRDiffServiceInterface
 from prdiffer.domain.services.cache import CacheServiceInterface
 from prdiffer.domain.services.logger import LoggerServiceInterface, LogLevel
 from prdiffer.domain.interfaces.protocols import (
@@ -21,7 +20,6 @@ from prdiffer.domain.interfaces.protocols import (
 from prdiffer.domain.interfaces.input_validation import InputValidatorProtocol
 from prdiffer.domain.interfaces.request_coalescing import RequestCoalescingProtocol
 from prdiffer.application.provider_resolver import ProviderCapabilityResolver
-from prdiffer.application.utils.pr_url_parser import parse_pr_url
 from prdiffer.application.pr_diff_executor import CoalescedPRDiffExecutionMixin
 
 from prdiffer.domain.exceptions import (
@@ -54,7 +52,6 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
 
     def __init__(
         self,
-        pr_diff_service: PRDiffServiceInterface,
         cache_service: CacheServiceInterface,
         logger: LoggerServiceInterface,
         rate_limiter: RateLimiterProtocol,
@@ -66,7 +63,6 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
         cache_hit_optimization_enabled: bool = False,
         pr_diff_request_timeout_seconds: float | None = None,
     ):
-        self._pr_diff_service = pr_diff_service
         self._cache_service = cache_service
         self._logger = logger
         self._provider_resolver = provider_resolver
@@ -158,14 +154,6 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
             return safe_messages[exception_type]
 
         return "Request processing failed"
-
-    def _validate_and_sanitize_params(self, pr_url: str) -> tuple[str, str, int]:
-        if not pr_url:
-            raise InputSanitizationError("PR URL parameter is required")
-
-        pr_url = self._input_validator.sanitize_string(pr_url, max_length=2000)
-
-        return parse_pr_url(pr_url, self._input_validator)
 
     def _log_metrics_and_return_success(self, start_time: float, pr_diff: PRDiff) -> PRDiff:
         execution_time = time.time() - start_time
@@ -315,7 +303,6 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
                 target = self._provider_resolver.resolve_target(sanitized_pr_url, self._input_validator)
                 capability = self._provider_resolver.resolve_strict_diff(target)
                 pr_diff = await self._execute_use_case_with_coalescing(
-                    request_id,
                     target.repo_owner,
                     target.repo_name,
                     target.pr_number,

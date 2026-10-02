@@ -5,13 +5,12 @@ from prdiffer.domain.factories.infrastructure_factory import (
 )
 from prdiffer.domain.services.cache import CacheServiceInterface
 from prdiffer.domain.services.logger import LoggerServiceInterface
-from prdiffer.domain.services.pr_diff_service import PRDiffServiceInterface
+from prdiffer.domain.interfaces.pr_diff_reader import SessionPRDiffReader
 from prdiffer.domain.services.settings import SettingsServiceInterface
 from prdiffer.domain.services.repository_cache import RepositoryCacheServiceInterface
 from prdiffer.domain.services.github_api import GitHubAPIServiceInterface
 from prdiffer.domain.services.diff import DiffServiceInterface
 from prdiffer.domain.services.pattern_matching import PatternMatchingServiceInterface
-from prdiffer.domain.services.retry import RetryServiceInterface
 from prdiffer.domain.interfaces.input_validation import InputValidatorProtocol
 
 from prdiffer.infrastructure.settings import get_settings_service
@@ -23,7 +22,6 @@ from prdiffer.infrastructure.cache.cache_repository import (
 from prdiffer.infrastructure.github.client import GitHubAPIClient
 from prdiffer.infrastructure.utils.diff_utils import DiffUtils, DiffProcessingConfig
 from prdiffer.infrastructure.utils.pattern_matcher import PatternMatcher
-from prdiffer.infrastructure.utils.retry.handler import UnifiedRetryHandler
 from prdiffer.infrastructure.github.diff_generator import (
     DiffGenerator,
     get_diff_generator,
@@ -106,11 +104,7 @@ class InfrastructureFactory(InfrastructureFactoryInterface):
             valid_extensions=list(valid_extensions) if valid_extensions else [],
         )
 
-    def create_retry_service(self) -> RetryServiceInterface:
-        """Create retry service instance."""
-        return UnifiedRetryHandler()
-
-    def create_pr_diff_service(self) -> PRDiffServiceInterface:
+    def create_pr_diff_service(self) -> SessionPRDiffReader:
         """Create PR diff service wired with one authoritative GitHubConfig."""
         from prdiffer.infrastructure.github.client import GitHubAPIClient
 

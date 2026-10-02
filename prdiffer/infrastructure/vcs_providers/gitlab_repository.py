@@ -1,9 +1,6 @@
 """Async GitLab adapter over the strict session diff path and MR write operations."""
 
 from prdiffer.domain.config.gitlab_config import GitLabConfig
-from prdiffer.domain.entities.pr_diff import PRDiff
-from prdiffer.domain.error_codes import E5002_GITHUB_API_ERROR
-from prdiffer.domain.exceptions import PRDifferException
 from prdiffer.infrastructure.github.diff_generator import DiffGenerator
 from prdiffer.infrastructure.utils.diff_utils import DiffUtils
 from prdiffer.infrastructure.vcs_providers.gitlab_content import GitLabContentFetcher
@@ -55,20 +52,6 @@ class GitLabVCSRepository:
     ):
         """Open a request-scoped strict full-diff session."""
         return await self._session_reader.open_pr_diff_session(repo_owner, repo_name, pr_number, base_url=base_url)
-
-    async def get_pr_diff(self, owner: str, repo: str, pr: int) -> PRDiff:
-        """Build a complete PRDiff via open/build/close session lifecycle."""
-        result = await self._session_reader.get_pr_diff(owner, repo, pr)
-        if result is None:
-            raise PRDifferException("GitLab PR diff returned no data", error_code=E5002_GITHUB_API_ERROR)
-        return result
-
-    async def get_latest_commit_sha(self, owner: str, repo: str, pr: int) -> str:
-        """Return head SHA from an independently opened/closed session."""
-        sha = await self._session_reader.get_latest_commit_sha(owner, repo, pr)
-        if not sha:
-            raise PRDifferException("Merge request SHA is missing", error_code=E5002_GITHUB_API_ERROR)
-        return sha
 
     async def approve_pr_with_comment(
         self,

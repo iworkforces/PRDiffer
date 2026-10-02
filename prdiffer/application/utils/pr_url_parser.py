@@ -1,7 +1,4 @@
-"""Shared utility for parsing GitHub PR URLs.
-
-Consolidates URL parsing for FastMCPServer and PROperationHandler.
-"""
+"""Shared utility for parsing GitHub PR and GitLab MR URLs for MCP tools."""
 
 from dataclasses import dataclass
 from typing import Literal

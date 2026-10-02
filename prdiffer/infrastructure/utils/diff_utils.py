@@ -321,8 +321,3 @@ class DiffUtils(LazyLoggerMixin, DiffServiceInterface):
             return True
 
         return False
-
-
-def get_diff_utils(logger: logging.Logger | None = None, config: DiffProcessingConfig | None = None) -> DiffUtils:
-    """Get a diff utils instance."""
-    return DiffUtils(logger=logger, config=config)

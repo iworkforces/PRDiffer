@@ -7,7 +7,6 @@ They are skipped automatically if no token is configured.
 import os
 import pytest
 
-from prdiffer.infrastructure.github_repository import GitHubPRDiffRepository
 from prdiffer.application.components.authentication import AuthenticationMiddleware
 
 
@@ -35,68 +34,6 @@ def test_repo_name():
 @pytest.fixture
 def test_pr_number():
     return 1
-
-
-@pytest.mark.integration
-class TestRealGitHubAPI:
-    def test_repository_access(self, github_token, test_repo_owner, test_repo_name):
-        """Test accessing a real GitHub repository."""
-        if not github_token:
-            pytest.skip("GITHUB_TOKEN not configured")
-
-        repo = GitHubPRDiffRepository(
-            repo_owner=test_repo_owner,
-            repo_name=test_repo_name,
-            pr_number=1,
-            github_token=github_token,
-        )
-
-        import anyio
-
-        commit_sha = anyio.run(repo.get_latest_commit_sha)
-
-        assert commit_sha is not None
-        assert len(commit_sha) == 40  # SHA-1 hash length
-
-    def test_pr_diff_retrieval(self, github_token, test_repo_owner, test_repo_name, test_pr_number):
-        """Test retrieving PR diff from real GitHub repository."""
-        if not github_token:
-            pytest.skip("GITHUB_TOKEN not configured")
-
-        repo = GitHubPRDiffRepository(
-            repo_owner=test_repo_owner,
-            repo_name=test_repo_name,
-            pr_number=test_pr_number,
-            github_token=github_token,
-        )
-
-        import anyio
-
-        pr_diff = anyio.run(repo.get_pr_diff)
-
-        assert pr_diff is not None
-        assert pr_diff.pr_number == test_pr_number
-        assert hasattr(pr_diff, "diff_content")
-
-    def test_caching_behavior(self, github_token, test_repo_owner, test_repo_name, test_pr_number):
-        """Test that caching works with real API calls."""
-        if not github_token:
-            pytest.skip("GITHUB_TOKEN not configured")
-
-        repo = GitHubPRDiffRepository(
-            repo_owner=test_repo_owner,
-            repo_name=test_repo_name,
-            pr_number=test_pr_number,
-            github_token=github_token,
-        )
-
-        import anyio
-
-        pr_diff1 = anyio.run(repo.get_pr_diff)
-
-        pr_diff2 = anyio.run(repo.get_pr_diff)
-
-        assert pr_diff1.pr_number == pr_diff2.pr_number
 
 
 @pytest.mark.integration

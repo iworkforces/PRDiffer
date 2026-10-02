@@ -12,7 +12,6 @@ from prdiffer.application.factory import create_mcp_server
 from prdiffer.domain.entities.pr_diff import PRDiff
 from prdiffer.domain.entities.pr_diff_cache import StrictPRDiffCacheIdentity, github_full_diff_v3_identity
 from prdiffer.domain.interfaces.pr_diff_reader import PRDiffReadSessionInterface, PRDiffSnapshot
-from prdiffer.domain.services.pr_diff_service import PRDiffServiceInterface
 from prdiffer.infrastructure.github_repository import GitHubPRDiffRepository
 
 
@@ -43,20 +42,9 @@ class WorkflowPRDiffSession(PRDiffReadSessionInterface):
         return None
 
 
-class WorkflowPRDiffService(PRDiffServiceInterface):
+class WorkflowPRDiffService:
     def __init__(self) -> None:
         self.build_pr_diff_mock = AsyncMock(return_value=PRDiff(files=()))
-        self.get_latest_commit_sha_mock = AsyncMock(return_value="c" * 40)
-        self.validate_repository_access_mock = Mock(return_value=True)
-
-    async def get_pr_diff(self, repo_owner: str, repo_name: str, pr_number: int) -> PRDiff:
-        raise AssertionError("Strict session path must be used instead of get_pr_diff")
-
-    async def get_latest_commit_sha(self, repo_owner: str, repo_name: str, pr_number: int) -> str:
-        return await self.get_latest_commit_sha_mock(repo_owner, repo_name, pr_number)
-
-    def validate_repository_access(self, repo_owner: str, repo_name: str) -> bool:
-        return self.validate_repository_access_mock(repo_owner, repo_name)
 
     async def open_pr_diff_session(
         self,
@@ -80,7 +68,6 @@ class TestCompleteWorkflow:
     def mock_github_repository(self):
         """Mock GitHub repository for testing."""
         mock_repo = Mock(spec=GitHubPRDiffRepository)
-        mock_repo.get_pr_diff = AsyncMock()
         return mock_repo
 
     @pytest.fixture
@@ -169,7 +156,6 @@ class TestCompleteWorkflow:
 
         # Verify server initialized properly
         assert server.mcp is not None
-        assert hasattr(server, "_pr_diff_service")
 
     def test_workflow_with_caching(
         self,
@@ -332,11 +318,9 @@ class TestCompleteWorkflow:
         assert server._settings_service == mock_settings
         assert server._cache_service == mock_cache
         assert server._repository_cache_service == mock_repository_cache
-        assert server._pr_diff_service == mock_pr_diff_service
         assert server._logger == mock_logger
         assert server._rate_limiter is not None
         assert server._metrics_tracker is not None
-        assert server._pr_operation_handler is not None
         assert server._health_monitor is not None
         assert server._server_configuration is not None
         assert server._authentication is not None
@@ -400,7 +384,6 @@ class TestWorkflowWithRealServices:
     def mock_repository(self):
         """Mock repository for testing."""
         mock_repo = Mock(spec=GitHubPRDiffRepository)
-        mock_repo.get_pr_diff = AsyncMock()
         return mock_repo
 
     def test_real_services_integration(self, real_settings, real_logger, real_cache, mock_repository):
@@ -481,7 +464,6 @@ class TestEndToEndScenarios:
 
         # Mock repository for testing
         mock_repo = Mock(spec=GitHubPRDiffRepository)
-        mock_repo.get_pr_diff = AsyncMock()
 
         # Fake PR diff service
         mock_pr_diff_service = WorkflowPRDiffService()
@@ -521,7 +503,6 @@ class TestEndToEndScenarios:
 
         # Mock repository
         mock_repo = Mock(spec=GitHubPRDiffRepository)
-        mock_repo.get_pr_diff = AsyncMock()
 
         # Fake PR diff service
         mock_pr_diff_service = WorkflowPRDiffService()
@@ -571,7 +552,6 @@ class TestEndToEndScenarios:
 
         # Mock repository
         mock_repo = Mock(spec=GitHubPRDiffRepository)
-        mock_repo.get_pr_diff = AsyncMock()
 
         # Fake PR diff service
         mock_pr_diff_service = WorkflowPRDiffService()

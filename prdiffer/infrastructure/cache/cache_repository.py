@@ -18,8 +18,6 @@ P = ParamSpec("P")
 R = TypeVar("R")
 
 __all__ = [
-    "CacheEntry",
-    "with_lock",
     "RepositoryCacheService",
     "get_repository_cache_service",
 ]

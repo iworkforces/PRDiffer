@@ -285,21 +285,6 @@ class GitHubSessionPRDiffReader:
         self._limiter = anyio.CapacityLimiter(capacity)
         self._logger = logger or get_logger()
 
-    async def get_pr_diff(self, repo_owner: str, repo_name: str, pr_number: int, /) -> PRDiff | None:
-        session = await self.open_pr_diff_session(repo_owner, repo_name, pr_number)
-        try:
-            return await session.build_pr_diff()
-        finally:
-            await session.aclose()
-
-    async def get_latest_commit_sha(self, repo_owner: str, repo_name: str, pr_number: int, /) -> str | None:
-        # Legacy surface for non-session callers; open a short session for metadata only.
-        session = await self.open_pr_diff_session(repo_owner, repo_name, pr_number)
-        try:
-            return session.snapshot.head_sha
-        finally:
-            await session.aclose()
-
     async def open_pr_diff_session(
         self,
         repo_owner: str,

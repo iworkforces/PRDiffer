@@ -37,12 +37,6 @@ class StrictSession(PRDiffReadSessionInterface):
 class ReaderOnly:
     """Diff reader without approve/describe methods."""
 
-    async def get_pr_diff(self, owner: str, repo: str, pr: int, /) -> PRDiff | None:
-        return None
-
-    async def get_latest_commit_sha(self, owner: str, repo: str, pr: int) -> str:
-        return "sha"
-
     async def open_pr_diff_session(
         self, owner: str, repo: str, pr: int, /, *, base_url: str | None = None
     ) -> PRDiffReadSessionInterface:
@@ -54,12 +48,6 @@ class DualRoleReader:
 
     def __init__(self) -> None:
         self.approval_requests: list[tuple[str, str, int, str, str | None]] = []
-
-    async def get_pr_diff(self, owner: str, repo: str, pr: int, /) -> PRDiff | None:
-        return None
-
-    async def get_latest_commit_sha(self, owner: str, repo: str, pr: int) -> str:
-        return "sha"
 
     async def open_pr_diff_session(
         self, owner: str, repo: str, pr: int, /, *, base_url: str | None = None
@@ -126,14 +114,12 @@ class TestCreateMcpServerGitLabOpsWiring:
         infra.create_input_validator.return_value = MagicMock()
         infra.create_diff_service.return_value = MagicMock()
         infra.create_pattern_matching_service.return_value = MagicMock()
-        infra.create_retry_service.return_value = MagicMock()
 
         app = MagicMock()
         app.create_rate_limiter.return_value = MagicMock()
         app.create_metrics_tracker.return_value = MagicMock()
         app.create_server_configuration.return_value = MagicMock()
         app.create_authentication.return_value = MagicMock()
-        app.create_pr_operation_handler.return_value = MagicMock()
         app.create_health_monitor.return_value = MagicMock()
         return infra, app
 

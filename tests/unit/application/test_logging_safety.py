@@ -35,10 +35,8 @@ def server_with_mock_logger(mock_logger: Mock) -> FastMCPServer:
     settings_service = Mock()
     cache_service = Mock()
     repository_cache_service = Mock()
-    pr_diff_service = Mock()
     rate_limiter = Mock()
     metrics_tracker = Mock()
-    pr_operation_handler = Mock()
     health_monitor = Mock()
     server_configuration = Mock()
     server_configuration.get_mcp_instructions.return_value = "instructions"
@@ -50,12 +48,10 @@ def server_with_mock_logger(mock_logger: Mock) -> FastMCPServer:
         settings_service=settings_service,
         cache_service=cache_service,
         repository_cache_service=repository_cache_service,
-        pr_diff_service=pr_diff_service,
         logger=mock_logger,
         provider_resolver=ProviderCapabilityResolver(),
         rate_limiter=rate_limiter,
         metrics_tracker=metrics_tracker,
-        pr_operation_handler=pr_operation_handler,
         health_monitor=health_monitor,
         server_configuration=server_configuration,
         authentication=authentication,

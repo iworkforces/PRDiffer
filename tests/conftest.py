@@ -168,9 +168,6 @@ def mock_cache():
         if commit_sha:
             mock._commit_shas[key] = commit_sha
 
-    def get_cache_key(owner: str, name: str, pr_number: int) -> str:
-        return f"{owner}/{name}/pr/{pr_number}"
-
     def invalidate(key: str) -> None:
         mock._data.pop(key, None)
         mock._commit_shas.pop(key, None)
@@ -184,7 +181,6 @@ def mock_cache():
 
     mock.get = get
     mock.set = set
-    mock.get_cache_key = get_cache_key
     mock.invalidate = invalidate
     mock.clear = clear
     mock.size = size

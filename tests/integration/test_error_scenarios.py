@@ -7,7 +7,7 @@ network errors, and invalid inputs.
 from __future__ import annotations
 
 from typing import cast
-from unittest.mock import Mock, AsyncMock
+from unittest.mock import Mock
 import pytest
 from github import GithubException, RateLimitExceededException, UnknownObjectException
 
@@ -23,7 +23,6 @@ from prdiffer.domain.exceptions import (
     SuspiciousOperationError,
 )
 from prdiffer.domain.interfaces.pr_diff_reader import PRDiffReadSessionInterface, PRDiffSnapshot
-from prdiffer.domain.services.pr_diff_service import PRDiffServiceInterface
 from prdiffer.infrastructure.github_repository import GitHubPRDiffRepository
 
 
@@ -66,7 +65,7 @@ class ErrorScenarioPRDiffSession(PRDiffReadSessionInterface):
         return None
 
 
-class ErrorScenarioPRDiffReader(PRDiffServiceInterface):
+class ErrorScenarioPRDiffReader:
     def __init__(self, pr_diff: PRDiff | None = None) -> None:
         self.build_pr_diff_return_value = pr_diff if pr_diff is not None else PRDiff(files=())
         self.build_pr_diff_side_effect: Exception | None = None
@@ -83,19 +82,6 @@ class ErrorScenarioPRDiffReader(PRDiffServiceInterface):
     ) -> PRDiffReadSessionInterface:
         del base_url
         return ErrorScenarioPRDiffSession(self, repo_owner, repo_name, pr_number)
-
-    async def get_pr_diff(self, repo_owner: str, repo_name: str, pr_number: int) -> PRDiff | None:
-        session = await self.open_pr_diff_session(repo_owner, repo_name, pr_number)
-        try:
-            return await session.build_pr_diff()
-        finally:
-            await session.aclose()
-
-    async def get_latest_commit_sha(self, repo_owner: str, repo_name: str, pr_number: int) -> str | None:
-        return "c" * 40
-
-    def validate_repository_access(self, repo_owner: str, repo_name: str) -> bool:
-        return True
 
 
 @pytest.fixture
@@ -162,7 +148,6 @@ class TestAPIErrorScenarios:
         mock_pr_diff_service,
     ):
         mock_repo = Mock(spec=GitHubPRDiffRepository)
-        mock_repo.get_pr_diff = AsyncMock()
 
         return create_mcp_server(
             github_repository_class=lambda o, r, n: mock_repo,
@@ -267,7 +252,6 @@ class TestValidationErrorScenarios:
         mock_pr_diff_service,
     ):
         mock_repo = Mock(spec=GitHubPRDiffRepository)
-        mock_repo.get_pr_diff = AsyncMock()
 
         return create_mcp_server(
             github_repository_class=lambda o, r, n: mock_repo,
@@ -400,7 +384,6 @@ class TestRateLimitingScenarios:
         mock_pr_diff_service,
     ):
         mock_repo = Mock(spec=GitHubPRDiffRepository)
-        mock_repo.get_pr_diff = AsyncMock()
 
         return create_mcp_server(
             github_repository_class=lambda o, r, n: mock_repo,
@@ -517,7 +500,6 @@ class TestCacheErrorScenarios:
         mock_pr_diff_service,
     ):
         mock_repo = Mock(spec=GitHubPRDiffRepository)
-        mock_repo.get_pr_diff = AsyncMock()
 
         return create_mcp_server(
             github_repository_class=lambda o, r, n: mock_repo,
@@ -571,7 +553,6 @@ class TestAuthenticationErrorScenarios:
         mock_pr_diff_service,
     ):
         mock_repo = Mock(spec=GitHubPRDiffRepository)
-        mock_repo.get_pr_diff = AsyncMock()
 
         return create_mcp_server(
             github_repository_class=lambda o, r, n: mock_repo,

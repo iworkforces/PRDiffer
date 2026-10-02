@@ -559,22 +559,3 @@ class FileProcessor:
 
         # If no content available, cannot determine - assume has changes (conservative)
         return False
-
-
-def get_file_processor(
-    github_api_service: GitHubAPIServiceInterface,
-    pattern_matcher: PatternMatchingServiceInterface,
-    diff_utils: DiffServiceInterface,
-    max_files_allowed: int = 50,
-    parallel_fetch_threshold: int = 10,
-    max_parallel_workers: int = 4,
-) -> FileProcessor:
-    """Get a configured file processor instance."""
-    return FileProcessor(
-        github_api_service=github_api_service,
-        pattern_matcher=pattern_matcher,
-        diff_utils=diff_utils,
-        max_files_allowed=max_files_allowed,
-        parallel_fetch_threshold=parallel_fetch_threshold,
-        max_parallel_workers=max_parallel_workers,
-    )

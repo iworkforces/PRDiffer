@@ -48,11 +48,9 @@ def mock_settings():
 @pytest.fixture
 def mcp_server(mock_cache_service, mock_repository_cache_service, mock_settings):
     """Create an MCP server instance with mocked dependencies."""
-    mock_pr_diff_service = Mock()
     mock_logger = Mock()
     mock_rate_limiter = Mock()
     mock_metrics_tracker = Mock()
-    mock_pr_operation_handler = Mock()
     mock_health_monitor = Mock()
     mock_server_configuration = Mock()
     mock_server_configuration.setup_logging = Mock()
@@ -62,12 +60,10 @@ def mcp_server(mock_cache_service, mock_repository_cache_service, mock_settings)
         settings_service=mock_settings,
         cache_service=mock_cache_service,
         repository_cache_service=mock_repository_cache_service,
-        pr_diff_service=mock_pr_diff_service,
         logger=mock_logger,
         provider_resolver=ProviderCapabilityResolver(),
         rate_limiter=mock_rate_limiter,
         metrics_tracker=mock_metrics_tracker,
-        pr_operation_handler=mock_pr_operation_handler,
         health_monitor=mock_health_monitor,
         server_configuration=mock_server_configuration,
     )
@@ -310,11 +306,6 @@ async def _seed_webhook_caches(diff_cache: CacheService, repository_cache: Repos
         "gitlab": gitlab_full_diff_v1_identity("owner", "repo", 42, 1, "base", "start", "head"),
     }
     entries = {label: (identity.cache_key, identity.validation_token, PRDiff()) for label, identity in identities.items()}
-    entries.update({label: (key, "legacy-token", PRDiff()) for label, key in {
-        "legacy": "owner/repo/pr/42",
-        "legacy_other_pr": "owner/repo/pr/43",
-        "legacy_other_repo": "owner/other/pr/42",
-    }.items()})
     for key, token, value in entries.values():
         await diff_cache.set(key, token, value)
     for owner, repo, number in [("owner", "repo", 42), ("owner", "repo", 43), ("owner", "other", 42)]:
@@ -353,7 +344,7 @@ async def test_signed_push_http_evicts_repository_only(real_webhook_caches):
     endpoint = handler.get_webhook_handler()
     payload = {"repository": {"full_name": "owner/repo"}}
     assert (await endpoint(_signed_request(payload, "push"))).status_code == 200
-    removed = {"first_version", "second_version", "other_pr", "legacy", "legacy_other_pr"}
+    removed = {"first_version", "second_version", "other_pr"}
     await _assert_entries(diff_cache, entries, removed)
     assert repository_cache.retrieve("owner", "repo", 42) is None
     assert repository_cache.retrieve("owner", "repo", 43) is None

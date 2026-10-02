@@ -15,7 +15,6 @@ from prdiffer.domain.entities.pr_diff_cache import (
     github_full_diff_v3_identity,
     gitlab_full_diff_v1_identity,
     unwrap_pr_diff_cache_value,
-    wrap_pr_diff_for_cache,
 )
 from prdiffer.domain.exceptions import FullDiffIncompleteError, FullDiffIncompleteReason
 from prdiffer.domain.interfaces.pr_diff_reader import PRDiffSnapshot
@@ -45,10 +44,6 @@ class RecordingCache:
         self.store: dict[tuple[str, str], Any] = {}
         self.sets = 0
         self.gets = 0
-
-    def get_cache_key(self, owner: str, repo: str, pr: int) -> str:
-        return f"{owner}/{repo}/{pr}"
-
     async def get_optimistic(self, key: str) -> tuple[Any, None]:
         return None, None
 
@@ -100,7 +95,7 @@ async def test_github_v3_hit_and_miss() -> None:
     identity = github_full_diff_v3_identity("o", "r", 1, _MB, _HD)
     value = _pr()
     # Preload unrelated key — must not hit v3 identity
-    cache.store[("unrelated:key", "token")] = wrap_pr_diff_for_cache(value)
+    cache.store[("unrelated:key", "token")] = value
 
     build = AsyncMock(return_value=value)
     session = FakeSession(identity, build)
@@ -168,7 +163,6 @@ def test_unwrap_accepts_only_v3_github_keys() -> None:
     value = _pr()
     v3 = github_full_diff_v3_identity("o", "r", 1, _MB, _HD)
     assert unwrap_pr_diff_cache_value(value, key="not-a-strict-key:o:r:1:h", identity=v3) is None
-    assert unwrap_pr_diff_cache_value(wrap_pr_diff_for_cache(value), key="not-a-strict-key:o:r:1:h", identity=v3) is None
     assert unwrap_pr_diff_cache_value(value, key=v3.cache_key, identity=v3) is value
 
 

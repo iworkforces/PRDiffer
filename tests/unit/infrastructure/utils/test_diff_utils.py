@@ -6,7 +6,6 @@ from unittest.mock import Mock, patch
 from prdiffer.infrastructure.utils.diff_utils import (
     DiffProcessingConfig,
     DiffUtils,
-    get_diff_utils,
     DEFAULT_LARGE_FILE_THRESHOLD,
     DEFAULT_DIFF_CHUNK_SIZE,
     DEFAULT_MAX_DIFF_SIZE,
@@ -405,35 +404,6 @@ class TestIsBinaryContent:
         diff_utils = DiffUtils()
         text = "line1\nline2\rline3\ttab"
         assert diff_utils._is_binary_content(text) is False
-
-
-class TestGetDiffUtils:
-    """Tests for get_diff_utils factory function."""
-
-    def test_returns_diff_utils(self):
-        """Test factory returns DiffUtils instance."""
-        result = get_diff_utils()
-        assert isinstance(result, DiffUtils)
-
-    def test_with_logger(self):
-        """Test factory with logger parameter."""
-        logger = Mock()
-        result = get_diff_utils(logger=logger)
-        assert isinstance(result, DiffUtils)
-
-    def test_with_config(self):
-        """Test factory with config parameter."""
-        config = DiffProcessingConfig(large_file_threshold=2000)
-        result = get_diff_utils(config=config)
-        assert result._config.large_file_threshold == 2000
-
-    def test_new_instance_each_call(self):
-        """Test that factory returns new instances."""
-        instance1 = get_diff_utils()
-        instance2 = get_diff_utils()
-        assert instance1 is not instance2
-
-
 class TestNoNewlineMarkers:
     """Git-style \\ No newline at end of file markers."""
 

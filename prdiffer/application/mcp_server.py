@@ -9,12 +9,10 @@ from prdiffer.version import __version__
 from prdiffer.domain.services.settings import SettingsServiceInterface
 from prdiffer.domain.services.cache import CacheServiceInterface
 from prdiffer.domain.services.repository_cache import RepositoryCacheServiceInterface
-from prdiffer.domain.services.pr_diff_service import PRDiffServiceInterface
 from prdiffer.domain.services.logger import LoggerServiceInterface
 from prdiffer.domain.interfaces.protocols import (
     RateLimiterProtocol,
     MetricsTrackerProtocol,
-    PROperationHandlerProtocol,
     HealthMonitorProtocol,
     ServerConfigurationProtocol,
     AuthenticationProtocol,
@@ -38,12 +36,10 @@ class FastMCPServer:
         settings_service: SettingsServiceInterface,
         cache_service: CacheServiceInterface,
         repository_cache_service: RepositoryCacheServiceInterface,
-        pr_diff_service: PRDiffServiceInterface,
         logger: LoggerServiceInterface,
         provider_resolver: ProviderCapabilityResolver,
         rate_limiter: RateLimiterProtocol,
         metrics_tracker: MetricsTrackerProtocol,
-        pr_operation_handler: PROperationHandlerProtocol,
         health_monitor: HealthMonitorProtocol,
         server_configuration: ServerConfigurationProtocol,
         authentication: AuthenticationProtocol | None = None,
@@ -53,13 +49,11 @@ class FastMCPServer:
         self._settings_service = settings_service
         self._cache_service = cache_service
         self._repository_cache_service = repository_cache_service
-        self._pr_diff_service = pr_diff_service
         self._logger = logger
         self._provider_resolver = provider_resolver
 
         self._rate_limiter = rate_limiter
         self._metrics_tracker = metrics_tracker
-        self._pr_operation_handler = pr_operation_handler
         self._health_monitor = health_monitor
         self._server_configuration = server_configuration
 
@@ -106,7 +100,6 @@ class FastMCPServer:
         github_config = self._settings_service.get_github_config()
 
         self._tool_registry = ToolRegistry(
-            pr_diff_service=self._pr_diff_service,
             cache_service=self._cache_service,
             logger=self._logger,
             provider_resolver=self._provider_resolver,

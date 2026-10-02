@@ -421,13 +421,11 @@ class TestErrorMessageSanitization:
             "settings_service": Mock(),
             "cache_service": Mock(),
             "repository_cache_service": Mock(),
-            "pr_diff_service": Mock(),
             "logger": Mock(),
             "provider_resolver": ProviderCapabilityResolver(),
             "input_validator": Mock(),
             "rate_limiter": Mock(),
             "metrics_tracker": Mock(),
-            "pr_operation_handler": Mock(),
             "health_monitor": Mock(),
             "server_configuration": Mock(),
         }

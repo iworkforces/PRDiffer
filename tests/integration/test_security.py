@@ -18,7 +18,6 @@ from prdiffer.domain.exceptions import (
     SuspiciousOperationError,
 )
 from prdiffer.domain.interfaces.pr_diff_reader import PRDiffReadSessionInterface, PRDiffSnapshot
-from prdiffer.domain.services.pr_diff_service import PRDiffServiceInterface
 from prdiffer.infrastructure.github_repository import GitHubPRDiffRepository
 
 
@@ -56,7 +55,7 @@ class SecurityFakeSession(PRDiffReadSessionInterface):
         return None
 
 
-class SecurityFakeReader(PRDiffServiceInterface):
+class SecurityFakeReader:
     async def open_pr_diff_session(
         self,
         repo_owner: str,
@@ -68,15 +67,6 @@ class SecurityFakeReader(PRDiffServiceInterface):
     ) -> PRDiffReadSessionInterface:
         del base_url
         return SecurityFakeSession(repo_owner, repo_name, pr_number)
-
-    async def get_pr_diff(self, repo_owner: str, repo_name: str, pr_number: int) -> PRDiff | None:
-        return PRDiff(files=())
-
-    async def get_latest_commit_sha(self, repo_owner: str, repo_name: str, pr_number: int) -> str | None:
-        return "c" * 40
-
-    def validate_repository_access(self, repo_owner: str, repo_name: str) -> bool:
-        return True
 
 
 @pytest.mark.integration
@@ -104,7 +94,6 @@ class TestCommandInjectionPrevention:
         mock_pr_diff_service = SecurityFakeReader()
 
         mock_repo = Mock(spec=GitHubPRDiffRepository)
-        mock_repo.get_pr_diff = AsyncMock()
 
         return create_mcp_server(
             github_repository_class=lambda o, r, n: mock_repo,
@@ -220,7 +209,6 @@ class TestSQLInjectionPrevention:
         mock_pr_diff_service = SecurityFakeReader()
 
         mock_repo = Mock(spec=GitHubPRDiffRepository)
-        mock_repo.get_pr_diff = AsyncMock()
 
         return create_mcp_server(
             github_repository_class=lambda o, r, n: mock_repo,
@@ -336,7 +324,6 @@ class TestPathTraversalPrevention:
         mock_pr_diff_service = SecurityFakeReader()
 
         mock_repo = Mock(spec=GitHubPRDiffRepository)
-        mock_repo.get_pr_diff = AsyncMock()
 
         return create_mcp_server(
             github_repository_class=lambda o, r, n: mock_repo,
@@ -428,7 +415,6 @@ class TestXSSPrevention:
         mock_pr_diff_service = SecurityFakeReader()
 
         mock_repo = Mock(spec=GitHubPRDiffRepository)
-        mock_repo.get_pr_diff = AsyncMock()
 
         return create_mcp_server(
             github_repository_class=lambda o, r, n: mock_repo,
@@ -494,7 +480,6 @@ class TestInputSanitization:
         mock_pr_diff_service = SecurityFakeReader()
 
         mock_repo = Mock(spec=GitHubPRDiffRepository)
-        mock_repo.get_pr_diff = AsyncMock()
 
         return create_mcp_server(
             github_repository_class=lambda o, r, n: mock_repo,
@@ -574,7 +559,6 @@ class TestRepositoryValidation:
         mock_pr_diff_service = SecurityFakeReader()
 
         mock_repo = Mock(spec=GitHubPRDiffRepository)
-        mock_repo.get_pr_diff = AsyncMock()
 
         return create_mcp_server(
             github_repository_class=lambda o, r, n: mock_repo,
@@ -659,7 +643,6 @@ class TestSecureLogging:
         mock_pr_diff_service = SecurityFakeReader()
 
         mock_repo = Mock(spec=GitHubPRDiffRepository)
-        mock_repo.get_pr_diff = AsyncMock()
 
         return create_mcp_server(
             github_repository_class=lambda o, r, n: mock_repo,
