@@ -529,7 +529,7 @@ class TestAuthenticateRequest:
     @pytest.mark.anyio
     async def test_authenticate_success(self, tool_registry, mock_authentication):
         """Test successful authentication."""
-        result = await tool_registry._authenticate_request("req-123", 0.0, "api-key-123")
+        result = await tool_registry._authenticate_request("req-123", 0.0, "api-key-123", operation="get_pr_diff")
 
         mock_authentication.authenticate.assert_called_once_with("api-key-123")
         assert result == "client-123"
@@ -540,7 +540,7 @@ class TestAuthenticateRequest:
         tool_registry._authentication = None
 
         with pytest.raises(AuthenticationError):
-            await tool_registry._authenticate_request("req-123", 0.0, "api-key-123")
+            await tool_registry._authenticate_request("req-123", 0.0, "api-key-123", operation="get_pr_diff")
 
     @pytest.mark.anyio
     async def test_authenticate_failed(self, tool_registry, mock_authentication):
@@ -548,17 +548,19 @@ class TestAuthenticateRequest:
         mock_authentication.authenticate.return_value = (False, None)
 
         with pytest.raises(AuthenticationError):
-            await tool_registry._authenticate_request("req-123", 0.0, "api-key-123")
+            await tool_registry._authenticate_request("req-123", 0.0, "api-key-123", operation="get_pr_diff")
 
     @pytest.mark.anyio
-    async def test_authenticate_runtime_error(self, tool_registry, mock_authentication, mock_metrics_tracker):
-        """Test authentication with runtime error."""
+    @pytest.mark.parametrize("operation", ["get_pr_diff", "approve_pr", "describe_pr"])
+    async def test_authenticate_runtime_error_records_calling_tool(self, tool_registry, mock_authentication, mock_metrics_tracker, operation):
+        """Rate-limited authentication failures are attributed to the calling tool."""
         mock_authentication.authenticate.side_effect = RuntimeError("Rate limited")
 
         with pytest.raises(AuthenticationError):
-            await tool_registry._authenticate_request("req-123", 0.0, "api-key-123")
+            await tool_registry._authenticate_request("req-123", 0.0, "api-key-123", operation=operation)
 
-        mock_metrics_tracker.track_request.assert_called()
+        mock_metrics_tracker.track_request.assert_called_once()
+        assert mock_metrics_tracker.track_request.call_args.args[:2] == (operation, False)
 
 
 class TestExecuteUseCaseWithCoalescing:

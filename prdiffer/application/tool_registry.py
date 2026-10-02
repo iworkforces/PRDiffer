@@ -100,7 +100,7 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
             )
         self._rate_limiter.increment_rate_limit(client_id)
 
-    async def _authenticate_request(self, request_id: str, start_time: float, api_key: str | None) -> str | None:
+    async def _authenticate_request(self, request_id: str, start_time: float, api_key: str | None, *, operation: str) -> str | None:
         try:
             if self._authentication is None:
                 raise AuthenticationError(
@@ -110,7 +110,7 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
             is_authenticated, client_id = self._authentication.authenticate(api_key)
         except RuntimeError as e:
             execution_time = time.time() - start_time
-            self._metrics_tracker.track_request("get_pr_diff", False, execution_time)
+            self._metrics_tracker.track_request(operation, False, execution_time)
             self._logger.warning(
                 "Authentication rate limited",
                 request_id=request_id,
@@ -290,7 +290,7 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
                 pr_url=pr_url,
             )
 
-            client_id = await self._authenticate_request(request_id, start_time, api_key)
+            client_id = await self._authenticate_request(request_id, start_time, api_key, operation="get_pr_diff")
 
             rate_limit_client_id = client_id or "anonymous"
 
@@ -377,7 +377,7 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
                 pr_url=pr_url[:100] if pr_url else pr_url,
             )
 
-            client_id = await self._authenticate_request(request_id, start_time, api_key)
+            client_id = await self._authenticate_request(request_id, start_time, api_key, operation="approve_pr")
 
             rate_limit_client_id = client_id or "anonymous"
 
@@ -457,7 +457,7 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
                 pr_url=pr_url[:100] if pr_url else pr_url,
             )
 
-            client_id = await self._authenticate_request(request_id, start_time, api_key)
+            client_id = await self._authenticate_request(request_id, start_time, api_key, operation="describe_pr")
 
             rate_limit_client_id = client_id or "anonymous"
 
