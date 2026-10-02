@@ -42,14 +42,9 @@ class MemoryCache:
 
 class FakeOps(GitLabOperations):
     def __init__(self, snapshot: GitLabDiffSnapshot) -> None:
-        super().__init__(None)
+        super().__init__()
         self.snapshot = snapshot
         self.select_calls = 0
-
-    def select_diff_snapshot(self, project_path: str, iid: int, *, base_url: str | None = None) -> GitLabDiffSnapshot:
-        self.select_calls += 1
-        self.last_base_url = base_url
-        return self.snapshot
 
     def select_with_client(
         self,

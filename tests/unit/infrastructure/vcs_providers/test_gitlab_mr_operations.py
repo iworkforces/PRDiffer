@@ -111,7 +111,7 @@ class FakeClient:
 
 @pytest.fixture
 def ops() -> GitLabOperations:
-    return GitLabOperations(gitlab_token="token")
+    return GitLabOperations()
 
 
 @pytest.fixture
@@ -307,7 +307,7 @@ class TestGitLabVCSRepositoryMROps:
     @pytest.mark.asyncio
     async def test_approve_pr_with_comment_uses_runtime(self, merge_request: FakeMergeRequest) -> None:
         config = GitLabConfig(allowed_hosts=("gitlab.com",))
-        ops = GitLabOperations(gitlab_token="t")
+        ops = GitLabOperations()
         project = FakeProject(merge_request)
 
         def client_factory(url: str, private_token: str | None = None, **kwargs: Any) -> FakeClient:
@@ -340,7 +340,7 @@ class TestGitLabVCSRepositoryMROps:
         self, merge_request: FakeMergeRequest
     ) -> None:
         config = GitLabConfig(allowed_hosts=("gitlab.com", "gitlab.example.com"))
-        ops = GitLabOperations(gitlab_token="t")
+        ops = GitLabOperations()
         project = FakeProject(merge_request)
         clients: list[FakeClient] = []
 
@@ -377,7 +377,7 @@ class TestGitLabVCSRepositoryMROps:
     @pytest.mark.asyncio
     async def test_update_pr_description_uses_runtime(self, merge_request: FakeMergeRequest) -> None:
         config = GitLabConfig(allowed_hosts=("gitlab.com",))
-        ops = GitLabOperations(gitlab_token="t")
+        ops = GitLabOperations()
         project = FakeProject(merge_request)
 
         def client_factory(url: str, private_token: str | None = None, **kwargs: Any) -> FakeClient:

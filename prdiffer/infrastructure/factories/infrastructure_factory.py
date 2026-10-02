@@ -208,10 +208,7 @@ class InfrastructureFactory(InfrastructureFactoryInterface):
 
         config = get_settings_service().get_gitlab_config()
         runtime = self.create_gitlab_runtime(private_token=private_token)
-        operations = GitLabOperations(
-            private_token,
-            allowed_hosts=tuple(config.allowed_hosts),
-        )
+        operations = GitLabOperations()
         content = GitLabContentFetcher(runtime, config, parallel_enabled=True)
         assembler = GitLabDiffAssembler(
             DiffGenerator(diff_utils=DiffUtils(), parallel_enabled=config.max_concurrent > 1),

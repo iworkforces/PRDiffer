@@ -107,7 +107,7 @@ class TestIsGitLabPROperations:
             "t",
             config=config,
             runtime=runtime,
-            operations=GitLabOperations("t"),
+            operations=GitLabOperations(),
             session_reader=MagicMock(),
         )
         assert _is_gitlab_pr_operations(repo) is True
