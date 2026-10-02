@@ -23,7 +23,7 @@ from prdiffer.infrastructure.cache.cache_repository import (
 from prdiffer.infrastructure.github.client import GitHubAPIClient
 from prdiffer.infrastructure.utils.diff_utils import DiffUtils, DiffProcessingConfig
 from prdiffer.infrastructure.utils.pattern_matcher import PatternMatcher
-from prdiffer.infrastructure.utils.retry.handler import RetryHandler
+from prdiffer.infrastructure.utils.retry.handler import UnifiedRetryHandler
 from prdiffer.infrastructure.github.diff_generator import (
     DiffGenerator,
     get_diff_generator,
@@ -108,7 +108,7 @@ class InfrastructureFactory(InfrastructureFactoryInterface):
 
     def create_retry_service(self) -> RetryServiceInterface:
         """Create retry service instance."""
-        return RetryHandler()
+        return UnifiedRetryHandler()
 
     def create_pr_diff_service(self) -> PRDiffServiceInterface:
         """Create PR diff service wired with one authoritative GitHubConfig."""

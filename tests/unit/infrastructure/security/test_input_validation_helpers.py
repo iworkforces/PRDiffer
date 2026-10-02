@@ -165,23 +165,6 @@ class TestValidateBranchName:
 
 
 # ---------------------------------------------------------------------------
-# _contains_suspicious_patterns (classmethod)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestContainsSuspiciousPatterns:
-    """Test classmethod _contains_suspicious_patterns."""
-
-    def test_delegates_to_detector(self):
-        with patch("prdiffer.infrastructure.security.input_validation_helpers._detector") as mock_det:
-            mock_det.check_suspicious_patterns.return_value = True
-            result = ConcreteValidator._contains_suspicious_patterns("test")
-            assert result is True
-            mock_det.check_suspicious_patterns.assert_called_once_with("test")
-
-
-# ---------------------------------------------------------------------------
 # sanitize_for_logging (classmethod)
 # ---------------------------------------------------------------------------
 

@@ -880,18 +880,6 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         metavar=("BASELINE", "POST"),
         help="Compare two report JSON files and write --json comparison",
     )
-    parser.add_argument(
-        "--files",
-        type=int,
-        default=None,
-        help="Legacy: single ad-hoc file count (not used with --matrix strict-v1)",
-    )
-    parser.add_argument(
-        "--lines",
-        type=int,
-        default=None,
-        help="Legacy: single ad-hoc line count",
-    )
     return parser.parse_args(argv)
 
 

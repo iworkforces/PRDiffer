@@ -161,23 +161,6 @@ class InputValidationHelpersMixin:
         return self._detector.check_suspicious_patterns(value)
 
     @classmethod
-    def _contains_suspicious_patterns(cls, value: str) -> bool:
-        """Check if value contains suspicious patterns (classmethod for backward compatibility).
-
-        This method provides backward compatibility for tests and code that call
-        this method as a classmethod. For new code with custom patterns,
-        create an instance with SecurityPatterns and call _check_suspicious_patterns_instance.
-
-        Args:
-            value: Value to check
-
-        Returns:
-            True if suspicious patterns found
-        """
-        # Use the global detector instance for classmethod calls
-        return _detector.check_suspicious_patterns(value)
-
-    @classmethod
     def sanitize_for_logging(cls, value: str, max_length: int = 200) -> str:
         """Sanitize a value for safe logging.
 

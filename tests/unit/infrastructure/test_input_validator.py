@@ -4,6 +4,7 @@ from collections.abc import Callable
 
 import pytest
 from typing import cast, Any
+from prdiffer.infrastructure.security.injection_detector import _detector
 from prdiffer.infrastructure.security.input_validation_helpers import (
     sanitize_string,
     validate_github_url,
@@ -474,7 +475,7 @@ class TestSuspiciousPatternDetection:
         ],
     )
     def test_detect_command_injection_patterns(self, malicious_input):
-        result = InputValidator._contains_suspicious_patterns(malicious_input)
+        result = _detector.check_suspicious_patterns(malicious_input)
         assert result is True
 
     @pytest.mark.parametrize(
@@ -488,7 +489,7 @@ class TestSuspiciousPatternDetection:
         ],
     )
     def test_detect_path_traversal_patterns(self, malicious_input):
-        result = InputValidator._contains_suspicious_patterns(malicious_input)
+        result = _detector.check_suspicious_patterns(malicious_input)
         assert result is True
 
     @pytest.mark.parametrize(
@@ -503,7 +504,7 @@ class TestSuspiciousPatternDetection:
         ],
     )
     def test_detect_sql_injection_patterns(self, malicious_input):
-        result = InputValidator._contains_suspicious_patterns(malicious_input)
+        result = _detector.check_suspicious_patterns(malicious_input)
         assert result is True
 
     @pytest.mark.parametrize(
@@ -517,5 +518,5 @@ class TestSuspiciousPatternDetection:
         ],
     )
     def test_safe_inputs_pass_pattern_detection(self, safe_input):
-        result = InputValidator._contains_suspicious_patterns(safe_input)
+        result = _detector.check_suspicious_patterns(safe_input)
         assert result is False

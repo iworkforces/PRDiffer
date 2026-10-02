@@ -50,18 +50,3 @@ def assert_aggregate_within_limit(diffs: Sequence[str], max_total_chars: int) ->
                 limit=max_total_chars,
             )
     return total
-
-
-def apply_diff_limits(
-    diff_content: str,
-    max_chars: int,
-    truncation_notice: str = "",
-) -> tuple[str, dict[str, int | bool]]:
-    """Strict full-diff path: never truncate; raise RESPONSE_SIZE_LIMIT on overflow.
-
-    The ``truncation_notice`` argument is ignored and retained only for call-site
-    compatibility during migration off truncation.
-    """
-    del truncation_notice  # intentional: truncation notices are not used
-    assert_diff_within_limit(diff_content, max_chars)
-    return diff_content, {}

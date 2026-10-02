@@ -130,6 +130,3 @@ class UnifiedRetryHandler(BaseUnifiedRetryHandler):
             "Unexpected state: no result and no exception",
             error_code=E5001_INTERNAL_ERROR,
         )
-
-
-RetryHandler = UnifiedRetryHandler

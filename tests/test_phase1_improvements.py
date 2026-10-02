@@ -12,7 +12,7 @@ from prdiffer.infrastructure.utils.circuit_breaker_core import (
     CircuitBreaker,
     CircuitState,
 )
-from prdiffer.infrastructure.utils.retry.handler import RetryHandler
+from prdiffer.infrastructure.utils.retry.handler import UnifiedRetryHandler
 from prdiffer.domain.entities.pr_diff import PRDiff
 
 
@@ -189,7 +189,7 @@ class TestAsyncRetryHandler:
     @pytest.fixture
     def retry_handler(self):
         """Create retry handler with short delays for testing."""
-        return RetryHandler(max_retries=3, retry_delay=0.1)
+        return UnifiedRetryHandler(max_retries=3, retry_delay=0.1)
 
     @pytest.mark.asyncio
     async def test_async_retry_success_first_attempt(self, retry_handler):
@@ -360,39 +360,39 @@ class TestReDoSPatternFixes:
     def test_sql_keyword_detection_with_whitespace(self):
         validator = InputValidator()
 
-        assert validator._contains_suspicious_patterns("select ")
-        assert validator._contains_suspicious_patterns("union ")
-        assert validator._contains_suspicious_patterns("drop ")
+        assert validator._detector.check_suspicious_patterns("select ")
+        assert validator._detector.check_suspicious_patterns("union ")
+        assert validator._detector.check_suspicious_patterns("drop ")
 
     def test_sql_keyword_detection_at_end(self):
         validator = InputValidator()
 
-        assert validator._contains_suspicious_patterns("test select")
-        assert validator._contains_suspicious_patterns("test union")
+        assert validator._detector.check_suspicious_patterns("test select")
+        assert validator._detector.check_suspicious_patterns("test union")
 
     def test_sql_keyword_not_detected_in_middle_of_word(self):
         validator = InputValidator()
 
-        assert not validator._contains_suspicious_patterns("selector")
-        assert not validator._contains_suspicious_patterns("reunion")
-        assert not validator._contains_suspicious_patterns("dropdown")
+        assert not validator._detector.check_suspicious_patterns("selector")
+        assert not validator._detector.check_suspicious_patterns("reunion")
+        assert not validator._detector.check_suspicious_patterns("dropdown")
 
     def test_windows_path_traversal_detection(self):
         validator = InputValidator()
 
-        assert validator._contains_suspicious_patterns("C:\\Windows\\System32")
-        assert validator._contains_suspicious_patterns("D:\\")
+        assert validator._detector.check_suspicious_patterns("C:\\Windows\\System32")
+        assert validator._detector.check_suspicious_patterns("D:\\")
 
-        assert validator._contains_suspicious_patterns("..\\config")
+        assert validator._detector.check_suspicious_patterns("..\\config")
 
-        assert validator._contains_suspicious_patterns("\\\\server\\share")
+        assert validator._detector.check_suspicious_patterns("\\\\server\\share")
 
     def test_unix_path_traversal_detection(self):
         validator = InputValidator()
 
-        assert validator._contains_suspicious_patterns("../etc/passwd")
-        assert validator._contains_suspicious_patterns("~/")
-        assert validator._contains_suspicious_patterns("/etc/passwd")
+        assert validator._detector.check_suspicious_patterns("../etc/passwd")
+        assert validator._detector.check_suspicious_patterns("~/")
+        assert validator._detector.check_suspicious_patterns("/etc/passwd")
 
     def test_no_redos_vulnerability(self):
         validator = InputValidator()
@@ -406,7 +406,7 @@ class TestReDoSPatternFixes:
         start_time = time.time()
 
         for input_str in malicious_inputs:
-            validator._contains_suspicious_patterns(input_str)
+            validator._detector.check_suspicious_patterns(input_str)
 
         elapsed = time.time() - start_time
 

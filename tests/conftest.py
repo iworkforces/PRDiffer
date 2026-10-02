@@ -304,16 +304,6 @@ def async_mock():
     return AsyncMock()
 
 
-@pytest.fixture
-def event_loop_policy():
-    """Event loop policy for async tests.
-
-    Note: pytest-asyncio automatically manages the event loop.
-    This fixture is kept for compatibility but returns None.
-    """
-    return None
-
-
 # =============================================================================
 # Environment Setup
 # =============================================================================
@@ -398,16 +388,6 @@ def generate_diff_content():
 # =============================================================================
 # Patch Context Managers
 # =============================================================================
-
-
-@pytest.fixture
-def patch_github_api():
-    """Context manager to patch GitHub API calls."""
-
-    def _patcher():
-        return patch("prdiffer.infrastructure.github.api_client.Github", autospec=True)
-
-    return _patcher
 
 
 @pytest.fixture
