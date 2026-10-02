@@ -27,7 +27,6 @@ from prdiffer.domain.interfaces.pr_diff_reader import PRDiffSnapshot
 from prdiffer.domain.repositories.pr_diff_repository import PRDiffRepositoryInterface
 from prdiffer.domain.services.cache import CacheServiceInterface
 from prdiffer.domain.services.logger import LoggerServiceInterface, LogLevel
-from prdiffer.domain.services.repository_cache import RepositoryCacheServiceInterface
 from prdiffer.domain.services.settings import SettingsServiceInterface
 
 
@@ -74,9 +73,6 @@ class RecordingCache(CacheServiceInterface):
     async def get(self, cache_key: str, current_commit_sha: str) -> PRDiff | None:
         self.reads.append((cache_key, current_commit_sha))
         return None
-
-    async def get_optimistic(self, cache_key: str) -> tuple[PRDiff | None, str | None]:
-        return None, None
 
     async def set(self, cache_key: str, commit_sha: str, data: PRDiff) -> None:
         self.writes.append((cache_key, commit_sha, data))
@@ -278,38 +274,6 @@ class StubSettings(SettingsServiceInterface):
         return None
 
 
-class StubRepositoryCache(RepositoryCacheServiceInterface):
-    def insert(self, repository: PRDiffRepositoryInterface) -> bool:
-        return True
-
-    def retrieve(self, repo_owner: str, repo_name: str, pr_number: int) -> PRDiffRepositoryInterface | None:
-        return None
-
-    def validate(self, repo_owner: str, repo_name: str, pr_number: int) -> bool:
-        return False
-
-    def remove(self, repo_owner: str, repo_name: str, pr_number: int) -> bool:
-        return False
-
-    def clear(self) -> None:
-        return None
-
-    def size(self) -> int:
-        return 0
-
-    def stats(self) -> dict[str, int]:
-        return {"total_entries": 0}
-
-    def invalidate(self, cache_key: str) -> bool:
-        return False
-
-    def invalidate_github_pr(self, owner: str, repo: str, pr_number: int) -> None:
-        return None
-
-    def invalidate_github_repository(self, owner: str, repo: str) -> None:
-        return None
-
-
 class StubLogger(LoggerServiceInterface):
     def debug(self, message: str, **kwargs: object) -> None:
         return None
@@ -454,7 +418,6 @@ class ContractHarness:
         self.server = FastMCPServer(
             settings_service=StubSettings(),
             cache_service=self.cache,
-            repository_cache_service=StubRepositoryCache(),
             logger=StubLogger(),
             provider_resolver=resolver,
             rate_limiter=AllowAllRateLimiter(),
@@ -538,9 +501,9 @@ async def test_health_call_public_contract() -> None:
         "service": "prdiffer",
         "authentication": {"authentication_enabled": False},
         "cache": {"size": 0},
-        "repository_cache": {"total_entries": 0},
         "request_coalescing": {"pending_count": 0, "pending_keys": [], "total_waiters": 0},
     }
+    assert "repository_cache" not in result.structured_content
     assert result.content
     assert isinstance(result.content[0], TextContent)
     assert "healthy" in result.content[0].text

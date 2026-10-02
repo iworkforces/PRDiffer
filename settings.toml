@@ -62,7 +62,6 @@ gitlab.allowed_hosts = ["gitlab.com"]
 
 # Performance optimization feature flags (dotted keys under [default]; not a Dynaconf env)
 # Bounded concurrency (indexed batch, session CapacityLimiter, max_concurrent).
-performance.cache_hit_optimization_enabled = true  # Optimistic cache lookup before commit SHA check
 performance.parallel_file_fetch_enabled = true  # GitHub session tree/blob capacity (github.max_concurrent; 1 when false)
 performance.parallel_diff_generation_enabled = true  # Parallel full-context per-file generation
 

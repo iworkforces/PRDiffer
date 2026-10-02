@@ -12,7 +12,6 @@ from abc import ABC, abstractmethod
 from prdiffer.domain.services.cache import CacheServiceInterface
 from prdiffer.domain.services.logger import LoggerServiceInterface
 from prdiffer.domain.services.settings import SettingsServiceInterface
-from prdiffer.domain.services.repository_cache import RepositoryCacheServiceInterface
 from prdiffer.domain.services.github_api import GitHubAPIServiceInterface
 from prdiffer.domain.services.diff import DiffServiceInterface
 from prdiffer.domain.services.pattern_matching import PatternMatchingServiceInterface
@@ -33,10 +32,6 @@ class InfrastructureFactoryInterface(ABC):
 
     @abstractmethod
     def create_cache_service(self) -> CacheServiceInterface:
-        pass
-
-    @abstractmethod
-    def create_repository_cache_service(self) -> RepositoryCacheServiceInterface:
         pass
 
     @abstractmethod

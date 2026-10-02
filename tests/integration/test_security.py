@@ -88,9 +88,6 @@ class TestCommandInjectionPrevention:
         mock_cache = Mock()
         mock_cache.get = Mock(return_value=None)
 
-        mock_repo_cache = Mock()
-        mock_repo_cache.retrieve = Mock(return_value=None)
-
         mock_pr_diff_service = SecurityFakeReader()
 
         mock_repo = Mock(spec=GitHubPRDiffRepository)
@@ -99,7 +96,6 @@ class TestCommandInjectionPrevention:
             github_repository_class=lambda o, r, n: mock_repo,
             settings_service=mock_settings,
             cache_service=mock_cache,
-            repository_cache_service=mock_repo_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=logger,
         )
@@ -203,9 +199,6 @@ class TestSQLInjectionPrevention:
         mock_cache = Mock()
         mock_cache.get = Mock(return_value=None)
 
-        mock_repo_cache = Mock()
-        mock_repo_cache.retrieve = Mock(return_value=None)
-
         mock_pr_diff_service = SecurityFakeReader()
 
         mock_repo = Mock(spec=GitHubPRDiffRepository)
@@ -214,7 +207,6 @@ class TestSQLInjectionPrevention:
             github_repository_class=lambda o, r, n: mock_repo,
             settings_service=mock_settings,
             cache_service=mock_cache,
-            repository_cache_service=mock_repo_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=logger,
         )
@@ -318,9 +310,6 @@ class TestPathTraversalPrevention:
         mock_cache = Mock()
         mock_cache.get = Mock(return_value=None)
 
-        mock_repo_cache = Mock()
-        mock_repo_cache.retrieve = Mock(return_value=None)
-
         mock_pr_diff_service = SecurityFakeReader()
 
         mock_repo = Mock(spec=GitHubPRDiffRepository)
@@ -329,7 +318,6 @@ class TestPathTraversalPrevention:
             github_repository_class=lambda o, r, n: mock_repo,
             settings_service=mock_settings,
             cache_service=mock_cache,
-            repository_cache_service=mock_repo_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=logger,
         )
@@ -409,9 +397,6 @@ class TestXSSPrevention:
         mock_cache = Mock()
         mock_cache.get = Mock(return_value=None)
 
-        mock_repo_cache = Mock()
-        mock_repo_cache.retrieve = Mock(return_value=None)
-
         mock_pr_diff_service = SecurityFakeReader()
 
         mock_repo = Mock(spec=GitHubPRDiffRepository)
@@ -420,7 +405,6 @@ class TestXSSPrevention:
             github_repository_class=lambda o, r, n: mock_repo,
             settings_service=mock_settings,
             cache_service=mock_cache,
-            repository_cache_service=mock_repo_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=logger,
         )
@@ -474,9 +458,6 @@ class TestInputSanitization:
         mock_cache = Mock()
         mock_cache.get = Mock(return_value=None)
 
-        mock_repo_cache = Mock()
-        mock_repo_cache.retrieve = Mock(return_value=None)
-
         mock_pr_diff_service = SecurityFakeReader()
 
         mock_repo = Mock(spec=GitHubPRDiffRepository)
@@ -485,7 +466,6 @@ class TestInputSanitization:
             github_repository_class=lambda o, r, n: mock_repo,
             settings_service=mock_settings,
             cache_service=mock_cache,
-            repository_cache_service=mock_repo_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=logger,
         )
@@ -553,9 +533,6 @@ class TestRepositoryValidation:
         mock_cache = Mock()
         mock_cache.get = Mock(return_value=None)
 
-        mock_repo_cache = Mock()
-        mock_repo_cache.retrieve = Mock(return_value=None)
-
         mock_pr_diff_service = SecurityFakeReader()
 
         mock_repo = Mock(spec=GitHubPRDiffRepository)
@@ -564,7 +541,6 @@ class TestRepositoryValidation:
             github_repository_class=lambda o, r, n: mock_repo,
             settings_service=mock_settings,
             cache_service=mock_cache,
-            repository_cache_service=mock_repo_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=logger,
         )
@@ -637,9 +613,6 @@ class TestSecureLogging:
         mock_cache = Mock()
         mock_cache.get = Mock(return_value=None)
 
-        mock_repo_cache = Mock()
-        mock_repo_cache.retrieve = Mock(return_value=None)
-
         mock_pr_diff_service = SecurityFakeReader()
 
         mock_repo = Mock(spec=GitHubPRDiffRepository)
@@ -648,7 +621,6 @@ class TestSecureLogging:
             github_repository_class=lambda o, r, n: mock_repo,
             settings_service=mock_settings,
             cache_service=mock_cache,
-            repository_cache_service=mock_repo_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=logger,
         )
@@ -692,9 +664,6 @@ class TestBranchValidationSecurity:
         mock_cache = Mock()
         mock_cache.get = Mock(return_value=None)
 
-        mock_repo_cache = Mock()
-        mock_repo_cache.retrieve = Mock(return_value=None)
-
         mock_pr_diff_service = SecurityFakeReader()
 
         mock_repo = Mock(spec=GitHubPRDiffRepository)
@@ -704,7 +673,6 @@ class TestBranchValidationSecurity:
             github_repository_class=lambda o, r, n: mock_repo,
             settings_service=mock_settings,
             cache_service=mock_cache,
-            repository_cache_service=mock_repo_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=logger,
         )

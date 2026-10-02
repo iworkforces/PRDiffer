@@ -15,11 +15,9 @@ class GetPRDiffUseCase:
         self,
         pr_diff_service: SessionPRDiffReader,
         cache_service: CacheServiceInterface,
-        cache_hit_optimization_enabled: bool = False,
     ):
         self._pr_diff_service: SessionPRDiffReader = pr_diff_service
         self._cache_service: CacheServiceInterface = cache_service
-        self._cache_hit_optimization_enabled = cache_hit_optimization_enabled
 
     async def execute(
         self,
@@ -40,12 +38,6 @@ class GetPRDiffUseCase:
             identity = session.cache_identity
             cache_key = identity.cache_key
             validation_token = identity.validation_token
-
-            if self._cache_hit_optimization_enabled:
-                cached_result, cached_token = await self._cache_service.get_optimistic(cache_key)
-                unwrapped = unwrap_pr_diff_cache_value(cached_result, key=cache_key, identity=identity) if cached_result is not None else None
-                if unwrapped is not None and cached_token and cached_token == validation_token:
-                    return unwrapped
 
             cached_result = await self._cache_service.get(cache_key, validation_token)
             unwrapped = unwrap_pr_diff_cache_value(cached_result, key=cache_key, identity=identity) if cached_result is not None else None

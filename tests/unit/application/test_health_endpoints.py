@@ -15,7 +15,6 @@ class TestHealthEndpoints:
         health_monitor = Mock()
         metrics_tracker = Mock()
         cache_service = Mock()
-        repository_cache_service = Mock()
         authentication = Mock()
         request_coalescing = Mock()
         logger = Mock()
@@ -24,7 +23,6 @@ class TestHealthEndpoints:
             health_monitor=health_monitor,
             metrics_tracker=metrics_tracker,
             cache_service=cache_service,
-            repository_cache_service=repository_cache_service,
             authentication=authentication,
             request_coalescing=request_coalescing,
             logger=logger,
@@ -38,7 +36,6 @@ class TestHealthEndpoints:
         health_endpoints._health_monitor.check_health.return_value = {"status": "healthy"}
         health_endpoints._authentication.get_status.return_value = {"enabled": True}
         health_endpoints._cache_service.get_stats.return_value = {"size": 100}
-        health_endpoints._repository_cache_service.stats.return_value = {"entries": 50}
         health_endpoints._request_coalescing.get_stats = AsyncMock(return_value={"active": 5})
 
         status = await health_endpoints._get_health_status()
@@ -46,7 +43,7 @@ class TestHealthEndpoints:
         assert status["status"] == "healthy"
         assert "authentication" in status
         assert "cache" in status
-        assert "repository_cache" in status
+        assert "repository_cache" not in status
         assert "request_coalescing" in status
 
     def test_get_health_handler_returns_callable(self, health_endpoints):
@@ -61,7 +58,6 @@ class TestHealthEndpoints:
         health_endpoints._health_monitor.check_health.return_value = {"status": "healthy"}
         health_endpoints._authentication.get_status.return_value = {"enabled": True}
         health_endpoints._cache_service.get_stats.return_value = {}
-        health_endpoints._repository_cache_service.stats.return_value = {}
         health_endpoints._request_coalescing.get_stats = AsyncMock(return_value={})
 
         handler = health_endpoints.get_health_handler()
@@ -168,7 +164,6 @@ class TestCreateSafeErrorMessage:
             health_monitor=Mock(),
             metrics_tracker=Mock(),
             cache_service=Mock(),
-            repository_cache_service=Mock(),
             authentication=Mock(),
             request_coalescing=Mock(),
             logger=Mock(),

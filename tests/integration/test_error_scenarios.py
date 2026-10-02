@@ -132,19 +132,11 @@ class TestAPIErrorScenarios:
         return mock_cache
 
     @pytest.fixture
-    def mock_repo_cache(self):
-        mock_repo_cache = Mock()
-        mock_repo_cache.retrieve = Mock(return_value=None)
-        mock_repo_cache.insert = Mock(return_value=True)
-        return mock_repo_cache
-
-    @pytest.fixture
     def server(
         self,
         mock_settings,
         mock_logger,
         mock_cache,
-        mock_repo_cache,
         mock_pr_diff_service,
     ):
         mock_repo = Mock(spec=GitHubPRDiffRepository)
@@ -153,7 +145,6 @@ class TestAPIErrorScenarios:
             github_repository_class=lambda o, r, n: mock_repo,
             settings_service=mock_settings,
             cache_service=mock_cache,
-            repository_cache_service=mock_repo_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=mock_logger,
         )
@@ -237,18 +228,11 @@ class TestValidationErrorScenarios:
         return mock_cache
 
     @pytest.fixture
-    def mock_repo_cache(self):
-        mock_repo_cache = Mock()
-        mock_repo_cache.retrieve = Mock(return_value=None)
-        return mock_repo_cache
-
-    @pytest.fixture
     def server(
         self,
         mock_settings,
         mock_logger,
         mock_cache,
-        mock_repo_cache,
         mock_pr_diff_service,
     ):
         mock_repo = Mock(spec=GitHubPRDiffRepository)
@@ -257,7 +241,6 @@ class TestValidationErrorScenarios:
             github_repository_class=lambda o, r, n: mock_repo,
             settings_service=mock_settings,
             cache_service=mock_cache,
-            repository_cache_service=mock_repo_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=mock_logger,
         )
@@ -369,18 +352,11 @@ class TestRateLimitingScenarios:
         return mock_cache
 
     @pytest.fixture
-    def mock_repo_cache(self):
-        mock_repo_cache = Mock()
-        mock_repo_cache.retrieve = Mock(return_value=None)
-        return mock_repo_cache
-
-    @pytest.fixture
     def server(
         self,
         mock_settings,
         mock_logger,
         mock_cache,
-        mock_repo_cache,
         mock_pr_diff_service,
     ):
         mock_repo = Mock(spec=GitHubPRDiffRepository)
@@ -389,7 +365,6 @@ class TestRateLimitingScenarios:
             github_repository_class=lambda o, r, n: mock_repo,
             settings_service=mock_settings,
             cache_service=mock_cache,
-            repository_cache_service=mock_repo_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=mock_logger,
         )
@@ -485,18 +460,11 @@ class TestCacheErrorScenarios:
         return mock_cache
 
     @pytest.fixture
-    def mock_repo_cache(self):
-        mock_repo_cache = Mock()
-        mock_repo_cache.retrieve = Mock(return_value=None)
-        return mock_repo_cache
-
-    @pytest.fixture
     def server_with_failing_cache(
         self,
         mock_settings,
         mock_logger,
         failing_cache,
-        mock_repo_cache,
         mock_pr_diff_service,
     ):
         mock_repo = Mock(spec=GitHubPRDiffRepository)
@@ -505,7 +473,6 @@ class TestCacheErrorScenarios:
             github_repository_class=lambda o, r, n: mock_repo,
             settings_service=mock_settings,
             cache_service=failing_cache,
-            repository_cache_service=mock_repo_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=mock_logger,
         )
@@ -538,18 +505,11 @@ class TestAuthenticationErrorScenarios:
         return mock_cache
 
     @pytest.fixture
-    def mock_repo_cache(self):
-        mock_repo_cache = Mock()
-        mock_repo_cache.retrieve = Mock(return_value=None)
-        return mock_repo_cache
-
-    @pytest.fixture
     def server(
         self,
         mock_settings,
         mock_logger,
         mock_cache,
-        mock_repo_cache,
         mock_pr_diff_service,
     ):
         mock_repo = Mock(spec=GitHubPRDiffRepository)
@@ -558,7 +518,6 @@ class TestAuthenticationErrorScenarios:
             github_repository_class=lambda o, r, n: mock_repo,
             settings_service=mock_settings,
             cache_service=mock_cache,
-            repository_cache_service=mock_repo_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=mock_logger,
         )

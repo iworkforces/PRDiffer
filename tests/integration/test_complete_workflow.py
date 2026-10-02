@@ -112,15 +112,6 @@ class TestCompleteWorkflow:
         return mock_cache
 
     @pytest.fixture
-    def mock_repository_cache(self):
-        """Mock repository cache service."""
-        mock_repo_cache = Mock()
-        mock_repo_cache.retrieve = Mock(return_value=None)
-        mock_repo_cache.insert = Mock(return_value=True)
-        mock_repo_cache.stats = Mock(return_value={"total_entries": 0})
-        return mock_repo_cache
-
-    @pytest.fixture
     def mock_pr_diff_service(self):
         """Mock PR diff service."""
         return WorkflowPRDiffService()
@@ -136,7 +127,6 @@ class TestCompleteWorkflow:
         mock_settings,
         mock_logger,
         mock_cache,
-        mock_repository_cache,
         mock_pr_diff_service,
         sample_pr_diff,
     ):
@@ -149,7 +139,6 @@ class TestCompleteWorkflow:
             github_repository_class=lambda o, r, n: mock_github_repository,
             settings_service=mock_settings,
             cache_service=mock_cache,
-            repository_cache_service=mock_repository_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=mock_logger,
         )
@@ -163,7 +152,6 @@ class TestCompleteWorkflow:
         mock_settings,
         mock_logger,
         mock_cache,
-        mock_repository_cache,
         mock_pr_diff_service,
         sample_pr_diff,
     ):
@@ -177,7 +165,6 @@ class TestCompleteWorkflow:
             github_repository_class=lambda o, r, n: mock_github_repository,
             settings_service=mock_settings,
             cache_service=mock_cache,
-            repository_cache_service=mock_repository_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=mock_logger,
         )
@@ -191,7 +178,6 @@ class TestCompleteWorkflow:
         mock_settings,
         mock_logger,
         mock_cache,
-        mock_repository_cache,
         mock_pr_diff_service,
     ):
         """Test workflow with metrics tracking."""
@@ -200,7 +186,6 @@ class TestCompleteWorkflow:
             github_repository_class=lambda o, r, n: mock_github_repository,
             settings_service=mock_settings,
             cache_service=mock_cache,
-            repository_cache_service=mock_repository_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=mock_logger,
         )
@@ -216,7 +201,6 @@ class TestCompleteWorkflow:
         mock_settings,
         mock_logger,
         mock_cache,
-        mock_repository_cache,
         mock_pr_diff_service,
     ):
         """Test workflow with health monitoring."""
@@ -225,7 +209,6 @@ class TestCompleteWorkflow:
             github_repository_class=lambda o, r, n: mock_github_repository,
             settings_service=mock_settings,
             cache_service=mock_cache,
-            repository_cache_service=mock_repository_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=mock_logger,
         )
@@ -245,7 +228,6 @@ class TestCompleteWorkflow:
         mock_settings,
         mock_logger,
         mock_cache,
-        mock_repository_cache,
         mock_pr_diff_service,
     ):
         """Test workflow with rate limiting."""
@@ -254,7 +236,6 @@ class TestCompleteWorkflow:
             github_repository_class=lambda o, r, n: mock_github_repository,
             settings_service=mock_settings,
             cache_service=mock_cache,
-            repository_cache_service=mock_repository_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=mock_logger,
         )
@@ -270,7 +251,6 @@ class TestCompleteWorkflow:
         mock_settings,
         mock_logger,
         mock_cache,
-        mock_repository_cache,
         mock_pr_diff_service,
     ):
         """Test workflow with authentication."""
@@ -279,7 +259,6 @@ class TestCompleteWorkflow:
             github_repository_class=lambda o, r, n: mock_github_repository,
             settings_service=mock_settings,
             cache_service=mock_cache,
-            repository_cache_service=mock_repository_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=mock_logger,
         )
@@ -300,7 +279,6 @@ class TestCompleteWorkflow:
         mock_settings,
         mock_logger,
         mock_cache,
-        mock_repository_cache,
         mock_pr_diff_service,
     ):
         """Test that all components are properly integrated."""
@@ -309,7 +287,6 @@ class TestCompleteWorkflow:
             github_repository_class=lambda o, r, n: mock_github_repository,
             settings_service=mock_settings,
             cache_service=mock_cache,
-            repository_cache_service=mock_repository_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=mock_logger,
         )
@@ -317,7 +294,6 @@ class TestCompleteWorkflow:
         # Verify all components are injected
         assert server._settings_service == mock_settings
         assert server._cache_service == mock_cache
-        assert server._repository_cache_service == mock_repository_cache
         assert server._logger == mock_logger
         assert server._rate_limiter is not None
         assert server._metrics_tracker is not None
@@ -333,7 +309,6 @@ class TestCompleteWorkflow:
         mock_settings,
         mock_logger,
         mock_cache,
-        mock_repository_cache,
         mock_pr_diff_service,
     ):
         """Test workflow with request coalescing."""
@@ -342,7 +317,6 @@ class TestCompleteWorkflow:
             github_repository_class=lambda o, r, n: mock_github_repository,
             settings_service=mock_settings,
             cache_service=mock_cache,
-            repository_cache_service=mock_repository_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=mock_logger,
         )
@@ -394,18 +368,11 @@ class TestWorkflowWithRealServices:
         # Create PR diff service fake
         mock_pr_diff_service = WorkflowPRDiffService()
 
-        # Mock repository cache
-        mock_repo_cache = Mock()
-        mock_repo_cache.retrieve = Mock(return_value=None)
-        mock_repo_cache.insert = Mock(return_value=True)
-        mock_repo_cache.stats = Mock(return_value={"total_entries": 0})
-
         # Create server with real services
         server = create_mcp_server(
             github_repository_class=lambda o, r, n: mock_repository,
             settings_service=real_settings,
             cache_service=real_cache,
-            repository_cache_service=mock_repo_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=real_logger,
         )
@@ -473,17 +440,11 @@ class TestEndToEndScenarios:
         logger_service = factory.create_logger_service()
         cache_service = factory.create_cache_service()
 
-        # Mock repository cache
-        mock_repo_cache = Mock()
-        mock_repo_cache.retrieve = Mock(return_value=None)
-        mock_repo_cache.insert = Mock(return_value=True)
-
         # Create server
         server = create_mcp_server(
             github_repository_class=lambda o, r, n: mock_repo,
             settings_service=settings_service,
             cache_service=cache_service,
-            repository_cache_service=mock_repo_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=logger_service,
         )
@@ -514,17 +475,11 @@ class TestEndToEndScenarios:
         metrics_tracker = app_factory.create_metrics_tracker(logger_service)
         rate_limiter = app_factory.create_rate_limiter(logger_service)
 
-        # Mock repository cache
-        mock_repo_cache = Mock()
-        mock_repo_cache.retrieve = Mock(return_value=None)
-        mock_repo_cache.insert = Mock(return_value=True)
-
         # Create server (not directly used, but validates wiring)
         _ = create_mcp_server(
             github_repository_class=lambda o, r, n: mock_repo,
             settings_service=settings_service,
             cache_service=cache_service,
-            repository_cache_service=mock_repo_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=logger_service,
         )
@@ -561,17 +516,11 @@ class TestEndToEndScenarios:
         logger_service = factory.create_logger_service()
         cache_service = factory.create_cache_service()
 
-        # Mock repository cache
-        mock_repo_cache = Mock()
-        mock_repo_cache.retrieve = Mock(return_value=None)
-        mock_repo_cache.insert = Mock(return_value=True)
-
         # Create server
         server = create_mcp_server(
             github_repository_class=lambda o, r, n: mock_repo,
             settings_service=settings_service,
             cache_service=cache_service,
-            repository_cache_service=mock_repo_cache,
             pr_diff_service=mock_pr_diff_service,
             logger=logger_service,
         )

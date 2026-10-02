@@ -8,7 +8,6 @@ from prdiffer.version import __version__
 
 from prdiffer.domain.services.settings import SettingsServiceInterface
 from prdiffer.domain.services.cache import CacheServiceInterface
-from prdiffer.domain.services.repository_cache import RepositoryCacheServiceInterface
 from prdiffer.domain.services.logger import LoggerServiceInterface
 from prdiffer.domain.interfaces.protocols import (
     RateLimiterProtocol,
@@ -35,7 +34,6 @@ class FastMCPServer:
         self,
         settings_service: SettingsServiceInterface,
         cache_service: CacheServiceInterface,
-        repository_cache_service: RepositoryCacheServiceInterface,
         logger: LoggerServiceInterface,
         provider_resolver: ProviderCapabilityResolver,
         rate_limiter: RateLimiterProtocol,
@@ -48,7 +46,6 @@ class FastMCPServer:
     ):
         self._settings_service = settings_service
         self._cache_service = cache_service
-        self._repository_cache_service = repository_cache_service
         self._logger = logger
         self._provider_resolver = provider_resolver
 
@@ -96,7 +93,6 @@ class FastMCPServer:
         self._register_endpoints_and_tools()
 
     def _initialize_components(self) -> None:
-        cache_hit_optimization_enabled: bool = self._settings_service.get("performance.cache_hit_optimization_enabled", False)
         github_config = self._settings_service.get_github_config()
 
         self._tool_registry = ToolRegistry(
@@ -108,14 +104,12 @@ class FastMCPServer:
             authentication=self._authentication,
             input_validator=self._input_validator,
             request_coalescing_service=self._request_coalescing,
-            cache_hit_optimization_enabled=cache_hit_optimization_enabled,
             pr_diff_request_timeout_seconds=github_config.pr_diff_request_timeout_seconds,
         )
 
         self._webhook_handler = WebhookHandler(
             settings_service=self._settings_service,
             cache_service=self._cache_service,
-            repository_cache_service=self._repository_cache_service,
             logger=self._logger,
             input_validator=self._input_validator,
         )
@@ -124,7 +118,6 @@ class FastMCPServer:
             health_monitor=self._health_monitor,
             metrics_tracker=self._metrics_tracker,
             cache_service=self._cache_service,
-            repository_cache_service=self._repository_cache_service,
             authentication=self._authentication,
             request_coalescing=self._request_coalescing,
             logger=self._logger,

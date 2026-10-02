@@ -7,7 +7,6 @@ from prdiffer.domain.services.cache import CacheServiceInterface
 from prdiffer.domain.services.logger import LoggerServiceInterface
 from prdiffer.domain.interfaces.pr_diff_reader import SessionPRDiffReader
 from prdiffer.domain.services.settings import SettingsServiceInterface
-from prdiffer.domain.services.repository_cache import RepositoryCacheServiceInterface
 from prdiffer.domain.services.github_api import GitHubAPIServiceInterface
 from prdiffer.domain.services.diff import DiffServiceInterface
 from prdiffer.domain.services.pattern_matching import PatternMatchingServiceInterface
@@ -16,9 +15,6 @@ from prdiffer.domain.interfaces.input_validation import InputValidatorProtocol
 from prdiffer.infrastructure.settings import get_settings_service
 from prdiffer.infrastructure.logging.console_logger import get_logger
 from prdiffer.infrastructure.cache.service import get_cache_service
-from prdiffer.infrastructure.cache.cache_repository import (
-    get_repository_cache_service,
-)
 from prdiffer.infrastructure.github.client import GitHubAPIClient
 from prdiffer.infrastructure.utils.diff_utils import DiffUtils, DiffProcessingConfig
 from prdiffer.infrastructure.utils.pattern_matcher import PatternMatcher
@@ -45,10 +41,6 @@ class InfrastructureFactory(InfrastructureFactoryInterface):
     def create_cache_service(self) -> CacheServiceInterface:
         """Create cache service instance."""
         return get_cache_service()
-
-    def create_repository_cache_service(self) -> RepositoryCacheServiceInterface:
-        """Create repository cache service instance."""
-        return get_repository_cache_service()
 
     def create_github_api_service(self) -> GitHubAPIServiceInterface:
         """Create GitHub API service instance from authoritative GitHubConfig."""

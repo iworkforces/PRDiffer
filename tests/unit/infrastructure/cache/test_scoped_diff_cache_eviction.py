@@ -148,18 +148,18 @@ async def test_periodic_ttl_sweep_and_lru_remove_reverse_metadata(cache_service:
 
 
 @pytest.mark.asyncio
-async def test_optimistic_expiry_removes_live_key_metadata(cache_service: CacheService) -> None:
+async def test_get_expiry_removes_live_key_metadata(cache_service: CacheService) -> None:
     # Given a snapshot past its TTL.
     key = github_full_diff_v3_key("owner", "repo", 1, "base", "head")
     await cache_service.set(key, "sha", PRDiff(files=()))
     internal_key = cache_service._hash_key(key) if cache_service._use_hashed_keys else key
     cache_service.cache[internal_key]["timestamp"] = 0
 
-    # When the optimistic lookup expires it.
-    result = await cache_service.get_optimistic(key)
+    # When the authoritative lookup expires it.
+    result = await cache_service.get(key, "sha")
 
     # Then the entry and its reverse metadata are gone.
-    assert result == (None, None)
+    assert result is None
     assert internal_key not in cache_service.cache
     assert_live_metadata(cache_service)
 

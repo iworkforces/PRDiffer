@@ -60,7 +60,6 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
         authentication: AuthenticationProtocol | None = None,
         input_validator: InputValidatorProtocol | None = None,
         request_coalescing_service: RequestCoalescingProtocol | None = None,
-        cache_hit_optimization_enabled: bool = False,
         pr_diff_request_timeout_seconds: float | None = None,
     ):
         self._cache_service = cache_service
@@ -68,7 +67,6 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
         self._provider_resolver = provider_resolver
         self._rate_limiter = rate_limiter
         self._metrics_tracker = metrics_tracker
-        self._cache_hit_optimization_enabled = cache_hit_optimization_enabled
         self._pr_diff_request_timeout_seconds = pr_diff_request_timeout_seconds
         self._authentication = authentication
 

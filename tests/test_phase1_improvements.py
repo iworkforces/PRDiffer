@@ -328,7 +328,6 @@ class TestErrorMessageSanitization:
         return {
             "settings_service": Mock(),
             "cache_service": Mock(),
-            "repository_cache_service": Mock(),
             "logger": Mock(),
             "provider_resolver": ProviderCapabilityResolver(),
             "input_validator": Mock(),

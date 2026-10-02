@@ -10,9 +10,6 @@ from prdiffer.version import __version__
 from prdiffer.application.factory import create_mcp_server
 from prdiffer.infrastructure.settings import get_settings_service, load_project_dotenv
 from prdiffer.infrastructure.cache.service import get_cache_service
-from prdiffer.infrastructure.cache.cache_repository import (
-    get_repository_cache_service,
-)
 from prdiffer.infrastructure.logging.console_logger import get_logger
 from prdiffer.infrastructure.github_repository import GitHubPRDiffRepository
 from prdiffer.infrastructure.factories.infrastructure_factory import InfrastructureFactory
@@ -136,7 +133,6 @@ def main() -> None:
     # Initialize dependencies following clean architecture principles
     settings_service = get_settings_service()
     cache_service = get_cache_service()
-    repository_cache_service = get_repository_cache_service()
     logger = get_logger()
 
     # Top-level exception handler for graceful shutdown
@@ -146,7 +142,6 @@ def main() -> None:
             github_repository_class=GitHubPRDiffRepository,
             settings_service=settings_service,
             cache_service=cache_service,
-            repository_cache_service=repository_cache_service,
             logger=logger,
             gitlab_reader=InfrastructureFactory().create_gitlab_session_reader(
                 private_token=os.getenv("GITLAB_TOKEN") or None,

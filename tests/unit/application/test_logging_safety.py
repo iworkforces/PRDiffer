@@ -34,7 +34,6 @@ def server_with_mock_logger(mock_logger: Mock) -> FastMCPServer:
     """Create FastMCPServer instance with mocked dependencies."""
     settings_service = Mock()
     cache_service = Mock()
-    repository_cache_service = Mock()
     rate_limiter = Mock()
     metrics_tracker = Mock()
     health_monitor = Mock()
@@ -47,7 +46,6 @@ def server_with_mock_logger(mock_logger: Mock) -> FastMCPServer:
     return FastMCPServer(
         settings_service=settings_service,
         cache_service=cache_service,
-        repository_cache_service=repository_cache_service,
         logger=mock_logger,
         provider_resolver=ProviderCapabilityResolver(),
         rate_limiter=rate_limiter,

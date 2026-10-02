@@ -44,8 +44,6 @@ class RecordingCache:
         self.store: dict[tuple[str, str], Any] = {}
         self.sets = 0
         self.gets = 0
-    async def get_optimistic(self, key: str) -> tuple[Any, None]:
-        return None, None
 
     async def get(self, key: str, token: str) -> Any:
         self.gets += 1

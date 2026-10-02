@@ -7,7 +7,6 @@ from prdiffer.application.provider_resolver import create_provider_capability_re
 from .mcp_server import FastMCPServer
 from prdiffer.domain.services.settings import SettingsServiceInterface
 from prdiffer.domain.services.cache import CacheServiceInterface
-from prdiffer.domain.services.repository_cache import RepositoryCacheServiceInterface
 from prdiffer.domain.services.logger import LoggerServiceInterface
 from typing import Any, TypeGuard
 
@@ -37,7 +36,6 @@ def create_mcp_server(
     github_repository_class: type[Any],
     settings_service: SettingsServiceInterface | None = None,
     cache_service: CacheServiceInterface | None = None,
-    repository_cache_service: RepositoryCacheServiceInterface | None = None,
     pr_diff_service: SessionPRDiffReader | None = None,
     gitlab_reader: SessionPRDiffReader | None = None,
     gitlab_pr_operations: GitLabPROperationsProtocol | None = None,
@@ -55,9 +53,6 @@ def create_mcp_server(
 
     if cache_service is None:
         cache_service = infrastructure_factory.create_cache_service()
-
-    if repository_cache_service is None:
-        repository_cache_service = infrastructure_factory.create_repository_cache_service()
 
     rate_limiter = application_factory.create_rate_limiter(logger)
     metrics_tracker = application_factory.create_metrics_tracker(logger)
@@ -94,7 +89,6 @@ def create_mcp_server(
     return FastMCPServer(
         settings_service=settings_service,
         cache_service=cache_service,
-        repository_cache_service=repository_cache_service,
         provider_resolver=provider_resolver,
         logger=logger,
         rate_limiter=rate_limiter,

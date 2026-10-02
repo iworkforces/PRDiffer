@@ -179,62 +179,6 @@ class CacheService(CacheServiceInterface):
                 )
                 return None
 
-    async def get_optimistic(self, cache_key: str) -> tuple[PRDiff | None, str | None]:
-        """Get cached PR diff data without commit SHA validation (optimistic lookup).
-
-        Returns cached data and its commit SHA without validation, allowing caller
-        to decide whether the data is fresh enough. Avoids a GitHub API call for cache hits.
-        """
-        internal_key, hash_display = await self._get_internal_key(cache_key)
-
-        async with self._lock:
-            if internal_key not in self.cache:
-                self._cache_misses += 1
-                self.logger.debug(
-                    "Optimistic cache miss",
-                    cache_key=cache_key,
-                    hash=hash_display if self._use_hashed_keys else None,
-                )
-                return None, None
-
-            cached_data = self.cache[internal_key]
-
-            if self._is_entry_expired(cached_data):
-                self._cache_expirations += 1
-                self._cache_misses += 1
-                del self.cache[internal_key]
-                self._key_mapping.pop(internal_key, None)
-                self._entry_keys.pop(internal_key, None)
-                self.logger.info(
-                    "Optimistic cache entry expired (TTL)",
-                    cache_key=cache_key,
-                    hash=hash_display if self._use_hashed_keys else None,
-                    ttl_seconds=self._ttl,
-                )
-                return None, None
-
-            cached_commit_sha = cached_data.get("commit_sha")
-            cached_result = cached_data.get("data")
-
-            if cached_result:
-                self._cache_hits += 1
-                self.cache.move_to_end(internal_key)
-                self.logger.info(
-                    "Optimistic cache hit",
-                    cache_key=cache_key,
-                    hash=hash_display if self._use_hashed_keys else None,
-                    cached_commit_sha=cached_commit_sha,
-                )
-                return cast(PRDiff, cached_result), cached_commit_sha
-            else:
-                self._cache_misses += 1
-                self.logger.warning(
-                    "Cache entry has no data",
-                    cache_key=cache_key,
-                    hash=hash_display if self._use_hashed_keys else None,
-                )
-                return None, None
-
     async def set(self, cache_key: str, commit_sha: str, data: PRDiff) -> None:
         """Cache PR diff data with associated commit SHA."""
         internal_key, hash_display = await self._get_internal_key(cache_key)

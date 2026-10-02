@@ -10,7 +10,6 @@ from prdiffer.domain.usecases.pr_diff_usecases import GetPRDiffUseCase
 class CoalescedPRDiffExecutionMixin:
     _cache_service: CacheServiceInterface
     _request_coalescing: RequestCoalescingProtocol
-    _cache_hit_optimization_enabled: bool
     _pr_diff_request_timeout_seconds: float | None
 
     def _resolve_pr_diff_request_timeout(self) -> float:
@@ -46,7 +45,6 @@ class CoalescedPRDiffExecutionMixin:
             use_case = GetPRDiffUseCase(
                 pr_diff_service=pr_diff_reader,
                 cache_service=self._cache_service,
-                cache_hit_optimization_enabled=self._cache_hit_optimization_enabled,
             )
             return await use_case.execute(
                 repo_owner=repo_owner,

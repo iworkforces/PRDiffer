@@ -56,8 +56,6 @@ class RecordingCache:
     def __init__(self) -> None:
         self.sets = 0
         self.store: dict[tuple[str, str], object] = {}
-    async def get_optimistic(self, key: str):
-        return None, None
 
     async def get(self, key: str, token: str):
         return self.store.get((key, token))
@@ -191,7 +189,6 @@ def _registry(
         authentication=auth,
         input_validator=validator,
         request_coalescing_service=MagicMock(),
-        cache_hit_optimization_enabled=False,
     )
     registry._recording_cache = cache_service  # type: ignore[attr-defined]
     registry._metrics = metrics  # type: ignore[attr-defined]
@@ -422,7 +419,6 @@ async def test_real_use_case_empty_success_writes_cache_once_via_coalescer() -> 
         authentication=auth,
         input_validator=validator,
         request_coalescing_service=RequestCoalescingService(max_waiters=10),
-        cache_hit_optimization_enabled=False,
     )
     mcp = FastMCP("empty-real-uc")
     registry.register_tools(mcp)
