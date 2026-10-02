@@ -1,6 +1,6 @@
 """Input validation and sanitization for security.
 
-Validates PR/MR URLs and free-text inputs against injection patterns
+Validates GitHub PR/GitLab MR URLs and free-text inputs against injection patterns
 (SQL, command, path traversal) and sanitizes values for logging.
 """
 
