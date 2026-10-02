@@ -119,6 +119,35 @@ class TestGitHubPRDiffRepositoryInit:
 
             assert repo.github_token == "env-token"
 
+    def test_client_built_from_github_config(self, mock_logger, mock_input_validator):
+        """GitHubConfig values (including disabled retry features) reach the client's retry handler."""
+        settings = Mock()
+        settings.get_github_config.return_value = GitHubConfig(
+            timeout=45,
+            max_retries=5,
+            retry_on_403=False,
+            circuit_breaker_enabled=False,
+            api_health_tracking=False,
+        )
+
+        repo = GitHubPRDiffRepository(
+            repo_owner="owner",
+            repo_name="repo",
+            pr_number=1,
+            github_token="token",
+            settings_service=settings,
+            logger=mock_logger,
+            input_validator=mock_input_validator,
+        )
+
+        handler = repo._github_api_client._retry_handler
+        assert repo.timeout == 45
+        assert handler.max_retries == 5
+        assert handler.retry_on_403 is False
+        assert handler.circuit_breaker_enabled is False
+        assert handler._circuit_breaker is None
+        assert handler._health_tracker is None
+
 
 class TestGitHubPRDiffRepositoryProperties:
     """Tests for repository properties."""

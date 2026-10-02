@@ -100,7 +100,6 @@ class TestSettingsTomlDefaults:
         service.clear_cache()
         config = service.get_github_config()
         assert config.ignore_patterns == ("*.lock", "node_modules/", "dist/", "*AGENTS.md")
-        assert service.get_github_settings()["ignore_patterns"] == ("*.lock", "node_modules/", "dist/", "*AGENTS.md")
 
     def test_github_ignore_patterns_agents_md_glob_applies_to_nested_paths(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """*AGENTS.md from GITHUB_IGNORE_PATTERNS must drop nested AGENTS.md files."""
@@ -139,15 +138,13 @@ class TestFactoryWiresExactSentinels:
             large_file_threshold=111,
             chunk_size=222,
             max_diff_size=333,
+            ignore_patterns=("*.sentinel",),
+            valid_extensions=(".py",),
         )
 
         factory = InfrastructureFactory()
         mock_settings = MagicMock()
         mock_settings.get_github_config.return_value = sentinel
-        mock_settings.get_github_settings.return_value = {
-            "ignore_patterns": (),
-            "valid_extensions": (),
-        }
         mock_settings.get.side_effect = lambda key, default=None: default
 
         with (
@@ -165,6 +162,8 @@ class TestFactoryWiresExactSentinels:
         assert service._file_processor is not None
         assert service._file_processor.max_files_allowed == 7
         assert service._file_processor._max_file_size_bytes == 1_000_000
+        assert service._file_processor._pattern_matcher.ignore_patterns == ["*.sentinel"]
+        assert service._file_processor._pattern_matcher.valid_extensions == [".py"]
         assert service._parallel_file_fetch_enabled is False
         assert service._max_concurrent == 1  # serialized github_worker_capacity
         assert service._get_session_reader()._limiter.total_tokens == 1

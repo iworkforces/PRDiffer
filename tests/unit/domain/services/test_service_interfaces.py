@@ -80,7 +80,6 @@ class TestSettingsServiceInterface:
 
         required_methods = {
             "get",
-            "get_github_settings",
             "get_app_settings",
         }
 
@@ -331,12 +330,6 @@ class TestMockImplementationCompliance:
 
             def get(self, key, default=None):
                 return self._settings.get(key, default)
-
-            def get_github_settings(self):
-                return {
-                    "rate_limit": 5000,
-                    "timeout": 30,
-                }
 
             def get_cache_settings(self):
                 return {

@@ -8,10 +8,7 @@ from github.Repository import Repository as PyGithubRepository
 from github.PullRequest import PullRequest as PyGithubPullRequest
 
 from prdiffer.domain.services.github_api import GitHubAPIServiceInterface
-from prdiffer.infrastructure.utils.retry.factories import (
-    get_retry_handler,
-    get_advanced_retry_handler,
-)
+from prdiffer.infrastructure.utils.retry.factories import get_retry_handler
 from prdiffer.infrastructure.utils.retry.models import OperationContext
 from prdiffer.infrastructure.logging.console_logger import ConsoleLogger, get_logger
 from prdiffer.infrastructure.logging.exception_utils import (
@@ -43,46 +40,30 @@ class GitHubAPIClient(GitHubAPIServiceInterface):
         secondary_rate_limit_backoff: float = 60.0,
         api_health_tracking: bool = True,
         context_aware_retry: bool = True,
-        use_advanced_retry: bool = True,
         logger: "ConsoleLogger | None" = None,
     ):
         self._github_client: Github | None = None
         self._logger = logger or get_logger()
 
-        if use_advanced_retry:
-            self._retry_handler = get_advanced_retry_handler(
-                max_retries=max_retries,
-                retry_delay=retry_delay,
-                retry_on_404=retry_on_404,
-                retry_on_403=retry_on_403,
-                retry_on_500=retry_on_500,
-                retry_log_level=retry_log_level,
-                permanent_failure_log_level=permanent_failure_log_level,
-                circuit_breaker_enabled=circuit_breaker_enabled,
-                circuit_breaker_failure_threshold=circuit_breaker_failure_threshold,
-                circuit_breaker_timeout=circuit_breaker_timeout,
-                adaptive_retry_enabled=adaptive_retry_enabled,
-                max_adaptive_delay=max_adaptive_delay,
-                rate_limit_remaining_threshold=rate_limit_remaining_threshold,
-                rate_limit_reset_buffer=rate_limit_reset_buffer,
-                secondary_rate_limit_backoff=secondary_rate_limit_backoff,
-                api_health_tracking=api_health_tracking,
-                context_aware_retry=context_aware_retry,
-                logger=None,
-            )
-        else:
-            self._retry_handler = get_retry_handler(
-                max_retries=max_retries,
-                retry_delay=retry_delay,
-                retry_on_404=retry_on_404,
-                retry_on_403=retry_on_403,
-                retry_on_500=retry_on_500,
-                retry_log_level=retry_log_level,
-                permanent_failure_log_level=permanent_failure_log_level,
-                rate_limit_remaining_threshold=rate_limit_remaining_threshold,
-                rate_limit_reset_buffer=rate_limit_reset_buffer,
-                secondary_rate_limit_backoff=secondary_rate_limit_backoff,
-            )
+        self._retry_handler = get_retry_handler(
+            max_retries=max_retries,
+            retry_delay=retry_delay,
+            retry_on_404=retry_on_404,
+            retry_on_403=retry_on_403,
+            retry_on_500=retry_on_500,
+            retry_log_level=retry_log_level,
+            permanent_failure_log_level=permanent_failure_log_level,
+            circuit_breaker_enabled=circuit_breaker_enabled,
+            circuit_breaker_failure_threshold=circuit_breaker_failure_threshold,
+            circuit_breaker_timeout=circuit_breaker_timeout,
+            adaptive_retry_enabled=adaptive_retry_enabled,
+            max_adaptive_delay=max_adaptive_delay,
+            rate_limit_remaining_threshold=rate_limit_remaining_threshold,
+            rate_limit_reset_buffer=rate_limit_reset_buffer,
+            secondary_rate_limit_backoff=secondary_rate_limit_backoff,
+            api_health_tracking=api_health_tracking,
+            context_aware_retry=context_aware_retry,
+        )
 
     def initialize_client(self, github_token: str | None = None, timeout: int = 30) -> None:
         if github_token:
@@ -138,7 +119,6 @@ def get_github_api_client(
     secondary_rate_limit_backoff: float | None = None,
     api_health_tracking: bool = True,
     context_aware_retry: bool = True,
-    use_advanced_retry: bool = True,
 ) -> GitHubAPIClient:
     if rate_limit_remaining_threshold is None or rate_limit_reset_buffer is None or secondary_rate_limit_backoff is None:
         from prdiffer.infrastructure.settings import get_settings_service
@@ -170,5 +150,4 @@ def get_github_api_client(
         secondary_rate_limit_backoff=secondary_rate_limit_backoff,
         api_health_tracking=api_health_tracking,
         context_aware_retry=context_aware_retry,
-        use_advanced_retry=use_advanced_retry,
     )

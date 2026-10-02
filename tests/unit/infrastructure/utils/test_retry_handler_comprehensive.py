@@ -10,10 +10,7 @@ from prdiffer.infrastructure.utils.retry.handler import (
 from prdiffer.infrastructure.utils.retry.models import (
     OperationContext,
 )
-from prdiffer.infrastructure.utils.retry.factories import (
-    get_retry_handler,
-    get_advanced_retry_handler,
-)
+from prdiffer.infrastructure.utils.retry.factories import get_retry_handler
 from prdiffer.infrastructure.utils.circuit_breaker_core import CircuitState
 from prdiffer.infrastructure.utils.rate_limit_parser import RateLimitInfo
 
@@ -269,12 +266,43 @@ class TestFactoryFunctions:
         assert isinstance(handler, UnifiedRetryHandler)
         assert handler.max_retries == 5
 
-    def test_get_advanced_retry_handler(self):
-        """Test get_advanced_retry_handler creates handler with features."""
-        handler = get_advanced_retry_handler()
+    def test_get_retry_handler_honors_enabled_feature_flags(self):
+        """Explicitly enabled feature flags build the breaker and health tracker."""
+        handler = get_retry_handler(
+            circuit_breaker_enabled=True,
+            adaptive_retry_enabled=True,
+            api_health_tracking=True,
+            context_aware_retry=True,
+        )
 
-        assert isinstance(handler, UnifiedRetryHandler)
-        assert handler.use_advanced_features is True
+        assert handler.circuit_breaker_enabled is True
+        assert handler.adaptive_retry_enabled is True
+        assert handler._circuit_breaker is not None
+        assert handler._health_tracker is not None
+        assert handler._context_configs
+
+    def test_get_retry_handler_honors_disabled_feature_flags(self):
+        """Disabled feature flags are honored (no forced override)."""
+        handler = get_retry_handler(
+            circuit_breaker_enabled=False,
+            adaptive_retry_enabled=False,
+            api_health_tracking=False,
+            context_aware_retry=False,
+        )
+
+        assert handler.circuit_breaker_enabled is False
+        assert handler.adaptive_retry_enabled is False
+        assert handler.api_health_tracking is False
+        assert handler.context_aware_retry is False
+        assert handler._circuit_breaker is None
+        assert handler._health_tracker is None
+        assert handler._context_configs == {}
+
+    def test_unified_handler_honors_disabled_feature_flags(self):
+        handler = UnifiedRetryHandler(circuit_breaker_enabled=False, api_health_tracking=False)
+
+        assert handler._circuit_breaker is None
+        assert handler._health_tracker is None
 
 
 class TestLastExceptionFallback:

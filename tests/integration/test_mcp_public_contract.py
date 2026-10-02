@@ -268,9 +268,6 @@ class StubSettings(SettingsServiceInterface):
     def get_github_config(self) -> GitHubConfig:
         return GitHubConfig()
 
-    def get_github_settings(self) -> dict[str, Any]:
-        return {}
-
     def get_cache_settings(self) -> dict[str, Any]:
         return {}
 

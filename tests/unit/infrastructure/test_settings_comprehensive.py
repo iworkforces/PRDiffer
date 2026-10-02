@@ -51,7 +51,6 @@ class TestSettingsServiceInit:
 
             assert hasattr(service, "_cache_lock")
             assert isinstance(service._cache_lock, type(RLock()))
-            assert service._github_settings_cache is None
             assert service._github_config_cache is None
             assert service._cache_settings_cache is None
             assert service._app_settings_cache is None
@@ -83,50 +82,6 @@ class TestGet:
         result = settings_service.get("test.key", "default_value")
 
         assert result == "default_value"
-
-
-class TestGetGithubSettings:
-    """Tests for get_github_settings method."""
-
-    def test_get_github_settings_caches(self, settings_service):
-        """Test that GitHub settings are cached."""
-        settings_service.settings.get.return_value = None
-
-        result1 = settings_service.get_github_settings()
-        result2 = settings_service.get_github_settings()
-
-        # Only call get once because it's cached
-        assert result1 is result2
-        assert settings_service._github_settings_cache is not None
-
-    def test_get_github_settings_values(self, settings_service):
-        """Test GitHub settings values."""
-        settings_service.settings.get.return_value = None
-
-        result = settings_service.get_github_settings()
-
-        assert "rate_limit" in result
-        assert "timeout" in result
-        assert "max_retries" in result
-        assert "ignore_patterns" in result
-        assert "valid_extensions" in result
-
-    def test_get_github_settings_custom_values(self, settings_service):
-        """Test GitHub settings with custom values."""
-
-        def mock_get(key, default=None):
-            if key == "github.rate_limit":
-                return 10000
-            if key == "github.timeout":
-                return 60
-            return default
-
-        settings_service.settings.get = mock_get
-
-        result = settings_service.get_github_settings()
-
-        assert result["rate_limit"] == 10000
-        assert result["timeout"] == 60
 
 
 class TestGetGithubConfig:
@@ -343,14 +298,12 @@ class TestClearCache:
     def test_clear_cache(self, settings_service):
         """Test clearing cache."""
         # Set some cached values
-        settings_service._github_settings_cache = {"test": "value"}
         settings_service._github_config_cache = MagicMock()
         settings_service._cache_settings_cache = {"test": "value"}
         settings_service._app_settings_cache = {"test": "value"}
 
         settings_service.clear_cache()
 
-        assert settings_service._github_settings_cache is None
         assert settings_service._github_config_cache is None
         assert settings_service._cache_settings_cache is None
         assert settings_service._app_settings_cache is None
@@ -396,5 +349,5 @@ class TestThreadSafety:
 
     def test_cache_lock_locked_during_operation(self, settings_service):
         """Test that lock is held during cache operations."""
-        settings_service.get_github_settings()
+        settings_service.get_github_config()
         assert not settings_service._cache_lock.locked()

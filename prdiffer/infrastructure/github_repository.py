@@ -70,48 +70,28 @@ class GitHubPRDiffRepository(GitHubPROperationsMixin, PRDiffRepositoryInterface)
         self._logger = logger or get_logger()
         self._input_validator = input_validator or InputValidator()
 
-        github_settings = self.settings_service.get_github_settings()
+        config = self.settings_service.get_github_config()
 
         # Priority: parameter > GITHUB_TOKEN environment variable
         self.github_token = github_token or os.getenv("GITHUB_TOKEN")
-
-        self.timeout = github_settings.get("timeout", 30)
-        self.max_retries = github_settings.get("max_retries", 3)
-        self.retry_delay = github_settings.get("retry_delay", 1)
-
-        self.retry_on_404 = github_settings.get("retry_on_404", False)
-        self.retry_on_403 = github_settings.get("retry_on_403", True)
-        self.retry_on_500 = github_settings.get("retry_on_500", True)
-        self.retry_log_level = github_settings.get("retry_log_level", "DEBUG")
-        self.permanent_failure_log_level = github_settings.get("permanent_failure_log_level", "INFO")
-
-        self.circuit_breaker_enabled = github_settings.get("circuit_breaker_enabled", True)
-        self.circuit_breaker_failure_threshold = github_settings.get("circuit_breaker_failure_threshold", 5)
-        self.circuit_breaker_timeout = github_settings.get("circuit_breaker_timeout", 60.0)
-        self.adaptive_retry_enabled = github_settings.get("adaptive_retry_enabled", True)
-        self.max_adaptive_delay = github_settings.get("max_adaptive_delay", 30.0)
-        self.api_health_tracking = github_settings.get("api_health_tracking", True)
-        self.context_aware_retry = github_settings.get("context_aware_retry", True)
-        self.use_advanced_retry = github_settings.get("use_advanced_retry", True)
+        self.timeout = config.timeout
 
         self._github_api_client = get_github_api_client(
-            max_retries=self.max_retries,
-            retry_delay=self.retry_delay,
-            timeout=self.timeout,
-            retry_on_404=self.retry_on_404,
-            retry_on_403=self.retry_on_403,
-            retry_on_500=self.retry_on_500,
-            retry_log_level=self.retry_log_level,
-            permanent_failure_log_level=self.permanent_failure_log_level,
-            # Phase 3 parameters
-            circuit_breaker_enabled=self.circuit_breaker_enabled,
-            circuit_breaker_failure_threshold=self.circuit_breaker_failure_threshold,
-            circuit_breaker_timeout=self.circuit_breaker_timeout,
-            adaptive_retry_enabled=self.adaptive_retry_enabled,
-            max_adaptive_delay=self.max_adaptive_delay,
-            api_health_tracking=self.api_health_tracking,
-            context_aware_retry=self.context_aware_retry,
-            use_advanced_retry=self.use_advanced_retry,
+            max_retries=config.max_retries,
+            retry_delay=config.retry_delay,
+            timeout=config.timeout,
+            retry_on_404=config.retry_on_404,
+            retry_on_403=config.retry_on_403,
+            retry_on_500=config.retry_on_500,
+            retry_log_level=config.retry_log_level,
+            permanent_failure_log_level=config.permanent_failure_log_level,
+            circuit_breaker_enabled=config.circuit_breaker_enabled,
+            circuit_breaker_failure_threshold=config.circuit_breaker_failure_threshold,
+            circuit_breaker_timeout=float(config.circuit_breaker_timeout),
+            adaptive_retry_enabled=config.adaptive_retry_enabled,
+            max_adaptive_delay=config.max_adaptive_delay,
+            api_health_tracking=config.api_health_tracking,
+            context_aware_retry=config.context_aware_retry,
         )
 
         self._repository: Repository | None = None

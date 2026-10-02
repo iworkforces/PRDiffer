@@ -69,7 +69,6 @@ class InfrastructureFactory(InfrastructureFactoryInterface):
             max_adaptive_delay=config.max_adaptive_delay,
             api_health_tracking=config.api_health_tracking,
             context_aware_retry=config.context_aware_retry,
-            use_advanced_retry=True,
         )
 
     def create_diff_service(self) -> DiffServiceInterface:
@@ -84,15 +83,10 @@ class InfrastructureFactory(InfrastructureFactoryInterface):
 
     def create_pattern_matching_service(self) -> PatternMatchingServiceInterface:
         """Create pattern matching service instance."""
-        settings_service = get_settings_service()
-        github_settings = settings_service.get_github_settings()
-
-        ignore_patterns = github_settings.get("ignore_patterns", [])
-        valid_extensions = github_settings.get("valid_extensions", [])
-
+        config = get_settings_service().get_github_config()
         return PatternMatcher(
-            ignore_patterns=list(ignore_patterns) if ignore_patterns else [],
-            valid_extensions=list(valid_extensions) if valid_extensions else [],
+            ignore_patterns=list(config.ignore_patterns),
+            valid_extensions=list(config.valid_extensions),
         )
 
     def create_pr_diff_service(self) -> SessionPRDiffReader:

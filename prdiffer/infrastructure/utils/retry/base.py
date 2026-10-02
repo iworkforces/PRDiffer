@@ -42,7 +42,6 @@ class BaseUnifiedRetryHandler(LazyLoggerMixin, RetryServiceInterface):
         retry_on_500: bool = True,
         retry_log_level: str = "DEBUG",
         permanent_failure_log_level: str = "INFO",
-        use_advanced_features: bool = False,
         circuit_breaker_enabled: bool = False,
         circuit_breaker_failure_threshold: int = 5,
         circuit_breaker_timeout: float = 60.0,
@@ -65,17 +64,10 @@ class BaseUnifiedRetryHandler(LazyLoggerMixin, RetryServiceInterface):
 
         self._init_lazy_logger(logger, __name__)
 
-        self.use_advanced_features = use_advanced_features
-        if use_advanced_features:
-            self.circuit_breaker_enabled = True
-            self.adaptive_retry_enabled = True
-            self.api_health_tracking = True
-            self.context_aware_retry = True
-        else:
-            self.circuit_breaker_enabled = circuit_breaker_enabled
-            self.adaptive_retry_enabled = adaptive_retry_enabled
-            self.api_health_tracking = api_health_tracking
-            self.context_aware_retry = context_aware_retry
+        self.circuit_breaker_enabled = circuit_breaker_enabled
+        self.adaptive_retry_enabled = adaptive_retry_enabled
+        self.api_health_tracking = api_health_tracking
+        self.context_aware_retry = context_aware_retry
 
         self.max_adaptive_delay = max_adaptive_delay
         self.rate_limit_remaining_threshold = rate_limit_remaining_threshold

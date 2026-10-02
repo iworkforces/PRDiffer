@@ -6,15 +6,6 @@ from prdiffer.domain.config.gitlab_config import GitLabConfig
 
 
 class TestSettingsCaching:
-    def test_get_github_settings_caches_result(self):
-        service = SettingsService()
-
-        result1 = service.get_github_settings()
-        result2 = service.get_github_settings()
-
-        assert result1 is result2
-        assert isinstance(result1, dict)
-
     def test_get_github_config_caches_result(self):
         service = SettingsService()
 
@@ -53,16 +44,6 @@ class TestSettingsCaching:
 
 
 class TestCacheInvalidation:
-    def test_clear_cache_invalidates_github_settings(self):
-        service = SettingsService()
-
-        result1 = service.get_github_settings()
-        service.clear_cache()
-        result2 = service.get_github_settings()
-
-        assert result1 is not result2
-        assert result1 == result2
-
     def test_clear_cache_invalidates_github_config(self):
         service = SettingsService()
 
@@ -104,7 +85,6 @@ class TestCacheInvalidation:
     def test_clear_cache_invalidates_all_caches(self):
         service = SettingsService()
 
-        github_settings_1 = service.get_github_settings()
         github_config_1 = service.get_github_config()
         gitlab_config_1 = service.get_gitlab_config()
         cache_settings_1 = service.get_cache_settings()
@@ -112,13 +92,11 @@ class TestCacheInvalidation:
 
         service.clear_cache()
 
-        github_settings_2 = service.get_github_settings()
         github_config_2 = service.get_github_config()
         gitlab_config_2 = service.get_gitlab_config()
         cache_settings_2 = service.get_cache_settings()
         app_settings_2 = service.get_app_settings()
 
-        assert github_settings_1 is not github_settings_2
         assert gitlab_config_1 is not gitlab_config_2
         assert github_config_1 is not github_config_2
         assert cache_settings_1 is not cache_settings_2
@@ -126,28 +104,6 @@ class TestCacheInvalidation:
 
 
 class TestThreadSafety:
-    def test_concurrent_get_github_settings_safe(self):
-        service = SettingsService()
-        results = []
-        errors = []
-
-        def worker():
-            try:
-                result = service.get_github_settings()
-                results.append(result)
-            except Exception as e:
-                errors.append(e)
-
-        threads = [threading.Thread(target=worker) for _ in range(10)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-        assert len(errors) == 0
-        assert len(results) == 10
-        assert all(r is results[0] for r in results)
-
     def test_concurrent_get_github_config_safe(self):
         service = SettingsService()
         results = []
@@ -176,7 +132,6 @@ class TestThreadSafety:
 
         def reader():
             try:
-                service.get_github_settings()
                 service.get_github_config()
             except Exception as e:
                 errors.append(e)
@@ -201,12 +156,12 @@ class TestThreadSafety:
 
     def test_no_race_condition_in_cache_initialization(self):
         service = SettingsService()
-        call_count = {"get_github_settings": 0}
+        call_count = {"get_github_config": 0}
         original_get = service.get
 
         def tracked_get(key, default=None):
             if key.startswith("github."):
-                call_count["get_github_settings"] += 1
+                call_count["get_github_config"] += 1
                 time.sleep(0.001)
             return original_get(key, default)
 
@@ -215,7 +170,7 @@ class TestThreadSafety:
         results = []
 
         def worker():
-            result = service.get_github_settings()
+            result = service.get_github_config()
             results.append(result)
 
         threads = [threading.Thread(target=worker) for _ in range(10)]
@@ -228,42 +183,11 @@ class TestThreadSafety:
 
 
 class TestSettingsValues:
-    def test_get_github_settings_returns_expected_keys(self):
-        service = SettingsService()
-        settings = service.get_github_settings()
+    def test_get_github_config_tuples_are_immutable(self):
+        config = SettingsService().get_github_config()
 
-        expected_keys = {
-            "rate_limit",
-            "timeout",
-            "max_retries",
-            "retry_delay",
-            "retry_on_404",
-            "retry_on_403",
-            "retry_on_500",
-            "retry_log_level",
-            "permanent_failure_log_level",
-            "circuit_breaker_enabled",
-            "circuit_breaker_failure_threshold",
-            "circuit_breaker_timeout",
-            "adaptive_retry_enabled",
-            "max_adaptive_delay",
-            "api_health_tracking",
-            "context_aware_retry",
-            "ignore_patterns",
-            "valid_extensions",
-            "diff_parallel_threshold",
-            "diff_max_workers",
-            "max_concurrent",
-        }
-
-        assert set(settings.keys()) == expected_keys
-
-    def test_get_github_settings_tuples_are_immutable(self):
-        service = SettingsService()
-        settings = service.get_github_settings()
-
-        assert isinstance(settings["ignore_patterns"], tuple)
-        assert isinstance(settings["valid_extensions"], tuple)
+        assert isinstance(config.ignore_patterns, tuple)
+        assert isinstance(config.valid_extensions, tuple)
 
     def test_get_cache_settings_returns_expected_keys(self):
         service = SettingsService()

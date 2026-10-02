@@ -35,15 +35,28 @@ class TestGitHubAPIClientInit:
 
         assert client._logger is mock_logger
 
-    def test_init_simple_retry_handler(self):
-        client = GitHubAPIClient(use_advanced_retry=False)
+    def test_init_default_retry_features_enabled(self):
+        client = GitHubAPIClient()
 
-        assert client._retry_handler is not None
+        handler = client._retry_handler
+        assert handler.circuit_breaker_enabled is True
+        assert handler._circuit_breaker is not None
+        assert handler._health_tracker is not None
 
-    def test_init_advanced_retry_handler(self):
-        client = GitHubAPIClient(use_advanced_retry=True)
+    def test_init_honors_disabled_retry_features(self):
+        client = GitHubAPIClient(
+            circuit_breaker_enabled=False,
+            adaptive_retry_enabled=False,
+            api_health_tracking=False,
+            context_aware_retry=False,
+        )
 
-        assert client._retry_handler is not None
+        handler = client._retry_handler
+        assert handler.circuit_breaker_enabled is False
+        assert handler._circuit_breaker is None
+        assert handler._health_tracker is None
+        assert handler.adaptive_retry_enabled is False
+        assert handler.context_aware_retry is False
 
 
 class TestInitializeClient:
@@ -139,8 +152,8 @@ class TestGetGitHubApiClient:
 
         assert client is not None
 
-    def test_factory_simple_retry(self):
-        client = get_github_api_client(use_advanced_retry=False)
+    def test_factory_honors_disabled_circuit_breaker(self):
+        client = get_github_api_client(circuit_breaker_enabled=False)
 
         assert client._retry_handler._circuit_breaker is None
 

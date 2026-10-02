@@ -22,15 +22,6 @@ class SettingsServiceInterface(ABC):
         """
         pass
 
-    @abstractmethod
-    def get_github_settings(self) -> dict[str, Any]:
-        """Get GitHub-related settings with proper type conversion.
-
-        Returns:
-            dict[str, Any]: GitHub settings including token, ignore_patterns, valid_extensions
-        """
-        pass
-
     def get_github_config(self) -> Any:
         """Optional typed GitHubConfig accessor (implemented by SettingsService)."""
         raise NotImplementedError

@@ -11,6 +11,7 @@ from unittest.mock import patch
 import pytest
 
 # Domain imports
+from prdiffer.domain.config.github_config import GitHubConfig
 from prdiffer.domain.entities.pr_diff import PRDiff
 from prdiffer.domain.entities.file_patch import FilePatchInfo, EDIT_TYPE
 
@@ -63,7 +64,6 @@ def mock_settings():
             "max_adaptive_delay": 30.0,
             "api_health_tracking": True,
             "context_aware_retry": True,
-            "use_advanced_retry": True,
             "diff_parallel_threshold": 3,
             "diff_max_workers": 4,
         },
@@ -80,32 +80,11 @@ def mock_settings():
         },
     }.get(key, default)
 
-    def get_github_settings(self) -> dict[str, Any]:
-        return {
-            "rate_limit": 5000,
-            "timeout": 30,
-            "max_retries": 3,
-            "retry_delay": 1,
-            "ignore_patterns": ("*.lock", "node_modules/", "dist/", "build/"),
-            "valid_extensions": (".py", ".js", ".ts", ".md", ".yml", ".yaml"),
-            "retry_on_404": False,
-            "retry_on_403": True,
-            "retry_on_500": True,
-            "retry_log_level": "DEBUG",
-            "permanent_failure_log_level": "INFO",
-            "circuit_breaker_enabled": True,
-            "circuit_breaker_failure_threshold": 5,
-            "circuit_breaker_timeout": 60.0,
-            "adaptive_retry_enabled": True,
-            "max_adaptive_delay": 30.0,
-            "api_health_tracking": True,
-            "context_aware_retry": True,
-            "use_advanced_retry": True,
-            "diff_parallel_enabled": True,
-            "diff_parallel_threshold": 3,
-            "diff_max_workers": 4,
-            "diff_worker_timeout": 30.0,
-        }
+    def get_github_config() -> GitHubConfig:
+        return GitHubConfig(
+            ignore_patterns=("*.lock", "node_modules/", "dist/", "build/"),
+            valid_extensions=(".py", ".js", ".ts", ".md", ".yml", ".yaml"),
+        )
 
     def get_app_settings(self) -> dict[str, Any]:
         return {
@@ -114,7 +93,7 @@ def mock_settings():
             "max_files_allowed": 50,
         }
 
-    mock.get_github_settings = get_github_settings
+    mock.get_github_config = get_github_config
     mock.get_app_settings = get_app_settings
     return mock
 
