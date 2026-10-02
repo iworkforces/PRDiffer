@@ -8,7 +8,6 @@ anyio-based concurrent execution for bounded fan-out.
 prdiffer/infrastructure/utils/parallel/
 ├── executor.py     # AsyncParallelExecutor (~598)
 ├── results.py      # BatchResult, IndexedItemOutcome, IndexedBatchError (~124)
-├── semaphores.py   # SemaphoreManager / LockManager (~68)
 └── __init__.py
 ```
 
@@ -28,7 +27,7 @@ prdiffer/infrastructure/utils/parallel/
   - Outcomes keyed by submission index; returned in **input order**
   - Unique keys required
   - Strict mode cancels siblings and raises `IndexedBatchError` with **full ordered outcomes** — never a compacted success list
-  - Prefer this for full-diff content/diff fan-out (incl. multi-ref content)
+  - Prefer this for full-diff content fan-out (GitLab content fetch)
 - Non-indexed helpers may use completion-order lists with `ErrorStrategy` (IGNORE/RAISE/COLLECT/CONTINUE) — not for identity-sensitive assembly.
 
 ## ANTI-PATTERNS

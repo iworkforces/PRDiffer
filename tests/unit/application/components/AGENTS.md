@@ -8,7 +8,6 @@ tests/unit/application/components/
 ├── test_authentication.py         # 1145 — largest suite (JWT, API keys, lockout)
 ├── test_metrics_tracker.py        # 564
 ├── test_rate_limiter.py           # 521
-├── test_pr_operation_handler.py   # 459
 ├── test_server_configuration.py   # 458
 └── test_health_monitor.py         # 408
 ```
@@ -20,7 +19,6 @@ tests/unit/application/components/
 | Rate limit windows | `test_rate_limiter.py` | Window/max request behavior |
 | Metrics counters | `test_metrics_tracker.py` | Request IDs, tracking |
 | Health thresholds | `test_health_monitor.py` | Score / check_health |
-| PR ops orchestration | `test_pr_operation_handler.py` | Tool-facing operation handler |
 | Server config validation | `test_server_configuration.py` | Config errors/logging |
 
 ## CONVENTIONS

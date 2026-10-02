@@ -25,7 +25,6 @@ prdiffer/domain/factories/
 ### ApplicationFactoryInterface methods
 - `create_rate_limiter` → `RateLimiterProtocol`
 - `create_metrics_tracker` → `MetricsTrackerProtocol`
-- `create_pr_operation_handler` → `PROperationHandlerProtocol`
 - `create_health_monitor` → `HealthMonitorProtocol`
 - `create_server_configuration` → `ServerConfigurationProtocol`
 - `create_authentication` → `AuthenticationProtocol`
@@ -34,12 +33,10 @@ prdiffer/domain/factories/
 - `create_settings_service` → `SettingsServiceInterface`
 - `create_logger_service` → `LoggerServiceInterface`
 - `create_cache_service` → `CacheServiceInterface`
-- `create_repository_cache_service` → `RepositoryCacheServiceInterface`
 - `create_github_api_service` → `GitHubAPIServiceInterface`
 - `create_diff_service` → `DiffServiceInterface`
 - `create_pattern_matching_service` → `PatternMatchingServiceInterface`
-- `create_retry_service` → `RetryServiceInterface`
-- `create_pr_diff_service` → `PRDiffServiceInterface`
+- `create_pr_diff_service` → `SessionPRDiffReader`
 - `create_input_validator` → `InputValidatorProtocol`
 
 ## CONVENTIONS

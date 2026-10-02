@@ -8,13 +8,11 @@ tests/unit/infrastructure/utils/
 ├── test_circuit_breaker.py                        # 675
 ├── test_retry_handler_comprehensive.py            # 513
 ├── test_retry_handler.py                          # 199
-├── test_cache_decorator.py                        # 430
 ├── test_diff_utils.py                             # 429
 ├── test_rate_limit_parser.py                      # 424
 ├── test_error_classifier.py                       # 396
 ├── test_pattern_matcher.py                        # 333
 ├── test_delay_calculator.py                       # 298
-├── test_logger_factory.py                         # 265
 ├── test_coalescing.py                             # 203
 └── test_async_parallel_executor_cross_loop.py     # 96 — per-batch semaphore across loops
 ```
@@ -36,7 +34,7 @@ Also: `tests/unit/infrastructure/test_async_parallel_executor.py` (~832) lives o
 - Full CB cycle: CLOSED → OPEN → HALF_OPEN → CLOSED.
 - Deterministic backoff: patch randomness / use short delays.
 - Assert file-content 404s are not retried.
-- Canonical CB lives in `circuit_breaker_core.py`; package `utils/circuit_breaker/` is a re-export shim — tests should still pass against public imports.
+- CB lives in `circuit_breaker_core.py`; import it directly.
 - Cross-loop semaphore safety: spawn-process / dual-thread anyio.run patterns; mark `thread_safety` when appropriate.
 
 ## ANTI-PATTERNS

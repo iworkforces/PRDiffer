@@ -6,10 +6,10 @@ Context-aware retry with models and factories (~600 lines).
 ## STRUCTURE
 ```
 prdiffer/infrastructure/utils/retry/
-├── base.py        # BaseUnifiedRetryHandler (339)
-├── handler.py     # UnifiedRetryHandler (135); RetryHandler alias
+├── base.py        # BaseUnifiedRetryHandler (~331)
+├── handler.py     # UnifiedRetryHandler (~132)
 ├── models.py      # OperationContext + RETRY_EXCEPTIONS (29)
-├── factories.py   # get_retry_handler, get_advanced_retry_handler (93)
+├── factories.py   # get_retry_handler — honors every feature flag passed (~48)
 └── __init__.py
 ```
 
@@ -17,9 +17,9 @@ prdiffer/infrastructure/utils/retry/
 | Task | Location | Notes |
 |------|----------|-------|
 | **Core loop / backoff** | `base.py` | Integrates CB + health tracker |
-| **Public handler** | `handler.py` | `UnifiedRetryHandler` / `RetryHandler` |
+| **Public handler** | `handler.py` | `UnifiedRetryHandler` |
 | **Contexts** | `models.py` | `FILE_CONTENT`, `REPOSITORY_ACCESS`, etc. |
-| **Factories** | `factories.py` | Wire advanced vs basic handlers |
+| **Factories** | `factories.py` | `get_retry_handler(...)`; circuit breaker / adaptive / health / context flags are applied as given |
 
 ## CONVENTIONS
 - Integrate with `error_classifier` + `rate_limit_parser` + `delay_calculator`.

@@ -14,21 +14,20 @@ prdiffer/infrastructure/factories/
 | Task | Location | Notes |
 |------|----------|-------|
 | **Wire GitHub stack** | `create_github_api_service`, `create_pr_diff_service` | Reads `GitHubConfig` via `get_settings_service()` |
-| **File processor / diffs** | `create_file_processor`, `create_diff_generator` | Parallel thresholds from config |
+| **File processor / diffs** | `create_pr_diff_service` | Builds `FileProcessor` (`max_file_size_bytes`) + `DiffGenerator` (parallel thresholds) from `GitHubConfig` |
 | **GitLab strict stack** | `create_gitlab_runtime`, `create_gitlab_session_reader` | Shared runtime limiter + session reader / VCS repo |
 | **Process-wide factory** | `get_infrastructure_factory()` | Returns new `InfrastructureFactory()` |
 
 ## METHODS (HIGH LEVEL)
-Settings, logger, cache, repository cache, GitHub API, diff utils, pattern matching, retry, PR diff service, file processor, diff generator, input validator, **GitLab runtime + session reader**.
+Settings, logger, cache, repository cache, GitHub API, diff utils, pattern matching, PR diff service (file processor + diff generator), input validator, **GitLab runtime + session reader**.
 
 ## CONVENTIONS
 - Prefer **one authoritative `GitHubConfig`** when wiring clients/processors/services (no ad-hoc defaults that diverge from settings).
 - Prefer **one authoritative `GitLabConfig`** + process-shared `GitLabRuntime` limiter when wiring GitLab.
 - Parallel flags from config default **true** (settings + `GitHubConfig`):
   - `parallel_file_fetch_enabled`
-  - `parallel_head_base_fetch_enabled`
   - `parallel_diff_generation_enabled`
-- When parallel file fetch is disabled, serialized capacity uses `github_worker_capacity` semantics (capacity 1).
+- When parallel file fetch is disabled, the GitHub session limiter uses `github_worker_capacity` semantics (capacity 1).
 - Diff generator receives `parallel_enabled` + `diff_max_workers` / `diff_parallel_threshold` from config.
 - Return domain interfaces / concrete adapters as appropriate for callers.
 - Lazy-import security validator to avoid circular imports where needed.

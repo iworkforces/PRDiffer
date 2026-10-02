@@ -4,22 +4,21 @@ Pure business logic. No external deps, no I/O. Entities, ports (ABC/Protocol), u
 
 ## OVERVIEW
 Package **0.6.2**, Python **3.14.4+**.
-**42** modules across root + **7** subpackages (no package-level `__init__.py` — import concrete modules). Frozen dataclasses for most entities; ABC/Protocol for ports.
+**34** modules across root + **7** subpackages (no package-level `__init__.py` — import concrete modules). Frozen dataclasses for most entities; ABC/Protocol for ports.
 
 ## STRUCTURE
 ```
 prdiffer/domain/
-├── entities/                 # PRDiff, FilePatchInfo (~347), FileDiffResponse, content/cache + multi-ref types
-├── services/                 # Service interfaces (ABC only; 9 ports; multi-ref on github_api)
-├── usecases/                 # GetPRDiff (session + legacy), DescribePR, ApprovePR
+├── entities/                 # PRDiff, FilePatchInfo (~347), FileDiffResponse, typed content, cache identity
+├── services/                 # Service interfaces (ABC only)
+├── usecases/                 # GetPRDiff (session)
 ├── repositories/             # PRDiffRepositoryInterface
-├── interfaces/               # VCS, PRDiffReader session, input validation, coalescing, app Protocols
+├── interfaces/               # SessionPRDiffReader, input validation, coalescing, app Protocols
 ├── config/                   # GitHubConfig + GitLabConfig + GitHubConfigInterface
 ├── factories/                # ApplicationFactoryInterface, InfrastructureFactoryInterface
 ├── error_codes.py            # E1xxx–E5xxx constants, incl. E5020 + GitLab E2006/E2007/E3006/E5021 (~418)
-├── errors.py                 # ErrorCode, MCPError helpers (~218)
-├── exceptions.py             # PRDifferException hierarchy (~580); FullDiffIncompleteError, GitLabAPIError
-└── vcs_provider_registry.py  # VCSProviderRegistry (~110)
+├── errors.py                 # ErrorCategory + ErrorCode types (~45)
+└── exceptions.py             # PRDifferException hierarchy (~593); FullDiffIncompleteError, GitLabAPIError
 ```
 
 ## WHERE TO LOOK
@@ -27,15 +26,12 @@ prdiffer/domain/
 |------|----------|-------|
 | **Rich domain model** | `entities/file_patch.py` | ~347 lines; priority, smells, modes, validate, stats |
 | **MCP response shape** | `entities/file_diff_response.py`, `entities/pr_diff.py` | Frozen; `previous_path` on renames |
-| **Typed content** | `entities/file_content.py` | Available/Unavailable + `FileContentRequest`/`Response` |
+| **Typed content** | `entities/file_content.py` | `FileContentAvailable` / `FileContentUnavailable` |
 | **Generated diff unit** | `entities/generated_file_diff.py` | `GeneratedFileDiff` (index, path, previous_path, diff) |
 | **Strict cache identity** | `entities/pr_diff_cache.py` | GitHub v3 (merge-base+head) + GitLab v1 (host-aware) |
-| **Session PR path** | `interfaces/pr_diff_reader.py` + `usecases/pr_diff_usecases.py` | Session reader vs legacy two-call path |
+| **Session PR path** | `interfaces/pr_diff_reader.py` + `usecases/pr_diff_usecases.py` | `SessionPRDiffReader` open → identity → build → close |
 | **Service interfaces** | `services/*.py` | ABC + `@abstractmethod` |
-| **Multi-ref content port** | `services/github_api.py` | `get_files_content_multi_ref_batch` |
-| **VCS provider contract** | `interfaces/vcs_provider.py` | `VCSDiffRepositoryInterface` |
 | **App component Protocols** | `interfaces/protocols.py` | RateLimiter, Auth, Metrics, Health, `GitLabPROperationsProtocol`, … (~210) |
-| **Provider registry** | `vcs_provider_registry.py` | `supports_repository()` auto-detect |
 | **Error codes** | `error_codes.py` + `errors.py` | Structured E-codes |
 | **Full-diff incomplete** | `exceptions.py` | `FullDiffIncompleteError` + `FullDiffIncompleteReason` |
 | **GitHub config VO** | `config/github_config.py` | Size limits (`max_total_chars` 600k), parallel flags default `true` |
@@ -49,12 +45,10 @@ prdiffer/domain/
 | `FileDiffResponse` | Entity | `entities/file_diff_response.py` | path/status/stats/diff/`previous_path` |
 | `FilePatchInfo` | Entity | `entities/file_patch.py` | Rich review model (~347) |
 | `FileContentAvailable` / `Unavailable` | Entity | `entities/file_content.py` | Typed content acquisition |
-| `FileContentRequest` / `Response` | Entity | `entities/file_content.py` | Multi-ref content identity |
 | `GeneratedFileDiff` | Entity | `entities/generated_file_diff.py` | One generated full-context file |
 | `StrictPRDiffCacheIdentity` | Entity | `entities/pr_diff_cache.py` | Provider-neutral cache key + token |
-| `PRDiffCacheEntryV2` | Entity | `entities/pr_diff_cache.py` | Schema-versioned cache wrapper |
 | `SessionPRDiffReader` | Protocol | `interfaces/pr_diff_reader.py` | `open_pr_diff_session` |
-| `GetPRDiffUseCase` | Use case | `usecases/pr_diff_usecases.py` | Session path (+ `base_url`) vs legacy (~148) |
+| `GetPRDiffUseCase` | Use case | `usecases/pr_diff_usecases.py` | Session path (+ `base_url`) (~60) |
 | `E5020_FULL_DIFF_INCOMPLETE` | ErrorCode | `error_codes.py` | Full-diff incompleteness |
 | `E2006_GITLAB_AUTH_FAILED` | ErrorCode | `error_codes.py` | GitLab 401 |
 | `E2007_GITLAB_INSUFFICIENT_PERMISSIONS` | ErrorCode | `error_codes.py` | GitLab 403 |
@@ -64,7 +58,6 @@ prdiffer/domain/
 | `FullDiffIncompleteError` | Exception | `exceptions.py` | Maps to E5020; safe details only |
 | `GitHubConfig` | Config VO | `config/github_config.py` | Frozen; full-diff admission limits |
 | `GitLabConfig` | Config VO | `config/gitlab_config.py` | Frozen+slots; limits + host allowlist |
-| `VCSProviderRegistry` | Registry | `vcs_provider_registry.py` | Multi-provider URL selection |
 
 ## CONVENTIONS
 
@@ -88,7 +81,7 @@ prdiffer/domain/
 
 ### Error Model
 - Exception hierarchy in `exceptions.py` (auth, rate limit, validation, not found, cache, config, processing, security, …).
-- Parallel structured codes in `error_codes.py` / `errors.py` for MCP-facing responses (`MCPError` family).
+- Structured codes: `ErrorCode` / `ErrorCategory` types in `errors.py`, constants in `error_codes.py`; exceptions carry an `error_code`.
 - **Strict full-diff incompleteness**: `E5020_FULL_DIFF_INCOMPLETE` + `FullDiffIncompleteError(GitHubAPIError)` with `FullDiffIncompleteReason`:
   - `INVENTORY_TRUNCATED`, `FILE_COUNT_LIMIT`, `BINARY_CONTENT`, `FILE_SIZE_LIMIT`, `CONTENT_UNAVAILABLE`, `CONTENT_DECODE_FAILED`, `UNSUPPORTED_FILE_STATUS`, `DIFF_GENERATION_FAILED`, `RESPONSE_SIZE_LIMIT`
   - Safe details only: `reason`, `path`, `previous_path`, `observed`, `limit` — never tokens or raw content.
@@ -99,9 +92,8 @@ prdiffer/domain/
 - Success responses are complete by construction (no completeness boolean).
 - `FileDiffResponse.previous_path` only for `EDIT_TYPE.RENAMED`.
 - Content union: available empty text ≠ deterministic unavailability; operational failures raise.
-- Multi-ref: `FileContentRequest`/`Response` + `get_files_content_multi_ref_batch` preserve path+ref identity and request order.
 - Aggregate response budget: `max_total_chars` default **600_000** (E5020/`RESPONSE_SIZE_LIMIT` on overflow).
-- Cache: `github-full-diff-v3` (merge-base+head; value schema `PRDiffCacheEntryV2`) and host-aware `gitlab-full-diff-v1:{host}:…`; non-strict keys miss on unwrap.
+- Cache: `github-full-diff-v3` (merge-base+head) and host-aware `gitlab-full-diff-v1:{host}:…` keys hold bare `PRDiff` values; `unwrap_pr_diff_cache_value` requires the exact session identity key.
 - Sessions expose `StrictPRDiffCacheIdentity` (provider-neutral key + validation token). GitHub snapshot: `base_tip_sha` + `merge_base_sha` + `head_sha` + authoritative count; post-build drift → E5020 `SNAPSHOT_CHANGED`.
 
 ## ANTI-PATTERNS
@@ -115,7 +107,7 @@ prdiffer/domain/
 - **NO open-host defaults** in `GitLabConfig.allowed_hosts` (must stay explicit allowlist).
 
 ## NOTES
-- Domain has no package `__init__` re-exports at root; import concrete modules.
-- Dual error surfaces: `exceptions.PRDifferException` (domain ops) and `errors.MCPError` (MCP response shaping).
-- Internal graph: `interfaces/pr_diff_reader.py` imports `PRDiffReader` from `usecases/pr_diff_usecases.py` (session ports depend on the use-case Protocol location).
+- Domain has no package `__init__` re-exports; import concrete modules (E-codes from `error_codes.py`, not `errors.py`).
+- Single error surface: `exceptions.PRDifferException` hierarchy with `ErrorCode` values; tools map them to MCP `ToolError` payloads.
+- Internal graph: `usecases/pr_diff_usecases.py` depends on `interfaces/pr_diff_reader.SessionPRDiffReader` (ports do not import use cases).
 - MCP tools wire `GetPRDiffUseCase` for diffs; approve/describe use cases are available for tests but not the primary MCP path.

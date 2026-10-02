@@ -8,18 +8,18 @@ FastMCP server orchestration, tool registration, and cross-cutting components.
 ## STRUCTURE
 ```
 prdiffer/application/
-├── components/           # Auth (split), rate limit, metrics, health, PR ops, config (8 modules)
-├── factories/            # ApplicationFactory (~98)
-├── utils/                # pr_url_parser (~102) — parse_pr_url, parse_pr_target, PRTarget
+├── components/           # Auth (split), rate limit, metrics, health, config (7 modules)
+├── factories/            # ApplicationFactory (~65)
+├── utils/                # pr_url_parser (~104) — parse_pr_url, parse_pr_target, PRTarget
 ├── interfaces/           # Placeholder (__init__.py only)
 ├── plugins/              # Placeholder (AGENTS.md only; no Python)
 ├── services/             # Placeholder (AGENTS.md only; no Python)
-├── mcp_server.py         # FastMCPServer (~194)
-├── tool_registry.py      # ToolRegistry (~562) — get_pr_diff / approve_pr / describe_pr (GitHub+GitLab)
-├── pr_diff_executor.py   # Coalesced PR diff execution (~84); host-aware coalesce key
+├── mcp_server.py         # FastMCPServer (~181)
+├── tool_registry.py      # ToolRegistry (~512) — get_pr_diff / approve_pr / describe_pr (GitHub+GitLab)
+├── pr_diff_executor.py   # Coalesced PR diff execution (~62); host-aware coalesce key
 ├── health_endpoints.py   # HealthEndpoints (~120) — health MCP tool
 ├── webhook_handler.py    # WebhookHandler (~171)
-└── factory.py            # create_mcp_server() (~103); wires gitlab_reader + auto gitlab_pr_operations
+└── factory.py            # create_mcp_server() (~107); wires gitlab_reader + auto gitlab_pr_operations
 ```
 
 ## WHERE TO LOOK
@@ -70,8 +70,8 @@ prdiffer/application/
 ## ARCHITECTURE NOTES
 - Analyzer reports **1** top-level Application → Infrastructure import: `factory.py` → `infrastructure.factories.infrastructure_factory`.
 - Lazy in-function App→Infra imports (validator/coalescing/GitLab URL parts) remain as DI fallbacks — analyzer ignores those; prefer injected ports.
-- Domain `ApprovePRUseCase` / `UpdatePRDescriptionUseCase` exist and are unit-tested; MCP tools call repositories / `GitLabPROperationsProtocol` **directly** (use cases not wired into `ToolRegistry`).
-- `PROperationHandler` is a GitHub-oriented helper wired on the server; primary MCP `get_pr_diff` uses `GetPRDiffUseCase` + session readers.
+- MCP tools call repositories / `GitLabPROperationsProtocol` directly through write capabilities; empty/whitespace compliment and description are rejected at the tool boundary.
+- MCP `get_pr_diff` resolves a `StrictDiffCapability` (session reader) via `ProviderCapabilityResolver`, then runs `GetPRDiffUseCase` under request coalescing (`pr_diff_executor.py`).
 
 ## ANTI-PATTERNS
 - NO business rules that belong in domain entities/use cases.

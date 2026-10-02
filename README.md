@@ -215,8 +215,8 @@ full-context, and all-or-nothing. Nested namespaces such as
 `https://gitlab.com/group/subgroup/project/-/merge_requests/42` are supported
 on GitLab.com and custom-hosted GitLab (e.g. `https://gitlab.example.com/group/project/-/merge_requests/1`). Binary, oversized, unavailable, or incomplete inventories
 fail the entire request with `E5020_FULL_DIFF_INCOMPLETE` (structured MCP
-`ToolError` JSON). Legacy hunk-only cache keys under `gitlab:owner:repo:iid`
-are ignored; strict cache identity uses `gitlab-full-diff-v1:...`.
+`ToolError` JSON). Cache identity is the strict `gitlab-full-diff-v1:...` key;
+any other key format misses.
 
 Configure via `gitlab.*` settings (`timeout`, `max_retries`, `max_concurrent`,
 `retry_transient_errors`, `obey_rate_limit`, `max_file_size_bytes`) plus shared

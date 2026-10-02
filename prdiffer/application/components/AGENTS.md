@@ -11,7 +11,6 @@ prdiffer/application/components/
 ├── rate_limiter.py          # RateLimiter (136)
 ├── metrics_tracker.py       # MetricsTracker (145)
 ├── health_monitor.py        # HealthMonitor (99)
-├── pr_operation_handler.py  # PROperationHandler (133)
 ├── server_configuration.py  # ServerConfiguration (118)
 └── __init__.py
 ```
@@ -23,7 +22,6 @@ prdiffer/application/components/
 | **JWT metadata** | `jwt_handler.py` | Metadata only unless verified path; not primary auth |
 | **Rate limits** | `rate_limiter.py` | Per-client limits, thread-safe |
 | **Metrics / health** | `metrics_tracker.py`, `health_monitor.py` | Request success rate, degraded thresholds |
-| **PR orchestration** | `pr_operation_handler.py` | Coordinates ops for tools (legacy/helper path) |
 | **Transport config** | `server_configuration.py` | Logging, MCP instructions, stdio/http/sse/streamable-http |
 
 ## CONVENTIONS
