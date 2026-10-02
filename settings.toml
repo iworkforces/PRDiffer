@@ -197,18 +197,10 @@ security.sql_injection_patterns = [
 logging.format = "simple"  # Options: simple, json, structured
 logging.json_pretty = false  # Pretty-print JSON output (development only)
 
-# Authentication settings (nested under default.auth)
-[default.auth]
-enabled = true  # Enable/disable API key authentication (SECURITY: enabled by default for production)
-# To disable authentication for development/local use, set MCP_AUTH_ENABLED=false environment variable
-# API keys can be configured via environment variable MCP_API_KEYS (comma-separated)
-# Or MCP_ADMIN_API_KEY for admin access
-# Example: MCP_API_KEYS="key1,key2,key3"
-
-# Authentication brute-force protection settings
-max_failures_per_minute = 5
-lockout_duration = 60  # seconds
-failure_window = 300  # 5 minutes
+# Authentication is configured only through environment variables (not this file):
+# - MCP_AUTH_ENABLED=true enables API key authentication (disabled when unset or false)
+# - MCP_API_KEYS="key1,key2,key3" (comma-separated) and/or MCP_ADMIN_API_KEY
+# Brute-force protection uses built-in defaults: 5 failures per minute, 60s lockout.
 
 # Security headers for HTTP/SSE transports
 # NOTE: FastMCP runs on uvicorn. For production deployments, use a reverse proxy
