@@ -15,7 +15,7 @@ class TestGitHubConfig:
         assert config.max_retries == 3
         assert config.retry_delay == 1.0
         assert config.circuit_breaker_enabled is True
-        assert config.diff_parallel_enabled is True
+        assert config.diff_parallel_threshold == 3
 
     def test_from_dict(self):
         from prdiffer.domain.config.github_config import GitHubConfig
@@ -120,13 +120,11 @@ class TestGitHubConfig:
             circuit_breaker_enabled=True,
             adaptive_retry_enabled=False,
             api_health_tracking=True,
-            diff_parallel_enabled=False,
         )
 
         assert config.should_use_circuit_breaker is True
         assert config.should_use_adaptive_retry is False
         assert config.should_track_api_health is True
-        assert config.should_use_parallel_diff is False
 
 
 class TestSettingsServiceGitHubConfig:

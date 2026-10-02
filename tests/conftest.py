@@ -64,10 +64,8 @@ def mock_settings():
             "api_health_tracking": True,
             "context_aware_retry": True,
             "use_advanced_retry": True,
-            "diff_parallel_enabled": True,
             "diff_parallel_threshold": 3,
             "diff_max_workers": 4,
-            "diff_worker_timeout": 30.0,
         },
         "cache": {
             "use_hashed_keys": True,

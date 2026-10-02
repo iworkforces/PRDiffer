@@ -54,10 +54,8 @@ class GitHubConfig(GitHubConfigInterface):
     ignore_patterns: tuple[str, ...] = field(default_factory=tuple)
     valid_extensions: tuple[str, ...] = field(default_factory=tuple)
 
-    diff_parallel_enabled: bool = True
     diff_parallel_threshold: int = 3
     diff_max_workers: int = 4
-    diff_worker_timeout: float = 30.0
 
     max_files_allowed: int = 50
 
@@ -85,7 +83,6 @@ class GitHubConfig(GitHubConfigInterface):
             ("max_adaptive_delay", self.max_adaptive_delay),
             ("diff_parallel_threshold", self.diff_parallel_threshold),
             ("diff_max_workers", self.diff_max_workers),
-            ("diff_worker_timeout", self.diff_worker_timeout),
             ("max_files_allowed", self.max_files_allowed),
             ("large_file_threshold", self.large_file_threshold),
             ("chunk_size", self.chunk_size),
@@ -143,10 +140,8 @@ class GitHubConfig(GitHubConfigInterface):
             context_aware_retry=config.get("context_aware_retry", True),
             ignore_patterns=ignore_patterns,
             valid_extensions=valid_extensions,
-            diff_parallel_enabled=config.get("diff_parallel_enabled", True),
             diff_parallel_threshold=config.get("diff_parallel_threshold", 3),
             diff_max_workers=config.get("diff_max_workers", 4),
-            diff_worker_timeout=float(config.get("diff_worker_timeout", 30.0)),
             max_files_allowed=config.get("max_files_allowed", 50),
             large_file_threshold=config.get("large_file_threshold", 5000),
             chunk_size=config.get("chunk_size", 1000),
@@ -180,10 +175,8 @@ class GitHubConfig(GitHubConfigInterface):
             "context_aware_retry": self.context_aware_retry,
             "ignore_patterns": list(self.ignore_patterns),
             "valid_extensions": list(self.valid_extensions),
-            "diff_parallel_enabled": self.diff_parallel_enabled,
             "diff_parallel_threshold": self.diff_parallel_threshold,
             "diff_max_workers": self.diff_max_workers,
-            "diff_worker_timeout": self.diff_worker_timeout,
             "max_files_allowed": self.max_files_allowed,
             "large_file_threshold": self.large_file_threshold,
             "chunk_size": self.chunk_size,
@@ -256,8 +249,3 @@ class GitHubConfig(GitHubConfigInterface):
     def should_track_api_health(self) -> bool:
         """Check if API health should be tracked."""
         return self.api_health_tracking
-
-    @property
-    def should_use_parallel_diff(self) -> bool:
-        """Check if parallel diff processing should be used."""
-        return self.diff_parallel_enabled

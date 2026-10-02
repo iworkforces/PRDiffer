@@ -117,11 +117,9 @@ github.valid_extensions = [
     ".dockerfile", ".tf", ".tfvars"
 ]
 
-# Diff generator parallel processing settings
-github.diff_parallel_enabled = true  # Enable parallel diff generation
+# Diff generator parallel processing settings (enabled by performance.parallel_diff_generation_enabled)
 github.diff_parallel_threshold = 3   # Minimum files to trigger parallel processing
 github.diff_max_workers = 4          # Maximum worker threads for parallel processing
-github.diff_worker_timeout = 30.0    # Timeout per file in seconds
 
 # Cache settings
 cache.ttl = 600  # 10 minutes
@@ -139,10 +137,6 @@ mcp.port = 9102
 mcp.host = "127.0.0.1"
 mcp.path = "/mcp"
 
-# File processing settings
-file_processing.concurrent_downloads = 3
-file_processing.parallel_fetch_threshold = 10
-
 # File processor settings
 file_processor.max_workers = 4  # Maximum workers for parallel file processing
 
@@ -150,14 +144,12 @@ file_processor.max_workers = 4  # Maximum workers for parallel file processing
 # These control when to use chunked diff generation to avoid O(N²) complexity
 diff.large_file_threshold = 5000     # Lines - threshold for chunked processing
 diff.chunk_size = 1000               # Lines per chunk for large files
-diff.max_diff_size = 100000          # Maximum lines - files larger return truncated message
+diff.max_diff_size = 100000          # Maximum lines per file - larger files fail with E5020 RESPONSE_SIZE_LIMIT
 
-# Diff size limits
-diff.truncate_enabled = true
+# Diff size limits (strict: oversize fails closed, never truncates)
 # Aggregate public-diff char budget (E5020 RESPONSE_SIZE_LIMIT). Runtime override
 # via MAX_TOTAL_CHARS in .env (see .env.example / start-prdiffer-mcp-server.sh).
 diff.max_total_chars = 600000
-diff.truncation_notice = "[DIFF TRUNCATED]"
 
 # Request coalescing settings
 request_coalescing.max_waiters = 100

@@ -171,10 +171,8 @@ class SettingsService(SettingsServiceInterface):
                 "context_aware_retry": get_with_fallback("github.context_aware_retry", True),
                 "ignore_patterns": self._resolve_ignore_patterns(get_with_fallback),
                 "valid_extensions": tuple(get_with_fallback("github.valid_extensions", [])),
-                "diff_parallel_enabled": get_with_fallback("github.diff_parallel_enabled", True),
                 "diff_parallel_threshold": get_with_fallback("github.diff_parallel_threshold", 3),
                 "diff_max_workers": get_with_fallback("github.diff_max_workers", 4),
-                "diff_worker_timeout": get_with_fallback("github.diff_worker_timeout", 30.0),
                 "max_concurrent": get_with_fallback("github.max_concurrent", 4),
             }
             return self._github_settings_cache
@@ -216,10 +214,8 @@ class SettingsService(SettingsServiceInterface):
                 context_aware_retry=bool(get_with_fallback("github.context_aware_retry", True)),
                 ignore_patterns=self._resolve_ignore_patterns(get_with_fallback),
                 valid_extensions=tuple(get_with_fallback("github.valid_extensions", [])),
-                diff_parallel_enabled=bool(get_with_fallback("github.diff_parallel_enabled", True)),
                 diff_parallel_threshold=int(get_with_fallback("github.diff_parallel_threshold", 3)),
                 diff_max_workers=int(get_with_fallback("github.diff_max_workers", 4)),
-                diff_worker_timeout=float(get_with_fallback("github.diff_worker_timeout", 30.0)),
                 max_files_allowed=self._resolve_max_files_allowed(get_with_fallback),
                 large_file_threshold=int(get_with_fallback("diff.large_file_threshold", 5000)),
                 chunk_size=int(get_with_fallback("diff.chunk_size", 1000)),

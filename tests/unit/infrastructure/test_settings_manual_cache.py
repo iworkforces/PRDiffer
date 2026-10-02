@@ -251,10 +251,8 @@ class TestSettingsValues:
             "context_aware_retry",
             "ignore_patterns",
             "valid_extensions",
-            "diff_parallel_enabled",
             "diff_parallel_threshold",
             "diff_max_workers",
-            "diff_worker_timeout",
             "max_concurrent",
         }
 
