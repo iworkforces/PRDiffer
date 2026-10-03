@@ -5,6 +5,7 @@ monitoring for the MCP server.
 """
 
 from unittest.mock import Mock
+import pytest
 from prdiffer.application.components.health_monitor import HealthMonitor
 
 
@@ -406,3 +407,15 @@ class TestHealthMonitorProtocolCompliance:
         # Check all required methods exist
         assert hasattr(monitor, "check_health")
         assert callable(monitor.check_health)
+@pytest.mark.parametrize("successes,failures,expected", [(0, 0, "healthy"), (4, 1, "healthy"), (3, 1, "degraded")])
+def test_real_metrics_health_threshold(successes, failures, expected):
+    from prdiffer.application.components.metrics_tracker import MetricsTracker
+    from prdiffer.application.components.rate_limiter import RateLimiter
+
+    # Given: real aggregate counters, including the idle case.
+    tracker = MetricsTracker()
+    for success in [True] * successes + [False] * failures:
+        tracker.track_request("get_pr_diff", success, 0.01)
+    monitor = HealthMonitor(tracker, RateLimiter())
+    # When / Then.
+    assert monitor.check_health()["status"] == expected

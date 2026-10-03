@@ -33,7 +33,7 @@ class HealthMonitor(HealthMonitorProtocol):
             status = "healthy"
 
             # Degraded if success rate below 80%
-            if metrics.get("success_rate", 100) < 80:
+            if metrics.get("total_requests", 0) > 0 and metrics.get("success_rate", 100) < 80:
                 status = "degraded"
 
             # Degraded if rate limit nearly exhausted (<10% remaining)
