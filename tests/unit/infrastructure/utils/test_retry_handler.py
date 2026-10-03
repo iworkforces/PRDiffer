@@ -5,6 +5,10 @@ covering retry logic, circuit breaker integration, and error classification.
 """
 
 import pytest
+import anyio
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from prdiffer.infrastructure.utils.retry.handler import (
@@ -13,6 +17,176 @@ from prdiffer.infrastructure.utils.retry.handler import (
 from prdiffer.infrastructure.utils.retry.models import (
     RETRY_EXCEPTIONS,
 )
+from prdiffer.infrastructure.utils.circuit_breaker_core import CircuitBreakerOpenException
+import prdiffer.infrastructure.utils.circuit_breaker_core as core
+
+
+def recovering_handler(monkeypatch, health):
+    handler = UnifiedRetryHandler(max_retries=1, circuit_breaker_enabled=True,
+                                 circuit_breaker_failure_threshold=1, circuit_breaker_timeout=10,
+                                 api_health_tracking=health)
+    clock = [100.0]
+    monkeypatch.setattr(core, "time", SimpleNamespace(time=lambda: clock[0]))
+
+    def fail():
+        raise ConnectionError("connection")
+
+    with pytest.raises(ConnectionError):
+        handler.execute_with_retry(fail)
+    clock[0] = 110
+    return handler
+
+
+class TestBreakerRecoveryRegression:
+    @pytest.mark.parametrize("health", [False, True])
+    def test_thread_trial_rejects_contender_before_backend(self, monkeypatch, health):
+        handler = recovering_handler(monkeypatch, health)
+        entered, finish = threading.Event(), threading.Event()
+        loser_calls = []
+
+        def trial():
+            entered.set()
+            assert finish.wait(2)
+            return "winner"
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            winner = pool.submit(handler.execute_with_retry, trial)
+            assert entered.wait(2)
+            try:
+                with pytest.raises(CircuitBreakerOpenException):
+                    pool.submit(handler.execute_with_retry, lambda: loser_calls.append(1)).result(2)
+                assert loser_calls == []
+            finally:
+                finish.set()
+            assert winner.result(2) == "winner"
+        assert handler._circuit_breaker.state.value == "closed"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("health", [False, True])
+    async def test_async_trial_rejects_async_and_thread_contenders(self, monkeypatch, health):
+        handler = recovering_handler(monkeypatch, health)
+        entered, finish = anyio.Event(), anyio.Event()
+        results = []
+        loser_calls = []
+
+        async def trial():
+            entered.set()
+            await finish.wait()
+            return "winner"
+
+        async def run_trial():
+            results.append(await handler.execute_with_retry_async(trial))
+
+        async def loser():
+            loser_calls.append(1)
+
+        with anyio.fail_after(3):
+            async with anyio.create_task_group() as group:
+                group.start_soon(run_trial)
+                await entered.wait()
+                with pytest.raises(CircuitBreakerOpenException):
+                    await handler.execute_with_retry_async(loser)
+                with pytest.raises(CircuitBreakerOpenException):
+                    await anyio.to_thread.run_sync(lambda: handler.execute_with_retry(lambda: loser_calls.append(1)))
+                assert loser_calls == []
+                finish.set()
+        assert results == ["winner"]
+        assert handler._circuit_breaker.state.value == "closed"
+
+    @pytest.mark.parametrize("error", [ValueError("unknown"), KeyboardInterrupt(), OSError("transport")])
+    def test_neutral_and_abnormal_trial_exit(self, monkeypatch, error):
+        handler = recovering_handler(monkeypatch, False)
+
+        def fail():
+            raise error
+
+        with pytest.raises(type(error)):
+            handler.execute_with_retry(fail)
+        if isinstance(error, OSError):
+            assert handler._circuit_breaker.state.value == "open"
+            assert handler._circuit_breaker.failure_count == 2
+        else:
+            assert handler._circuit_breaker.state.value == "half_open"
+            assert handler._circuit_breaker.failure_count == 1
+            assert handler.execute_with_retry(lambda: "replacement") == "replacement"
+
+    @pytest.mark.asyncio
+    async def test_cancelled_trial_releases_without_closing(self, monkeypatch):
+        handler = recovering_handler(monkeypatch, False)
+        entered = anyio.Event()
+
+        async def trial():
+            entered.set()
+            await anyio.sleep_forever()
+
+        async def run_trial():
+            await handler.execute_with_retry_async(trial)
+
+        with anyio.fail_after(3):
+            async with anyio.create_task_group() as group:
+                group.start_soon(run_trial)
+                await entered.wait()
+                group.cancel_scope.cancel()
+        assert handler._circuit_breaker.state.value == "half_open"
+        assert handler._circuit_breaker.failure_count == 1
+        assert handler.execute_with_retry(lambda: "replacement") == "replacement"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status", [401, 403, 404, 422])
+    async def test_excluded_async_trial_allows_replacement(self, monkeypatch, status):
+        from github import GithubException
+        handler = recovering_handler(monkeypatch, True)
+
+        async def fail():
+            raise GithubException(status, {"message": "excluded"})
+
+        with pytest.raises(GithubException):
+            await handler.execute_with_retry_async(fail)
+        assert handler._circuit_breaker.state.value == "half_open"
+        assert handler._circuit_breaker.failure_count == 1
+
+        async def replacement():
+            return "replacement"
+
+        assert await handler.execute_with_retry_async(replacement) == "replacement"
+        assert handler._circuit_breaker.state.value == "closed"
+
+    @pytest.mark.parametrize("health", [False, True])
+    def test_terminal_failure_count_and_recovery(self, monkeypatch, health):
+        handler = UnifiedRetryHandler(max_retries=3, retry_delay=0, circuit_breaker_enabled=True,
+                                     circuit_breaker_failure_threshold=1, circuit_breaker_timeout=10,
+                                     api_health_tracking=health)
+        clock = [100.0]
+        monkeypatch.setattr("prdiffer.infrastructure.utils.circuit_breaker_core.time.time", lambda: clock[0])
+        monkeypatch.setattr(handler, "_calculate_retry_delay", lambda *args, **kwargs: 0)
+        calls = []
+
+        def fail():
+            calls.append(1)
+            raise ConnectionError("connection failed")
+
+        with pytest.raises(ConnectionError):
+            handler.execute_with_retry(fail)
+        assert len(calls) == 3
+        assert handler._circuit_breaker.failure_count == 1
+        clock[0] = 110
+        assert handler.execute_with_retry(lambda: "recovered") == "recovered"
+        assert handler._circuit_breaker.state.value == "closed"
+
+    @pytest.mark.parametrize("status,message,count", [(401, "auth", 0), (404, "missing", 0),
+        (422, "invalid", 0), (403, "permission", 0), (403, "API abuse", 1),
+        (429, "limited", 1), (501, "server", 1), (503, "server", 1)])
+    def test_terminal_github_classification(self, status, message, count):
+        from github import GithubException
+        handler = UnifiedRetryHandler(max_retries=1, circuit_breaker_enabled=True)
+        error = GithubException(status, {"message": message})
+
+        def fail():
+            raise error
+
+        with pytest.raises(GithubException):
+            handler.execute_with_retry(fail)
+        assert handler._circuit_breaker.failure_count == count
 
 
 class TestUnifiedRetryHandler:
@@ -110,10 +284,13 @@ class TestRetryHandlerCircuitBreaker:
         with pytest.raises(ConnectionError):
             retry_handler_with_circuit_breaker.execute_with_retry(failing_func)
 
-        # Circuit breaker should be open now after reaching failure threshold
-        # Check the state using the enum value
         from prdiffer.infrastructure.utils.circuit_breaker_core import CircuitState
 
+        assert retry_handler_with_circuit_breaker._circuit_breaker.state == CircuitState.CLOSED
+        assert retry_handler_with_circuit_breaker._circuit_breaker.failure_count == 1
+        with pytest.raises(ConnectionError):
+            retry_handler_with_circuit_breaker.execute_with_retry(failing_func)
+        assert call_count[0] == 6
         assert retry_handler_with_circuit_breaker._circuit_breaker.state == CircuitState.OPEN
 
 

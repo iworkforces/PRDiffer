@@ -171,4 +171,4 @@ class FastMCPServer:
             self.mcp.run(transport="stdio")
         else:
             self._logger.info(f"Running MCP server with {transport} transport on {host}:{port}{path}")
-            self.mcp.run(transport=transport, port=port, host=host, path=path)
+            self.mcp.run(transport=transport, port=port, host=host, path=path, uvicorn_config={"proxy_headers": False})

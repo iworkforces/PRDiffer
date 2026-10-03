@@ -366,15 +366,12 @@ class TestPhase4Integration:
         breaker = CircuitBreaker(failure_threshold=3)
 
         async def protected_operation(x: int) -> int:
-            if not breaker.can_execute():
+            permit = breaker.acquire()
+            if permit is None:
                 raise RuntimeError("Circuit breaker open")
-            try:
-                result = x * 2
-                breaker.record_success()
-                return result
-            except Exception:
-                breaker.record_failure()
-                raise
+            result = x * 2
+            breaker.record_success(permit)
+            return result
 
         executor = AsyncParallelExecutor()
         results = await executor.execute_batch(protected_operation, [1, 2, 3, 4, 5])

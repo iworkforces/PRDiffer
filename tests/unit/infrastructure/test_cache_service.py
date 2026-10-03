@@ -5,6 +5,7 @@ with commit-based invalidation, key hashing, and TTL support.
 """
 
 import anyio
+from threading import RLock
 from unittest.mock import patch
 import pytest
 from prdiffer.infrastructure.cache.service import CacheService, get_cache_service
@@ -67,10 +68,12 @@ class TestCacheServiceInitialization:
         assert isinstance(service._use_hashed_keys, bool)
 
     def test_cache_service_has_lock(self, reset_cache_service):
-        """Test CacheService has async lock."""
+        """Test CacheService supports synchronous reentrant locking for stats."""
         service = CacheService()
 
-        assert isinstance(service._lock, anyio.Lock)
+        with service._lock:
+            with service._lock:
+                assert service.get_stats()["cache_size"] == 0
 
     def test_cache_service_initial_stats(self, reset_cache_service):
         """Test initial statistics are zero."""
@@ -450,7 +453,7 @@ class TestCacheServiceGetInternalKey:
             service._hash_algorithm = "md5"
             service._store_key_mapping = True
             service._key_mapping = {}
-            service._lock = anyio.Lock()
+            service._lock = RLock()
 
         internal_key, hash_display = await service._get_internal_key("test_key", store_mapping=True)
 
@@ -479,7 +482,7 @@ class TestCacheServiceGetOriginalKey:
             service._use_hashed_keys = True
             service._store_key_mapping = True
             service._key_mapping = {"hashed_key": "original_key"}
-            service._lock = anyio.Lock()
+            service._lock = RLock()
 
         original = await service._get_original_key("hashed_key")
 

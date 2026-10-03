@@ -8,6 +8,7 @@ from typing import NoReturn
 
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
+from fastmcp.server.dependencies import get_http_request
 
 from prdiffer.domain.entities.pr_diff import PRDiff
 from prdiffer.domain.services.cache import CacheServiceInterface
@@ -105,23 +106,31 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
                     "Authentication service not configured",
                     error_code=E2002_AUTH_FAILED,
                 )
-            is_authenticated, client_id = self._authentication.authenticate(api_key)
-        except RuntimeError as e:
+            try:
+                request = get_http_request()
+            except RuntimeError as error:
+                if str(error) != "No active HTTP request found.":
+                    raise
+                source = "stdio:local"
+            else:
+                if request.client is None or not request.client.host.strip():
+                    raise AuthenticationError("HTTP transport peer unavailable", error_code=E2002_AUTH_FAILED)
+                source = "http:" + request.client.host
+            is_authenticated, client_id = self._authentication.authenticate(api_key, source=source)
+            if not is_authenticated:
+                raise AuthenticationError(
+                    "Authentication failed. Please provide a valid API key via 'api_key' parameter.",
+                    error_code=E2002_AUTH_FAILED,
+                )
+        except AuthenticationError as error:
             execution_time = time.time() - start_time
             self._metrics_tracker.track_request(operation, False, execution_time)
             self._logger.warning(
-                "Authentication rate limited",
+                "Authentication failed",
                 request_id=request_id,
-                error=str(e),
+                error=str(error),
             )
-            raise AuthenticationError(str(e), error_code=E2002_AUTH_FAILED)
-
-        if not is_authenticated:
-            self._logger.warning("Authentication failed", request_id=request_id)
-            raise AuthenticationError(
-                "Authentication failed. Please provide a valid API key via 'api_key' parameter.",
-                error_code=E2002_AUTH_FAILED,
-            )
+            raise
 
         return client_id
 

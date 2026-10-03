@@ -268,7 +268,7 @@ class TestCompleteWorkflow:
         assert hasattr(server._authentication, "authenticate")
 
         # Test authentication (disabled by default)
-        is_auth, client_id = server._authentication.authenticate(None)
+        is_auth, client_id = server._authentication.authenticate(None, source="stdio:local")
         # When disabled, should allow all requests
         assert is_auth is True
         assert client_id == "anonymous"

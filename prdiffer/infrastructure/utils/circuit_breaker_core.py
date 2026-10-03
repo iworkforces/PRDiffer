@@ -4,6 +4,7 @@ import time
 import threading
 import logging
 from enum import StrEnum
+from dataclasses import dataclass
 
 from prdiffer.infrastructure.logging.console_logger import get_logger, ConsoleLogger
 
@@ -14,6 +15,13 @@ class CircuitState(StrEnum):
     CLOSED = "closed"  # Normal operation
     OPEN = "open"  # Circuit open, fail fast
     HALF_OPEN = "half_open"  # Testing if service recovered
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class CircuitBreakerPermit:
+    """Identity-bearing admission, valid only in its breaker's generation."""
+
+    generation: int
 
 
 class CircuitBreaker:
@@ -45,6 +53,8 @@ class CircuitBreaker:
         self._failure_count = 0
         self._last_failure_time: float | None = None
         self._successful_calls = 0
+        self._generation = 0
+        self._permits: set[CircuitBreakerPermit] = set()
 
     @property
     def state(self) -> CircuitState:
@@ -58,30 +68,41 @@ class CircuitBreaker:
         with self._sync_lock:
             return self._failure_count
 
-    def can_execute(self) -> bool:
-        """Check if execution is allowed based on circuit state (thread-safe).
-
-        Returns:
-            bool: True if execution is allowed, False otherwise
-        """
+    def acquire(self) -> CircuitBreakerPermit | None:
+        """Reserve one logical call; only one recovery trial may be in flight."""
+        transitioned = False
         with self._sync_lock:
-            if self._state == CircuitState.CLOSED:
-                return True
-
             if self._state == CircuitState.OPEN:
-                # Check if timeout has elapsed
-                if self._last_failure_time and time.time() - self._last_failure_time >= self.timeout:
+                if self._last_failure_time is not None and time.time() - self._last_failure_time >= self.timeout:
                     self._transition_to_half_open_unlocked()
+                    transitioned = True
                 else:
-                    return False
-            else:
-                return True
-        self._logger.info("Circuit breaker transitioned to HALF_OPEN: Testing service recovery")
+                    return None
+            if self._state == CircuitState.HALF_OPEN and self._permits:
+                return None
+            permit = CircuitBreakerPermit(self._generation)
+            self._permits.add(permit)
+        if transitioned:
+            self._logger.info("Circuit breaker transitioned to HALF_OPEN: Testing service recovery")
+        return permit
+
+    def _settle_unlocked(self, permit: CircuitBreakerPermit) -> bool:
+        if permit.generation != self._generation or permit not in self._permits:
+            return False
+        self._permits.remove(permit)
         return True
 
-    def record_success(self) -> None:
+    def release(self, permit: CircuitBreakerPermit) -> None:
+        """Neutral settlement leaves recovery undecided and admits a replacement."""
+        with self._sync_lock:
+            if self._settle_unlocked(permit) and self._state == CircuitState.HALF_OPEN:
+                self._fence_unlocked()
+
+    def record_success(self, permit: CircuitBreakerPermit) -> None:
         """Record a successful operation (thread-safe)."""
         with self._sync_lock:
+            if not self._settle_unlocked(permit):
+                return
             message = self._record_success_unlocked()
         if message:
             if message[0]:
@@ -103,9 +124,11 @@ class CircuitBreaker:
                 return False, "Circuit breaker: Reset failure count after success"
         return None
 
-    def record_failure(self) -> None:
+    def record_failure(self, permit: CircuitBreakerPermit) -> None:
         """Record a failed operation (thread-safe)."""
         with self._sync_lock:
+            if not self._settle_unlocked(permit):
+                return
             opened = self._record_failure_unlocked()
             failure_count = self._failure_count
         if opened:
@@ -129,17 +152,24 @@ class CircuitBreaker:
     def _transition_to_open_unlocked(self) -> None:
         """Transition circuit to OPEN state (must be called with lock held)."""
         self._state = CircuitState.OPEN
+        self._fence_unlocked()
 
     def _transition_to_half_open_unlocked(self) -> None:
         """Transition circuit to HALF_OPEN state (must be called with lock held)."""
         self._state = CircuitState.HALF_OPEN
+        self._fence_unlocked()
         self._successful_calls = 0
 
     def _transition_to_closed_unlocked(self) -> None:
         """Transition circuit to CLOSED state (must be called with lock held)."""
         self._state = CircuitState.CLOSED
+        self._fence_unlocked()
         self._failure_count = 0
         self._successful_calls = 0
+
+    def _fence_unlocked(self) -> None:
+        self._generation += 1
+        self._permits.clear()
 
     def get_stats(self) -> dict[str, object]:
         """Get circuit breaker statistics (thread-safe).

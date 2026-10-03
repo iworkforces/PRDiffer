@@ -46,7 +46,7 @@ class TestRealAuthentication:
         auth = AuthenticationMiddleware()
         token = os.getenv("GITHUB_TOKEN")
 
-        is_authenticated, client_id = auth.authenticate(token)
+        is_authenticated, client_id = auth.authenticate(token, source="stdio:local")
 
         assert is_authenticated is True
         assert client_id is not None
@@ -55,7 +55,7 @@ class TestRealAuthentication:
         """Test that an invalid token is rejected when auth is enabled."""
         auth = AuthenticationMiddleware()
 
-        is_authenticated, client_id = auth.authenticate("invalid_token_12345")
+        is_authenticated, client_id = auth.authenticate("invalid_token_12345", source="stdio:local")
 
         if not auth.is_authentication_enabled():
             assert is_authenticated is True
@@ -68,7 +68,7 @@ class TestRealAuthentication:
         """Test that no token is rejected when auth is enabled."""
         auth = AuthenticationMiddleware()
 
-        is_authenticated, client_id = auth.authenticate(None)
+        is_authenticated, client_id = auth.authenticate(None, source="stdio:local")
 
         if not auth.is_authentication_enabled():
             assert is_authenticated is True

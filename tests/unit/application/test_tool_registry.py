@@ -4,7 +4,9 @@ import pytest
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal, assert_never
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock, AsyncMock, Mock, patch
+from starlette.requests import Request
+from prdiffer.application.components.authentication import AuthenticationMiddleware
 from urllib.parse import urlparse
 
 from prdiffer.application.tool_registry import ToolRegistry
@@ -33,11 +35,149 @@ from prdiffer.domain.exceptions import (
     ValidationError,
     GitHubAPIError,
 )
-from prdiffer.domain.error_codes import E1001_INVALID_URL
+from prdiffer.domain.error_codes import E1001_INVALID_URL, E2002_AUTH_FAILED
 from fastmcp.exceptions import ToolError
 
 
 ProviderName = Literal["github", "gitlab"]
+
+
+@pytest.mark.parametrize("operation", ["get_pr_diff", "approve_pr", "describe_pr"])
+@pytest.mark.parametrize("rejection", ["missing", "false", "lock"])
+async def test_auth_rejection_records_one_named_failure_before_provider(
+    operation, rejection, tool_registry, mock_authentication, mock_metrics_tracker,
+    mock_github_repository_class, session_reader,
+):
+    if rejection == "missing":
+        tool_registry._authentication = None
+    elif rejection == "false":
+        mock_authentication.authenticate.return_value = (False, None)
+    else:
+        mock_authentication.authenticate.side_effect = AuthenticationError("Locked", error_code=E2002_AUTH_FAILED)
+    capture = MCPToolCapture()
+    tool_registry.register_tools(capture)
+    arguments = {"pr_url": "https://github.com/owner/repo/pull/1", "api_key": "bad"}
+    if operation == "approve_pr":
+        arguments["compliment"] = "Good work"
+    if operation == "describe_pr":
+        arguments["pr_description"] = "Description"
+    tool = getattr(capture, f"{operation}_tool")
+    with pytest.raises(AuthenticationError) as raised:
+        await tool(**arguments)
+    assert raised.value.error_code == E2002_AUTH_FAILED
+    mock_metrics_tracker.track_request.assert_called_once()
+    assert mock_metrics_tracker.track_request.call_args.args[:2] == (operation, False)
+    mock_github_repository_class.assert_not_called()
+    assert not session_reader.open_calls
+
+
+@pytest.mark.parametrize("transport", ["http", "sse", "streamable-http", "stdio"])
+def test_server_transport_preserves_actual_peer_identity(monkeypatch, transport):
+    from prdiffer.application.mcp_server import FastMCPServer
+
+    server = object.__new__(FastMCPServer)
+    server._settings_service = MagicMock()
+    server._logger = MagicMock()
+    server.mcp = MagicMock()
+    monkeypatch.setenv("MCP_TRANSPORT", transport)
+    monkeypatch.setenv("MCP_PORT", "9102")
+    monkeypatch.setenv("MCP_HOST", "127.0.0.1")
+    monkeypatch.setenv("MCP_PATH", "/mcp")
+    server.run()
+    if transport == "stdio":
+        server.mcp.run.assert_called_once_with(transport="stdio")
+    else:
+        server.mcp.run.assert_called_once_with(
+            transport=transport, port=9102, host="127.0.0.1", path="/mcp", uvicorn_config={"proxy_headers": False}
+        )
+
+
+@pytest.mark.parametrize("port", [1234, 5678])
+async def test_auth_source_uses_http_peer_not_headers_or_port(tool_registry, mock_authentication, port):
+    request = Request({"type": "http", "client": ("192.0.2.1", port), "headers": [(b"x-forwarded-for", b"203.0.113.9"), (b"x-real-ip", b"203.0.113.8")]})
+    with patch("prdiffer.application.tool_registry.get_http_request", return_value=request):
+        assert await tool_registry._authenticate_request("id", 0, "valid", operation="approve_pr") == "client-123"
+    mock_authentication.authenticate.assert_called_once_with("valid", source="http:192.0.2.1")
+
+
+async def test_auth_source_uses_shared_stdio_when_http_context_absent(tool_registry, mock_authentication):
+    with patch("prdiffer.application.tool_registry.get_http_request", side_effect=RuntimeError("No active HTTP request found.")):
+        await tool_registry._authenticate_request("id", 0, None, operation="get_pr_diff")
+    mock_authentication.authenticate.assert_called_once_with(None, source="stdio:local")
+
+
+@pytest.mark.parametrize("error", ["context broken", "No active HTTP request found"])
+async def test_unexpected_transport_runtime_error_propagates(tool_registry, mock_authentication, mock_metrics_tracker, error):
+    with patch("prdiffer.application.tool_registry.get_http_request", side_effect=RuntimeError(error)):
+        with pytest.raises(RuntimeError, match=error):
+            await tool_registry._authenticate_request("id", 0, None, operation="describe_pr")
+    mock_authentication.authenticate.assert_not_called()
+    mock_metrics_tracker.track_request.assert_not_called()
+
+
+async def test_unexpected_auth_runtime_error_propagates(tool_registry, mock_authentication, mock_metrics_tracker):
+    mock_authentication.authenticate.side_effect = RuntimeError("auth broken")
+    with pytest.raises(RuntimeError, match="auth broken"):
+        await tool_registry._authenticate_request("id", 0, None, operation="describe_pr")
+    mock_metrics_tracker.track_request.assert_not_called()
+
+
+@pytest.mark.parametrize("peer", [None, ("", 123), ("   ", 123)])
+@pytest.mark.parametrize("operation", ["get_pr_diff", "approve_pr", "describe_pr"])
+async def test_http_missing_peer_fails_closed_once(tool_registry, mock_authentication, mock_metrics_tracker, peer, operation):
+    request = Request({"type": "http", "client": peer, "headers": []})
+    with patch("prdiffer.application.tool_registry.get_http_request", return_value=request):
+        with pytest.raises(AuthenticationError) as raised:
+            await tool_registry._authenticate_request("id", 0, "valid", operation=operation)
+    assert raised.value.error_code == E2002_AUTH_FAILED
+    mock_authentication.authenticate.assert_not_called()
+    mock_metrics_tracker.track_request.assert_called_once()
+    assert mock_metrics_tracker.track_request.call_args.args[:2] == (operation, False)
+
+
+@pytest.mark.parametrize("transport", ["http", "stdio"])
+async def test_real_source_lock_blocks_all_tools_before_all_providers(
+    monkeypatch, tool_registry, mock_metrics_tracker, mock_github_repository_class, session_reader, transport,
+):
+    monkeypatch.setenv("MCP_AUTH_ENABLED", "true")
+    monkeypatch.setenv("MCP_API_KEYS", "valid_key_12345678901")
+    auth = AuthenticationMiddleware(clock=Mock(return_value=1000.0))
+    tool_registry._authentication = auth
+    gitlab_reader = ProviderReader(PRDiff(files=()), "gitlab-head", provider="gitlab")
+    gitlab_operations = RecordingGitLabPROps()
+    tool_registry._provider_resolver = create_test_provider_resolver(
+        session_reader, mock_github_repository_class, gitlab_reader=gitlab_reader, gitlab_operations=gitlab_operations
+    )
+    capture = MCPToolCapture()
+    tool_registry.register_tools(capture)
+    peer = Request({"type": "http", "client": ("192.0.2.1", 123), "headers": []})
+    with patch("prdiffer.application.tool_registry.get_http_request") as context:
+        if transport == "http":
+            context.return_value = peer
+        else:
+            context.side_effect = RuntimeError("No active HTTP request found.")
+        for index in range(5):
+            with pytest.raises(AuthenticationError):
+                await tool_registry._authenticate_request("id", 0, f"wrong_key_{index:020}", operation="get_pr_diff")
+        for url in ("https://github.com/owner/repo/pull/1", "https://gitlab.com/group/project/-/merge_requests/2"):
+            for operation in ("get_pr_diff", "approve_pr", "describe_pr"):
+                mock_metrics_tracker.track_request.reset_mock()
+                tool = getattr(capture, f"{operation}_tool")
+                arguments = {"pr_url": url, "api_key": "valid_key_12345678901"}
+                if operation == "approve_pr":
+                    arguments["compliment"] = "Rotated argument"
+                if operation == "describe_pr":
+                    arguments["pr_description"] = "Another argument"
+                peer.scope["client"] = ("192.0.2.1", 456)
+                peer.scope["headers"] = [(b"x-forwarded-for", url.encode())]
+                with pytest.raises(AuthenticationError) as raised:
+                    await tool(**arguments)
+                assert raised.value.error_code == E2002_AUTH_FAILED
+                mock_metrics_tracker.track_request.assert_called_once()
+                assert mock_metrics_tracker.track_request.call_args.args[:2] == (operation, False)
+    mock_github_repository_class.assert_not_called()
+    assert not session_reader.open_calls and not gitlab_reader.open_calls
+    assert not gitlab_operations.approve_calls and not gitlab_operations.describe_calls
 
 
 @dataclass
@@ -531,7 +671,7 @@ class TestAuthenticateRequest:
         """Test successful authentication."""
         result = await tool_registry._authenticate_request("req-123", 0.0, "api-key-123", operation="get_pr_diff")
 
-        mock_authentication.authenticate.assert_called_once_with("api-key-123")
+        mock_authentication.authenticate.assert_called_once_with("api-key-123", source="stdio:local")
         assert result == "client-123"
 
     @pytest.mark.anyio
@@ -552,9 +692,9 @@ class TestAuthenticateRequest:
 
     @pytest.mark.anyio
     @pytest.mark.parametrize("operation", ["get_pr_diff", "approve_pr", "describe_pr"])
-    async def test_authenticate_runtime_error_records_calling_tool(self, tool_registry, mock_authentication, mock_metrics_tracker, operation):
+    async def test_authenticate_lock_records_calling_tool(self, tool_registry, mock_authentication, mock_metrics_tracker, operation):
         """Rate-limited authentication failures are attributed to the calling tool."""
-        mock_authentication.authenticate.side_effect = RuntimeError("Rate limited")
+        mock_authentication.authenticate.side_effect = AuthenticationError("Locked", error_code=E2002_AUTH_FAILED)
 
         with pytest.raises(AuthenticationError):
             await tool_registry._authenticate_request("req-123", 0.0, "api-key-123", operation=operation)

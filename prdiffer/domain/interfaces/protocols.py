@@ -148,11 +148,12 @@ class ServerConfigurationProtocol(Protocol):
 class AuthenticationProtocol(Protocol):
     """Protocol for authentication and authorization."""
 
-    def authenticate(self, api_key: str | None) -> tuple[bool, str | None]:
+    def authenticate(self, api_key: str | None, *, source: str) -> tuple[bool, str | None]:
         """Authenticate a request using API key.
 
         Args:
             api_key: The API key to validate (may be None for unauthenticated requests)
+            source: Trusted transport identity for source-scoped failure tracking
 
         Returns:
             Tuple of (is_authenticated, client_id) where:
@@ -165,7 +166,7 @@ class AuthenticationProtocol(Protocol):
         """Extract client identifier from request headers.
 
         Extracts API keys from X-API-Key or Authorization (Bearer) headers.
-        Falls back to X-Forwarded-For or X-Real-IP for IP-based identification.
+        Forwarded IP headers are not trusted identities.
 
         Args:
             headers: Request headers dictionary
@@ -173,7 +174,7 @@ class AuthenticationProtocol(Protocol):
         Returns:
             Tuple of (api_key, client_id) where:
             - api_key: The extracted API key (or None if not present)
-            - client_id: The client identifier for rate limiting (IP or API key hash)
+            - client_id: None; supplied by transport context or authentication
         """
         ...
 

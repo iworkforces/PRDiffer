@@ -20,6 +20,26 @@ from prdiffer.infrastructure.utils.circuit_breaker_core import (
 import prdiffer.infrastructure.utils.circuit_breaker_core as core
 
 
+def fail_call(breaker: CircuitBreaker) -> None:
+    permit = breaker.acquire()
+    assert permit is not None
+    breaker.record_failure(permit)
+
+
+def succeed_call(breaker: CircuitBreaker) -> None:
+    permit = breaker.acquire()
+    assert permit is not None
+    breaker.record_success(permit)
+
+
+def admission_available(breaker: CircuitBreaker) -> bool:
+    permit = breaker.acquire()
+    if permit is None:
+        return False
+    breaker.release(permit)
+    return True
+
+
 @pytest.mark.unit
 class TestCircuitBreakerInitialization:
     """Test suite for CircuitBreaker initialization."""
@@ -51,6 +71,52 @@ class TestCircuitBreakerInitialization:
         assert breaker._logger == mock_logger
 
 
+class TestPermitFencing:
+    def test_stale_and_duplicate_outcomes(self, monkeypatch):
+        clock = [0.0]
+        monkeypatch.setattr(core, "time", SimpleNamespace(time=lambda: clock[0]))
+        breaker = CircuitBreaker(failure_threshold=1, timeout=10)
+        old = breaker.acquire()
+        opening = breaker.acquire()
+        assert old is not None and opening is not None
+        breaker.record_failure(opening)
+        clock[0] = 10
+        trial = breaker.acquire()
+        assert trial is not None
+        assert breaker.acquire() is None
+        breaker.record_success(old)
+        assert breaker.state == CircuitState.HALF_OPEN
+        breaker.record_failure(trial)
+        breaker.record_failure(trial)
+        assert breaker.failure_count == 2
+        assert breaker.acquire() is None
+        clock[0] = 20
+        newer = breaker.acquire()
+        assert newer is not None
+        breaker.record_success(trial)
+        breaker.release(trial)
+        assert breaker.acquire() is None
+        assert breaker.state == CircuitState.HALF_OPEN
+        breaker.release(newer)
+        replacement = breaker.acquire()
+        assert replacement is not None
+        breaker.record_success(newer)
+        assert breaker.state == CircuitState.HALF_OPEN
+        breaker.record_success(replacement)
+        breaker.record_failure(replacement)
+        assert breaker.state == CircuitState.CLOSED
+        assert breaker.failure_count == 0
+
+    def test_foreign_permit_is_ignored(self):
+        first, second = CircuitBreaker(), CircuitBreaker()
+        permit = first.acquire()
+        assert permit is not None
+        second.record_failure(permit)
+        assert second.failure_count == 0
+        first.record_failure(permit)
+        assert first.failure_count == 1
+
+
 @pytest.mark.unit
 class TestCircuitBreakerStateTransitions:
     """Test suite for circuit breaker state transitions."""
@@ -61,13 +127,13 @@ class TestCircuitBreakerStateTransitions:
 
         # Record failures up to threshold
         assert breaker.state == CircuitState.CLOSED
-        breaker.record_failure()
+        fail_call(breaker)
         assert breaker.state == CircuitState.CLOSED
-        breaker.record_failure()
+        fail_call(breaker)
         assert breaker.state == CircuitState.CLOSED
 
         # Third failure should open the circuit
-        breaker.record_failure()
+        fail_call(breaker)
         assert breaker.state == CircuitState.OPEN
         assert breaker.failure_count == 3
 
@@ -76,15 +142,15 @@ class TestCircuitBreakerStateTransitions:
         breaker = CircuitBreaker(failure_threshold=2, timeout=0.1)
 
         # Open the circuit
-        breaker.record_failure()
-        breaker.record_failure()
+        fail_call(breaker)
+        fail_call(breaker)
         assert breaker.state == CircuitState.OPEN
 
         # Wait for timeout to elapse
         time.sleep(0.15)
 
         # can_execute should transition to half-open and return True
-        assert breaker.can_execute() is True
+        assert admission_available(breaker) is True
         assert breaker.state == CircuitState.HALF_OPEN
 
     def test_half_open_to_closed_on_success(self):
@@ -92,16 +158,16 @@ class TestCircuitBreakerStateTransitions:
         breaker = CircuitBreaker(failure_threshold=2, timeout=60.0)
 
         # Open the circuit
-        breaker.record_failure()
-        breaker.record_failure()
+        fail_call(breaker)
+        fail_call(breaker)
 
         # Wait for timeout
         breaker._last_failure_time = time.time() - breaker.timeout - 1
-        assert breaker.can_execute() is True
+        assert admission_available(breaker) is True
         assert breaker.state == CircuitState.HALF_OPEN
 
         # Record success - should close the circuit
-        breaker.record_success()
+        succeed_call(breaker)
         assert breaker.state == CircuitState.CLOSED
         assert breaker.failure_count == 0
 
@@ -110,16 +176,16 @@ class TestCircuitBreakerStateTransitions:
         breaker = CircuitBreaker(failure_threshold=2, timeout=60.0)
 
         # Open the circuit
-        breaker.record_failure()
-        breaker.record_failure()
+        fail_call(breaker)
+        fail_call(breaker)
 
         # Wait for timeout
         breaker._last_failure_time = time.time() - breaker.timeout - 1
-        assert breaker.can_execute() is True
+        assert admission_available(breaker) is True
         assert breaker.state == CircuitState.HALF_OPEN
 
         # Record failure - should open again
-        breaker.record_failure()
+        fail_call(breaker)
         assert breaker.state == CircuitState.OPEN
         assert breaker.failure_count == 3
 
@@ -128,12 +194,12 @@ class TestCircuitBreakerStateTransitions:
         breaker = CircuitBreaker(failure_threshold=3)
 
         # Record some failures
-        breaker.record_failure()
-        breaker.record_failure()
+        fail_call(breaker)
+        fail_call(breaker)
         assert breaker.failure_count == 2
 
         # Record success should reset failure count
-        breaker.record_success()
+        succeed_call(breaker)
         assert breaker.failure_count == 0
         assert breaker.state == CircuitState.CLOSED
 
@@ -146,7 +212,7 @@ class TestCircuitBreakerCanExecute:
         """Test can_execute returns True when circuit is CLOSED."""
         breaker = CircuitBreaker()
 
-        assert breaker.can_execute() is True
+        assert admission_available(breaker) is True
         assert breaker.state == CircuitState.CLOSED
 
     def test_can_execute_when_open_within_timeout(self):
@@ -154,10 +220,10 @@ class TestCircuitBreakerCanExecute:
         breaker = CircuitBreaker(failure_threshold=2, timeout=60.0)
 
         # Open the circuit
-        breaker.record_failure()
-        breaker.record_failure()
+        fail_call(breaker)
+        fail_call(breaker)
 
-        assert breaker.can_execute() is False
+        assert admission_available(breaker) is False
         assert breaker.state == CircuitState.OPEN
 
     def test_can_execute_when_open_after_timeout(self):
@@ -165,15 +231,15 @@ class TestCircuitBreakerCanExecute:
         breaker = CircuitBreaker(failure_threshold=2, timeout=0.1)
 
         # Open the circuit
-        breaker.record_failure()
-        breaker.record_failure()
-        assert breaker.can_execute() is False
+        fail_call(breaker)
+        fail_call(breaker)
+        assert admission_available(breaker) is False
 
         # Wait for timeout
         time.sleep(0.15)
 
         # Should now be able to execute (transitions to HALF_OPEN)
-        assert breaker.can_execute() is True
+        assert admission_available(breaker) is True
 
     def test_can_execute_when_half_open(self):
         """Test can_execute returns True when circuit is HALF_OPEN."""
@@ -181,14 +247,14 @@ class TestCircuitBreakerCanExecute:
         breaker = CircuitBreaker(failure_threshold=2, timeout=60.0)
 
         # Open the circuit and wait for timeout
-        breaker.record_failure()
-        breaker.record_failure()
+        fail_call(breaker)
+        fail_call(breaker)
 
         # Manually set last failure time to trigger HALF_OPEN transition
         breaker._last_failure_time = time.time() - breaker.timeout - 1
 
         # Trigger transition to HALF_OPEN and verify
-        assert breaker.can_execute() is True
+        assert admission_available(breaker) is True
         assert breaker.state == CircuitState.HALF_OPEN
 
 
@@ -206,7 +272,7 @@ class TestCircuitBreakerThreadSafety:
         def worker() -> None:
             barrier.wait(timeout=2)
             for _ in range(4):
-                breaker.record_failure()
+                fail_call(breaker)
 
         with ThreadPoolExecutor(max_workers=3) as workers:
             futures = [workers.submit(worker) for _ in range(3)]
@@ -215,15 +281,15 @@ class TestCircuitBreakerThreadSafety:
 
         assert breaker.get_stats()["failure_count"] == 12
         assert breaker.state == CircuitState.OPEN
-        assert not breaker.can_execute()
+        assert not admission_available(breaker)
         clock[0] = 110.0
-        assert breaker.can_execute()
+        assert admission_available(breaker)
         assert breaker.state == CircuitState.HALF_OPEN
-        breaker.record_failure()
-        assert not breaker.can_execute()
+        fail_call(breaker)
+        assert not admission_available(breaker)
         clock[0] = 120.0
-        assert breaker.can_execute()
-        breaker.record_success()
+        assert admission_available(breaker)
+        succeed_call(breaker)
         assert breaker.get_stats()["state"] == CircuitState.CLOSED.value
         assert breaker.failure_count == 0
 
@@ -232,7 +298,7 @@ class TestCircuitBreakerThreadSafety:
         breaker = CircuitBreaker(failure_threshold=1, logger=logger)
         logger.warning.side_effect = lambda message: breaker.get_stats()
 
-        breaker.record_failure()
+        fail_call(breaker)
 
         assert breaker.state == CircuitState.OPEN
         logger.warning.assert_called_once()
@@ -247,8 +313,8 @@ class TestCircuitBreakerStatistics:
         breaker = CircuitBreaker(failure_threshold=5, timeout=120.0)
 
         # Record some state
-        breaker.record_failure()
-        breaker.record_failure()
+        fail_call(breaker)
+        fail_call(breaker)
 
         stats = breaker.get_stats()
 
@@ -264,8 +330,8 @@ class TestCircuitBreakerStatistics:
         breaker = CircuitBreaker(failure_threshold=2)
 
         # Open the circuit
-        breaker.record_failure()
-        breaker.record_failure()
+        fail_call(breaker)
+        fail_call(breaker)
 
         stats = breaker.get_stats()
 
@@ -297,7 +363,7 @@ class TestCircuitBreakerEdgeCases:
         breaker = CircuitBreaker(failure_threshold=0, timeout=60.0)
 
         # Should open immediately on first failure
-        breaker.record_failure()
+        fail_call(breaker)
         assert breaker.state == CircuitState.OPEN
         assert breaker.failure_count == 1
 
@@ -306,14 +372,14 @@ class TestCircuitBreakerEdgeCases:
         breaker = CircuitBreaker(failure_threshold=3, timeout=999999.0)
 
         # Open the circuit
-        breaker.record_failure()
-        breaker.record_failure()
-        breaker.record_failure()
+        fail_call(breaker)
+        fail_call(breaker)
+        fail_call(breaker)
 
         assert breaker.state == CircuitState.OPEN
 
         # Can execute should still be False since timeout hasn't elapsed
-        assert breaker.can_execute() is False
+        assert admission_available(breaker) is False
 
     def test_concurrent_operations(self):
         """Test circuit breaker is thread-safe for concurrent operations."""
@@ -327,8 +393,9 @@ class TestCircuitBreakerEdgeCases:
             try:
                 # Simulate concurrent operations
                 for _ in range(5):
-                    if breaker.can_execute():
-                        breaker.record_failure()
+                    permit = breaker.acquire()
+                    if permit is not None:
+                        breaker.record_failure(permit)
                     results.append(breaker.state.value)
             except Exception as e:
                 errors.append(e)
@@ -357,17 +424,17 @@ class TestCircuitBreakerEdgeCases:
         assert initial_stats["failure_count"] == 0
 
         # Record failure
-        breaker.record_failure()
+        fail_call(breaker)
         stats_after_one = breaker.get_stats()
         assert stats_after_one["failure_count"] == 1
 
         # Record another failure
-        breaker.record_failure()
+        fail_call(breaker)
         stats_after_two = breaker.get_stats()
         assert stats_after_two["failure_count"] == 2
 
         # Record success should reset count
-        breaker.record_success()
+        succeed_call(breaker)
         stats_after_success = breaker.get_stats()
         assert stats_after_success["failure_count"] == 0
 
@@ -381,50 +448,50 @@ class TestCircuitBreakerRecovery:
         breaker = CircuitBreaker(failure_threshold=2, timeout=0.1)
 
         # Open the circuit
-        breaker.record_failure()
-        breaker.record_failure()
+        fail_call(breaker)
+        fail_call(breaker)
         assert breaker.state == CircuitState.OPEN
 
         # Wait for timeout and trigger transition
         time.sleep(0.15)
-        breaker.can_execute()
+        admission_available(breaker)
 
         # Should be in HALF_OPEN state
         assert breaker.state == CircuitState.HALF_OPEN
 
         # Record success to close
-        breaker.record_success()
+        succeed_call(breaker)
 
         # Should be back to CLOSED
         assert breaker.state == CircuitState.CLOSED
-        assert breaker.can_execute() is True
+        assert admission_available(breaker) is True
 
     def test_recovery_after_multiple_failures(self):
         """Test circuit breaker recovery after multiple failure cycles."""
         breaker = CircuitBreaker(failure_threshold=3, timeout=0.1)
 
         # Cycle 1: Open circuit
-        breaker.record_failure()
-        breaker.record_failure()
-        breaker.record_failure()
+        fail_call(breaker)
+        fail_call(breaker)
+        fail_call(breaker)
         assert breaker.state == CircuitState.OPEN
 
         # Recover
         time.sleep(0.15)
-        breaker.can_execute()
-        breaker.record_success()
+        admission_available(breaker)
+        succeed_call(breaker)
         assert breaker.state == CircuitState.CLOSED
 
         # Cycle 2: Open circuit again
-        breaker.record_failure()
-        breaker.record_failure()
-        breaker.record_failure()
+        fail_call(breaker)
+        fail_call(breaker)
+        fail_call(breaker)
         assert breaker.state == CircuitState.OPEN
 
         # Recover again
         time.sleep(0.15)
-        breaker.can_execute()
-        breaker.record_success()
+        admission_available(breaker)
+        succeed_call(breaker)
         assert breaker.state == CircuitState.CLOSED
 
     def test_half_open_failure_recovery(self):
@@ -432,21 +499,21 @@ class TestCircuitBreakerRecovery:
         breaker = CircuitBreaker(failure_threshold=3, timeout=0.1)
 
         # Open circuit and transition to HALF_OPEN
-        breaker.record_failure()
-        breaker.record_failure()
-        breaker.record_failure()
+        fail_call(breaker)
+        fail_call(breaker)
+        fail_call(breaker)
         time.sleep(0.15)
-        breaker.can_execute()
+        admission_available(breaker)
         assert breaker.state == CircuitState.HALF_OPEN
 
         # Failure in HALF_OPEN should open circuit
-        breaker.record_failure()
+        fail_call(breaker)
         assert breaker.state == CircuitState.OPEN
 
         # Recover
         time.sleep(0.15)
-        breaker.can_execute()
-        breaker.record_success()
+        admission_available(breaker)
+        succeed_call(breaker)
         assert breaker.state == CircuitState.CLOSED
 
 

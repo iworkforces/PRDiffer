@@ -1,10 +1,12 @@
 """Cache service for GitHub PR diff data with commit-based invalidation."""
 
 import hashlib
+import json
 import time
-import anyio
 from collections import OrderedDict
-from typing import Any, cast
+from dataclasses import asdict
+from threading import RLock
+from typing import Any, TypedDict
 
 from prdiffer.domain.entities.pr_diff import PRDiff
 from prdiffer.domain.entities.pr_diff_cache import GITHUB_FULL_DIFF_CACHE_PREFIX
@@ -14,14 +16,21 @@ from prdiffer.domain.error_codes import E1010_INVALID_CONFIGURATION
 from prdiffer.infrastructure.logging.console_logger import get_logger
 
 
+class CacheEntry(TypedDict):
+    commit_sha: str
+    data: PRDiff
+    timestamp: float
+    weight: int
+
+
 class CacheService(CacheServiceInterface):
     """Caching service for PR diff data with commit-based invalidation and LRU eviction."""
 
     def __init__(self):
         """Initialize the cache service with empty cache and key hashing support."""
-        self._lock = anyio.Lock()
+        self._lock = RLock()
 
-        self.cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
+        self.cache: OrderedDict[str, CacheEntry] = OrderedDict()
         self.logger = get_logger()
 
         from prdiffer.infrastructure.settings import get_settings_service
@@ -33,6 +42,11 @@ class CacheService(CacheServiceInterface):
         self._store_key_mapping = settings.get("cache.store_key_mapping", True)
         self._ttl = settings.get("cache.ttl", 600)
         self._cache_max_size = settings.get("cache.max_size", 1000)
+        self._cache_max_bytes = settings.get("cache.max_bytes", 67_108_864)
+        if self._cache_max_size <= 0 or self._cache_max_bytes <= 0:
+            raise ValidationError("Cache max_size and max_bytes must be positive", error_code=E1010_INVALID_CONFIGURATION)
+        self._cache_bytes = 0
+        self._eviction_call_count = 0
 
         self._key_mapping: dict[str, str] = {}
         self._entry_keys: dict[str, str] = {}
@@ -68,7 +82,7 @@ class CacheService(CacheServiceInterface):
         hashed = self._hash_key(original_key)
 
         if store_mapping and self._store_key_mapping:
-            async with self._lock:
+            with self._lock:
                 self._key_mapping[hashed] = original_key
 
         return hashed, f"{hashed[:8]}..."
@@ -76,11 +90,11 @@ class CacheService(CacheServiceInterface):
     async def _get_original_key(self, internal_key: str) -> str:
         """Get original key from internal key using reverse mapping."""
         if self._use_hashed_keys and self._store_key_mapping:
-            async with self._lock:
+            with self._lock:
                 return self._key_mapping.get(internal_key, internal_key)
         return internal_key
 
-    def _is_entry_expired(self, cached_data: dict[str, Any]) -> bool:
+    def _is_entry_expired(self, cached_data: CacheEntry) -> bool:
         """Check if a cache entry has expired based on TTL."""
         timestamp = cached_data.get("timestamp")
         if timestamp is None:
@@ -89,18 +103,24 @@ class CacheService(CacheServiceInterface):
         age = time.time() - float(timestamp)
         return bool(age > self._ttl)
 
-    async def _evict_oldest_if_needed(self) -> None:
-        """Evict entries when cache exceeds max size.
+    def _remove_entry(self, internal_key: str) -> None:
+        """Release one entry and its accounting/metadata while holding the lock."""
+        entry = self.cache.pop(internal_key, None)
+        if entry is not None:
+            self._cache_bytes -= entry["weight"]
+        self._key_mapping.pop(internal_key, None)
+        self._entry_keys.pop(internal_key, None)
+
+    def _evict_oldest_if_needed(self, incoming_bytes: int, *, new_entry: bool) -> None:
+        """Make room under both limits while holding the lock.
 
         O(1) LRU eviction using OrderedDict.popitem(last=False).
         TTL eviction only every 10 calls to avoid O(n) scan on every set().
         """
-        if not hasattr(self, "_eviction_call_count"):
-            self._eviction_call_count = 0
+        if new_entry:
+            self._eviction_call_count += 1
 
-        self._eviction_call_count += 1
-
-        if self._eviction_call_count % 10 == 0:
+        if new_entry and self._eviction_call_count % 10 == 0:
             current_time = time.time()
             expired_keys: list[str] = []
 
@@ -110,18 +130,16 @@ class CacheService(CacheServiceInterface):
                     expired_keys.append(key)
 
             for key in expired_keys:
-                self.cache.pop(key)
-                self._key_mapping.pop(key, None)
-                self._entry_keys.pop(key, None)
+                self._remove_entry(key)
                 self._cache_evictions_ttl += 1
 
             if expired_keys:
                 self.logger.debug(f"Cache eviction (TTL): removed {len(expired_keys)} expired entries [size={len(self.cache)}/{self._cache_max_size}]")
 
-        while len(self.cache) >= self._cache_max_size:
-            evicted_key, _ = self.cache.popitem(last=False)
-            original_key = self._entry_keys.pop(evicted_key, evicted_key)
-            self._key_mapping.pop(evicted_key, None)
+        while len(self.cache) >= self._cache_max_size or self._cache_bytes + incoming_bytes > self._cache_max_bytes:
+            evicted_key = next(iter(self.cache))
+            original_key = self._entry_keys.get(evicted_key, evicted_key)
+            self._remove_entry(evicted_key)
             self._cache_evictions_size += 1
             self.logger.debug(f"Cache eviction (LRU): {original_key[:50]}... [size={len(self.cache)}/{self._cache_max_size}]")
 
@@ -129,7 +147,7 @@ class CacheService(CacheServiceInterface):
         """Get cached PR diff data if it exists, commit SHA matches, and not expired."""
         internal_key, hash_display = await self._get_internal_key(cache_key)
 
-        async with self._lock:
+        with self._lock:
             if internal_key not in self.cache:
                 self._cache_misses += 1
                 self.logger.debug(
@@ -144,9 +162,7 @@ class CacheService(CacheServiceInterface):
             if self._is_entry_expired(cached_data):
                 self._cache_expirations += 1
                 self._cache_misses += 1
-                del self.cache[internal_key]
-                self._key_mapping.pop(internal_key, None)
-                self._entry_keys.pop(internal_key, None)
+                self._remove_entry(internal_key)
                 self.logger.info(
                     "Cache entry expired (TTL)",
                     cache_key=cache_key,
@@ -167,7 +183,7 @@ class CacheService(CacheServiceInterface):
                     hash=hash_display if self._use_hashed_keys else None,
                     commit_sha=current_commit_sha,
                 )
-                return cast(PRDiff, cached_result)
+                return cached_result
             else:
                 self._cache_misses += 1
                 self.logger.info(
@@ -180,20 +196,24 @@ class CacheService(CacheServiceInterface):
                 return None
 
     async def set(self, cache_key: str, commit_sha: str, data: PRDiff) -> None:
-        """Cache PR diff data with associated commit SHA."""
+        """Admit whole PRDiff payloads; UTF-8 JSON bytes bound payload, not heap usage."""
+        weight = len(json.dumps(asdict(data), ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
         internal_key, hash_display = await self._get_internal_key(cache_key)
 
-        async with self._lock:
-            if internal_key in self.cache:
-                del self.cache[internal_key]
-            else:
-                await self._evict_oldest_if_needed()
+        with self._lock:
+            new_entry = internal_key not in self.cache
+            self._remove_entry(internal_key)
+            if weight > self._cache_max_bytes:
+                return
+            self._evict_oldest_if_needed(weight, new_entry=new_entry)
 
             self.cache[internal_key] = {
                 "commit_sha": commit_sha,
                 "data": data,
                 "timestamp": time.time(),
+                "weight": weight,
             }
+            self._cache_bytes += weight
             if self._use_hashed_keys:
                 self._entry_keys[internal_key] = cache_key
                 if self._store_key_mapping:
@@ -214,11 +234,8 @@ class CacheService(CacheServiceInterface):
             internal_key = cache_key
             hash_display = ""
 
-        async with self._lock:
-            if internal_key in self.cache:
-                del self.cache[internal_key]
-                self._key_mapping.pop(internal_key, None)
-                self._entry_keys.pop(internal_key, None)
+        with self._lock:
+            self._remove_entry(internal_key)
         self.logger.info(
             "Cache invalidated",
             cache_key=cache_key,
@@ -227,7 +244,7 @@ class CacheService(CacheServiceInterface):
 
     async def _invalidate_github_scope(self, owner: str, repo: str, pr_number: int | None) -> None:
         owner_key, repo_key = owner.casefold(), repo.casefold()
-        async with self._lock:
+        with self._lock:
             for internal_key in list(self.cache):
                 original_key = self._entry_keys.get(internal_key, internal_key)
                 strict_parts = original_key.split(":")
@@ -242,9 +259,7 @@ class CacheService(CacheServiceInterface):
                     and (entry_pr == "0" or entry_pr[0] != "0")
                     and (pr_number is None or entry_pr == str(pr_number))
                 ):
-                    del self.cache[internal_key]
-                    self._key_mapping.pop(internal_key, None)
-                    self._entry_keys.pop(internal_key, None)
+                    self._remove_entry(internal_key)
 
     async def invalidate_github_pr(self, owner: str, repo: str, pr_number: int) -> None:
         """Evict all GitHub snapshots for one PR."""
@@ -256,32 +271,31 @@ class CacheService(CacheServiceInterface):
 
     async def clear(self) -> None:
         """Clear all cached data and key mappings."""
-        async with self._lock:
-            self.cache.clear()
+        with self._lock:
+            for internal_key in list(self.cache):
+                self._remove_entry(internal_key)
             self._key_mapping.clear()
             self._entry_keys.clear()
         self.logger.info("Cache cleared")
 
     def get_stats(self) -> dict[str, Any]:
         """Get cache statistics."""
-        base_stats: dict[str, Any] = {
-            "cache_size": len(self.cache),
-            "cache_hits": self._cache_hits,
-            "cache_misses": self._cache_misses,
-            "cache_expirations": self._cache_expirations,
-            "cache_evictions_ttl": self._cache_evictions_ttl,
-            "cache_evictions_size": self._cache_evictions_size,
-        }
-
-        if self._use_hashed_keys:
-            if self._store_key_mapping:
-                base_stats["keys"] = [self._key_mapping.get(key, key) for key in self.cache.keys()]
-            else:
-                base_stats["keys"] = list(self.cache.keys())
-        else:
-            base_stats["keys"] = list(self.cache.keys())
-
-        return base_stats
+        with self._lock:
+            return {
+                "cache_size": len(self.cache),
+                "cache_bytes": self._cache_bytes,
+                "cache_max_bytes": self._cache_max_bytes,
+                "cache_hits": self._cache_hits,
+                "cache_misses": self._cache_misses,
+                "cache_expirations": self._cache_expirations,
+                "cache_evictions_ttl": self._cache_evictions_ttl,
+                "cache_evictions_size": self._cache_evictions_size,
+                "keys": (
+                    [self._key_mapping.get(key, key) for key in self.cache]
+                    if self._use_hashed_keys and self._store_key_mapping
+                    else list(self.cache)
+                ),
+            }
 
 
 _cache_service: CacheService | None = None

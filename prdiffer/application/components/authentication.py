@@ -18,7 +18,7 @@ import hashlib
 import os
 import logging
 import time
-from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from threading import RLock
 
@@ -33,11 +33,10 @@ from prdiffer.application.components.api_key_manager import APIKeyManagerMixin
 
 @dataclass
 class AuthFailureRecord:
-    """Record of authentication failures for rate limiting."""
+    """Bounded rolling failures and fixed lock deadline for one transport source."""
 
-    count: int = 0
-    first_failure: float = field(default_factory=time.time)
-    last_failure: float = field(default_factory=time.time)
+    failures: list[float] = field(default_factory=list[float])
+    locked_until: float | None = None
 
 
 class AuthenticationMiddleware(JWTHandlerMixin, APIKeyManagerMixin, AuthenticationProtocol):
@@ -49,13 +48,13 @@ class AuthenticationMiddleware(JWTHandlerMixin, APIKeyManagerMixin, Authenticati
     - Configuration-based enable/disable
     - Multiple API key support
     - Client identifier extraction for rate limiting
-    - Brute-force protection with exponential backoff
+    - Transport-source brute-force protection with fixed lockouts
     """
 
     # Rate limiting configuration
     DEFAULT_MAX_FAILURES_PER_MINUTE = 5
     DEFAULT_LOCKOUT_DURATION = 60  # seconds
-    DEFAULT_FAILURE_WINDOW = 300  # 5 minutes
+    DEFAULT_FAILURE_WINDOW = 60  # seconds
 
     def __init__(
         self,
@@ -64,6 +63,7 @@ class AuthenticationMiddleware(JWTHandlerMixin, APIKeyManagerMixin, Authenticati
         lockout_duration: int = DEFAULT_LOCKOUT_DURATION,
         failure_window: int = DEFAULT_FAILURE_WINDOW,
         check_token_expiration: bool = True,
+        clock: Callable[[], float] = time.time,
     ):
         """Initialize authentication middleware.
 
@@ -73,6 +73,7 @@ class AuthenticationMiddleware(JWTHandlerMixin, APIKeyManagerMixin, Authenticati
             lockout_duration: Duration of lockout in seconds
             failure_window: Time window for counting failures in seconds
             check_token_expiration: Whether to check JWT token expiration (default: True)
+            clock: Injectable time source for failure windows and lock expiry
         """
         self._logger = logger or logging.getLogger(__name__)
 
@@ -86,13 +87,13 @@ class AuthenticationMiddleware(JWTHandlerMixin, APIKeyManagerMixin, Authenticati
         self._max_failures_per_minute = max_failures_per_minute
         self._lockout_duration = lockout_duration
         self._failure_window = failure_window
+        self._clock = clock
 
         self._check_token_expiration = check_token_expiration
 
         self._lock = RLock()
         self._max_auth_failure_records = 500  # DoS prevention: limit number of tracked clients
-        self._auth_failures: OrderedDict[str, AuthFailureRecord] = OrderedDict()
-        self._locked_clients: dict[str, float] = {}  # client_id -> unlock_time
+        self._auth_failures: dict[str, AuthFailureRecord] = {}
 
         # Parse API keys from environment and store ONLY hashes (no raw keys)
         self._hashed_api_keys: set[str] = set()
@@ -125,66 +126,34 @@ class AuthenticationMiddleware(JWTHandlerMixin, APIKeyManagerMixin, Authenticati
         """Hash an API key using SHA-256 for secure storage and comparison."""
         return hashlib.sha256(api_key.encode("utf-8")).hexdigest()
 
-    def _is_locked_out(self, client_identifier: str) -> bool:
-        """Check if a client is currently locked out."""
-        current_time = time.time()
-        with self._lock:
-            if client_identifier in self._locked_clients:
-                unlock_time = self._locked_clients[client_identifier]
-                if current_time < unlock_time:
-                    return True
-                # Lockout expired, remove it
-                del self._locked_clients[client_identifier]
-            return False
+    def _reclaim_expired_sources(self, now: float) -> None:
+        """Reclaim expired records while the authentication lock is held."""
+        expired: list[str] = []
+        for source, record in self._auth_failures.items():
+            if record.locked_until is not None:
+                if now >= record.locked_until:
+                    expired.append(source)
+            else:
+                record.failures[:] = [timestamp for timestamp in record.failures if now - timestamp < self._failure_window]
+                if not record.failures:
+                    expired.append(source)
+        for source in expired:
+            del self._auth_failures[source]
 
     def _record_failure(self, client_identifier: str) -> None:
         """Record an authentication failure for a client."""
-        current_time = time.time()
+        current_time = self._clock()
         with self._lock:
-            # Check if this is a new client and we need to evict oldest (DoS prevention)
-            if client_identifier not in self._auth_failures:
-                if len(self._auth_failures) >= self._max_auth_failure_records:
-                    oldest_client = next(iter(self._auth_failures))
-                    del self._auth_failures[oldest_client]
-                    self._logger.info(f"Evicted auth failure record for client '{oldest_client}' to make room (max: {self._max_auth_failure_records})")
-
-            if client_identifier in self._auth_failures:
-                record = self._auth_failures[client_identifier]
-                self._auth_failures.move_to_end(client_identifier)
-            else:
-                record = AuthFailureRecord()
-                self._auth_failures[client_identifier] = record
-
-            time_elapsed = current_time - record.first_failure
-            if time_elapsed <= 0:
-                time_elapsed = 0.001
-            elif time_elapsed > self._failure_window:
-                record.count = 1
-                record.first_failure = current_time
-                time_elapsed = 0.001
-            else:
-                record.count += 1
-
-            record.last_failure = current_time
+            record = self._auth_failures.setdefault(client_identifier, AuthFailureRecord())
+            record.failures.append(current_time)
+            if len(record.failures) >= self._max_failures_per_minute:
+                record.locked_until = current_time + self._lockout_duration
 
     def _record_success(self, client_identifier: str) -> None:
         """Record a successful authentication and clear failures."""
         with self._lock:
             if client_identifier in self._auth_failures:
                 del self._auth_failures[client_identifier]
-
-    def _get_client_identifier(self, api_key: str | None) -> str:
-        """Get a client identifier for tracking authentication attempts.
-
-        Args:
-            api_key: The API key provided (may be None)
-
-        Returns:
-            Client identifier string
-        """
-        if api_key:
-            return f"key_{self._hash_api_key(api_key)[:16]}"
-        return "anonymous"
 
     def _looks_like_jwt_token(self, token: str) -> bool:
         """Check if a token looks like a JWT token.
@@ -216,11 +185,12 @@ class AuthenticationMiddleware(JWTHandlerMixin, APIKeyManagerMixin, Authenticati
 
         return False
 
-    def authenticate(self, api_key: str | None) -> tuple[bool, str | None]:
+    def authenticate(self, api_key: str | None, *, source: str) -> tuple[bool, str | None]:
         """Authenticate a request using API key with brute-force protection.
 
         Args:
             api_key: The API key to validate (may be None for unauthenticated requests)
+            source: Trusted transport peer identity, independent of credentials
 
         Returns:
             Tuple of (is_authenticated, client_id) where:
@@ -228,19 +198,22 @@ class AuthenticationMiddleware(JWTHandlerMixin, APIKeyManagerMixin, Authenticati
             - client_id: Client identifier for rate limiting (None if not authenticated)
 
         Raises:
-            RuntimeError: If client is locked out due to too many failures
+            AuthenticationError: If source is locked out or state capacity is exhausted
         """
         if not self._auth_enabled:
             return True, self._default_client_id
 
-        client_identifier = self._get_client_identifier(api_key)
+        with self._lock:
+            self._reclaim_expired_sources(self._clock())
+            record = self._auth_failures.get(source)
+            if record is not None and record.locked_until is not None:
+                raise AuthenticationError("Too many authentication failures. Please try again later.", error_code=E2002_AUTH_FAILED)
+            if record is None and len(self._auth_failures) >= self._max_auth_failure_records:
+                raise AuthenticationError("Authentication source capacity exhausted. Please try again later.", error_code=E2002_AUTH_FAILED)
+            return self._authenticate_key(api_key, source)
 
-        if self._is_locked_out(client_identifier):
-            self._logger.warning(f"Authentication blocked: Client locked out: {client_identifier[:20]}...")
-            raise AuthenticationError(
-                "Too many authentication failures. Please try again later.",
-                error_code=E2002_AUTH_FAILED,
-            )
+    def _authenticate_key(self, api_key: str | None, client_identifier: str) -> tuple[bool, str | None]:
+        """Validate credentials and update source state under the authentication lock."""
 
         if not api_key:
             self._record_failure(client_identifier)
@@ -296,7 +269,7 @@ class AuthenticationMiddleware(JWTHandlerMixin, APIKeyManagerMixin, Authenticati
         self._record_failure(client_identifier)
         self._logger.warning(
             "Authentication failed: Invalid API key",
-            extra={"failures": self._auth_failures.get(client_identifier, AuthFailureRecord()).count},
+            extra={"failures": len(self._auth_failures[client_identifier].failures)},
         )
         return False, None
 
@@ -307,8 +280,7 @@ class AuthenticationMiddleware(JWTHandlerMixin, APIKeyManagerMixin, Authenticati
         - X-API-Key: Standard API key header
         - Authorization: Bearer token format
 
-        For fallback, it uses the X-Forwarded-For or X-Real-IP headers
-        to get the client IP address.
+        Forwarded IP headers are never used as transport identity.
 
         Args:
             headers: Request headers dictionary
@@ -316,7 +288,7 @@ class AuthenticationMiddleware(JWTHandlerMixin, APIKeyManagerMixin, Authenticati
         Returns:
             Tuple of (api_key, client_id) where:
             - api_key: The extracted API key (or None if not present)
-            - client_id: The client identifier for rate limiting (IP or API key hash)
+            - client_id: None; identity comes from transport context or authentication
         """
         api_key = headers.get("x-api-key") or headers.get("X-API-Key")
 
@@ -325,18 +297,7 @@ class AuthenticationMiddleware(JWTHandlerMixin, APIKeyManagerMixin, Authenticati
             if auth_header and auth_header.startswith("Bearer "):
                 api_key = auth_header[7:]  # Remove "Bearer " prefix
 
-        client_ip = headers.get("x-forwarded-for") or headers.get("X-Forwarded-For") or headers.get("x-real-ip") or headers.get("X-Real-IP")
-
-        # If X-Forwarded-For contains multiple IPs, take the first one
-        if client_ip and "," in client_ip:
-            client_ip = client_ip.split(",")[0].strip()
-
-        if api_key:
-            return api_key, None  # authenticate() will hash it
-        elif client_ip:
-            return None, client_ip
-        else:
-            return None, None
+        return api_key or None, None
 
     def is_authentication_enabled(self) -> bool:
         """Check if authentication is enabled."""
