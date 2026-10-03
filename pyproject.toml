@@ -62,8 +62,18 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["prdiffer"]
 
+[tool.hatch.build]
+exclude = ["**/.env", "**/.secrets.toml"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"settings.toml" = "prdiffer/settings.toml"
+
+[tool.hatch.build.targets.sdist.force-include]
+"settings.toml" = "settings.toml"
+
 [dependency-groups]
 dev = [
+    "hatchling>=1.27.0",
     "ruff>=0.16.10",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",

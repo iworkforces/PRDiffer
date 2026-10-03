@@ -10,6 +10,13 @@ import pytest
 from prdiffer.infrastructure.settings import load_project_dotenv, project_root
 
 
+@pytest.fixture
+def dotenv_root(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    monkeypatch.setattr("prdiffer.infrastructure.settings.project_root", lambda: tmp_path)
+    monkeypatch.setenv("GITHUB_IGNORE_PATTERNS", "fixture-initial.lock")
+    return tmp_path
+
+
 @pytest.mark.unit
 def test_project_root_points_at_repo_with_settings_toml() -> None:
     root = project_root()
@@ -18,16 +25,21 @@ def test_project_root_points_at_repo_with_settings_toml() -> None:
 
 
 @pytest.mark.unit
-def test_load_project_dotenv_sets_github_ignore_patterns(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_load_project_dotenv_sets_github_ignore_patterns(monkeypatch: pytest.MonkeyPatch, dotenv_root: Path) -> None:
     """Project-root .env is loaded even when GITHUB_IGNORE_PATTERNS was unset."""
     monkeypatch.delenv("GITHUB_IGNORE_PATTERNS", raising=False)
-    # Real project .env may or may not exist in CI; only assert helper behavior.
+    (dotenv_root / ".env").write_text("GITHUB_IGNORE_PATTERNS=fixture.lock,fixture/\n", encoding="utf-8")
     loaded = load_project_dotenv(override=False)
-    if loaded is not None:
-        assert loaded.name == ".env"
-        assert loaded.parent == project_root()
-        # If the project's .env defines the key, it must appear in os.environ.
-        # (CI checkouts without .env skip this assertion.)
-        env_text = loaded.read_text(encoding="utf-8")
-        if "GITHUB_IGNORE_PATTERNS=" in env_text:
-            assert os.environ.get("GITHUB_IGNORE_PATTERNS")
+    assert loaded == dotenv_root / ".env"
+    assert os.environ["GITHUB_IGNORE_PATTERNS"] == "fixture.lock,fixture/"
+
+
+def test_project_dotenv_preserves_existing_environment(monkeypatch: pytest.MonkeyPatch, dotenv_root: Path) -> None:
+    (dotenv_root / ".env").write_text("GITHUB_IGNORE_PATTERNS=dotenv.lock\n", encoding="utf-8")
+    monkeypatch.setenv("GITHUB_IGNORE_PATTERNS", "ambient.lock")
+    load_project_dotenv()
+    assert os.environ["GITHUB_IGNORE_PATTERNS"] == "ambient.lock"
+
+
+def test_project_dotenv_returns_none_when_missing(dotenv_root: Path) -> None:
+    assert load_project_dotenv() is None
