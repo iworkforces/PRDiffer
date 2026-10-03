@@ -165,32 +165,47 @@ class TestThreadSafeCircuitBreaker:
 
     def test_initial_state_is_closed(self, circuit_breaker):
         assert circuit_breaker.state == CircuitState.CLOSED
-        assert circuit_breaker.can_execute() is True
+        permit = circuit_breaker.acquire()
+        assert permit is not None
+        circuit_breaker.release(permit)
 
     def test_opens_after_failure_threshold(self, circuit_breaker):
         for _ in range(3):
-            circuit_breaker.record_failure()
+            permit = circuit_breaker.acquire()
+            assert permit is not None
+            circuit_breaker.record_failure(permit)
 
         assert circuit_breaker.state == CircuitState.OPEN
-        assert circuit_breaker.can_execute() is False
+        assert circuit_breaker.acquire() is None
 
     def test_resets_on_success(self, circuit_breaker):
-        circuit_breaker.record_failure()
-        circuit_breaker.record_failure()
+        for _ in range(2):
+            permit = circuit_breaker.acquire()
+            assert permit is not None
+            circuit_breaker.record_failure(permit)
         assert circuit_breaker.failure_count == 2
 
-        circuit_breaker.record_success()
+        permit = circuit_breaker.acquire()
+        assert permit is not None
+        circuit_breaker.record_success(permit)
         assert circuit_breaker.failure_count == 0
 
     def test_transitions_to_half_open_after_timeout(self, circuit_breaker):
-        for _ in range(3):
-            circuit_breaker.record_failure()
-        assert circuit_breaker.state == CircuitState.OPEN
+        with patch("prdiffer.infrastructure.utils.circuit_breaker_core.time.time", return_value=100.0) as clock:
+            for _ in range(3):
+                permit = circuit_breaker.acquire()
+                assert permit is not None
+                circuit_breaker.record_failure(permit)
+            assert circuit_breaker.state == CircuitState.OPEN
+            assert circuit_breaker.acquire() is None
 
-        time.sleep(1.5)
+            clock.return_value = 101.5
 
-        assert circuit_breaker.can_execute() is True
-        assert circuit_breaker.state == CircuitState.HALF_OPEN
+            permit = circuit_breaker.acquire()
+            assert permit is not None
+            assert circuit_breaker.state == CircuitState.HALF_OPEN
+            assert circuit_breaker.acquire() is None
+            circuit_breaker.release(permit)
 
     def test_thread_safety_concurrent_failures(self, circuit_breaker):
         threads = []
@@ -199,7 +214,9 @@ class TestThreadSafeCircuitBreaker:
         def record_failures():
             try:
                 for _ in range(10):
-                    circuit_breaker.record_failure()
+                    permit = circuit_breaker.acquire()
+                    if permit is not None:
+                        circuit_breaker.record_failure(permit)
             except Exception as e:
                 errors.append(e)
 
@@ -213,6 +230,7 @@ class TestThreadSafeCircuitBreaker:
 
         assert len(errors) == 0
         assert circuit_breaker.state == CircuitState.OPEN
+        assert circuit_breaker.failure_count == 3
 
     def test_thread_safety_concurrent_successes(self, circuit_breaker):
         threads = []
@@ -221,7 +239,9 @@ class TestThreadSafeCircuitBreaker:
         def record_successes():
             try:
                 for _ in range(10):
-                    circuit_breaker.record_success()
+                    permit = circuit_breaker.acquire()
+                    assert permit is not None
+                    circuit_breaker.record_success(permit)
             except Exception as e:
                 errors.append(e)
 

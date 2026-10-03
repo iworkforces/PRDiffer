@@ -315,13 +315,13 @@ class TestRecordFailure:
     """Tests for _record_failure method."""
 
     def test_record_failure_with_circuit_breaker(self):
-        """Test record failure updates circuit breaker."""
+        """Attempt telemetry must not settle a logical breaker call."""
         handler = UnifiedRetryHandler(circuit_breaker_enabled=True)
         initial_failures = handler._circuit_breaker._failure_count
 
         handler._record_failure(Exception("test"))
 
-        assert handler._circuit_breaker._failure_count == initial_failures + 1
+        assert handler._circuit_breaker._failure_count == initial_failures
 
     def test_record_failure_with_health_tracker(self):
         """Test record failure updates health tracker."""
@@ -340,13 +340,13 @@ class TestRecordSuccess:
     """Tests for _record_success method."""
 
     def test_record_success_with_circuit_breaker(self):
-        """Test record success updates circuit breaker."""
+        """Health telemetry must not close or reset the breaker."""
         handler = UnifiedRetryHandler(circuit_breaker_enabled=True)
         handler._circuit_breaker._failure_count = 3
 
         handler._record_success(time.time())
 
-        assert handler._circuit_breaker._failure_count == 0
+        assert handler._circuit_breaker._failure_count == 3
 
     def test_record_success_with_health_tracker(self):
         """Test record success updates health tracker."""

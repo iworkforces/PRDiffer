@@ -4,6 +4,8 @@ import logging
 import time
 from abc import abstractmethod
 from collections.abc import Callable
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
 from prdiffer.domain.services.retry import RetryServiceInterface
@@ -16,7 +18,9 @@ from prdiffer.infrastructure.utils.error_classifier import (
     is_secondary_rate_limit_error,
     is_rate_limit_error as is_rate_limit_error_classifier,
     classify_error_for_retry,
+    is_breaker_failure,
 )
+from prdiffer.infrastructure.utils.circuit_breaker_core import CircuitBreaker, CircuitBreakerPermit, CircuitBreakerOpenException
 from prdiffer.infrastructure.utils.rate_limit_parser import (
     RateLimitInfo,
     extract_rate_limit_info,
@@ -73,7 +77,7 @@ class BaseUnifiedRetryHandler(RetryServiceInterface):
         self.rate_limit_reset_buffer = rate_limit_reset_buffer
         self.secondary_rate_limit_backoff = secondary_rate_limit_backoff
 
-        self._circuit_breaker: Any | None = None
+        self._circuit_breaker: CircuitBreaker | None = None
         self._health_tracker: Any | None = None
 
         if self.circuit_breaker_enabled:
@@ -136,13 +140,25 @@ class BaseUnifiedRetryHandler(RetryServiceInterface):
         kwargs: dict[str, Any],
         context: OperationContext | None = None,
     ) -> Any:
-        if self._circuit_breaker and self.circuit_breaker_enabled:
-            if not self._circuit_breaker.can_execute():
-                from prdiffer.infrastructure.utils.circuit_breaker_core import (
-                    CircuitBreakerOpenException,
-                )
+        with self._breaker_admission() as permit:
+            return self._execute_admitted(func, args, kwargs, context, permit)
 
-                raise CircuitBreakerOpenException(f"Circuit breaker is open. State: {self._circuit_breaker.state.value}")
+    @contextmanager
+    def _breaker_admission(self) -> Iterator[CircuitBreakerPermit | None]:
+        breaker = self._circuit_breaker if self.circuit_breaker_enabled else None
+        permit = breaker.acquire() if breaker is not None else None
+        if breaker is not None and permit is None:
+            raise CircuitBreakerOpenException(f"Circuit breaker is open. State: {breaker.state.value}")
+        try:
+            yield permit
+        finally:
+            if breaker is not None and permit is not None:
+                breaker.release(permit)
+
+    def _execute_admitted(
+        self, func: Callable[..., Any], args: tuple[Any, ...], kwargs: dict[str, Any],
+        context: OperationContext | None, permit: CircuitBreakerPermit | None,
+    ) -> Any:
 
         config = self._get_context_config(context)
         max_retries = config["max_retries"]
@@ -155,6 +171,8 @@ class BaseUnifiedRetryHandler(RetryServiceInterface):
         for attempt in range(max_retries):
             try:
                 result = self._execute_and_sleep(func, args, kwargs, 0.0)
+                if self._circuit_breaker is not None and permit is not None:
+                    self._circuit_breaker.record_success(permit)
 
                 if self._health_tracker and start_time:
                     self._record_success(start_time)
@@ -171,6 +189,8 @@ class BaseUnifiedRetryHandler(RetryServiceInterface):
                 is_last_attempt = attempt == max_retries - 1
 
                 if not should_retry or is_last_attempt:
+                    if self._circuit_breaker is not None and permit is not None and is_breaker_failure(exc):
+                        self._circuit_breaker.record_failure(permit)
                     log_permanent_failure(
                         self._logger,
                         exc,
@@ -272,16 +292,10 @@ class BaseUnifiedRetryHandler(RetryServiceInterface):
     def _record_success(self, start_time: float):
         duration = time.time() - start_time
 
-        if self._circuit_breaker:
-            self._circuit_breaker.record_success()
-
         if self._health_tracker:
             self._health_tracker.record_call(duration, success=True)
 
     def _record_failure(self, error: Exception):
-        if self._circuit_breaker:
-            self._circuit_breaker.record_failure()
-
         if self._health_tracker:
             error_type = categorize_error(error)
             self._health_tracker.record_call(0.0, success=False, error_type=error_type)

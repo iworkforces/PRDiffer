@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from typing import Any, cast
+from github import GithubException
 
 
 PERMANENT_ERROR_CODES = {"404", "401", "403"}
@@ -14,6 +15,15 @@ SECONDARY_RATE_LIMIT_PATTERNS = {
     "api abuse",
     "temporarily blocked",
 }
+
+
+def is_breaker_failure(error: Exception) -> bool:
+    if isinstance(error, GithubException):
+        if error.status in {401, 404, 422}:
+            return False
+        return (500 <= error.status < 600 or error.status == 429
+                or is_secondary_rate_limit_error(error) or is_rate_limit_error(error))
+    return isinstance(error, (TimeoutError, ConnectionError, OSError, EOFError))
 
 
 def is_permanent_error(error_code: str) -> bool:

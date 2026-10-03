@@ -14,7 +14,9 @@ from prdiffer.infrastructure.utils.retry.models import (
 from prdiffer.infrastructure.utils.retry_logger import log_retry_attempt
 from prdiffer.infrastructure.utils.error_classifier import (
     is_secondary_rate_limit_error,
+    is_breaker_failure,
 )
+from prdiffer.infrastructure.utils.circuit_breaker_core import CircuitBreakerPermit
 from prdiffer.infrastructure.utils.rate_limit_parser import (
     extract_rate_limit_info,
 )
@@ -59,13 +61,13 @@ class UnifiedRetryHandler(BaseUnifiedRetryHandler):
         context: OperationContext | None = None,
         **kwargs: Any,
     ) -> T:
-        if self._circuit_breaker and self.circuit_breaker_enabled:
-            if not self._circuit_breaker.can_execute():
-                from prdiffer.infrastructure.utils.circuit_breaker_core import (
-                    CircuitBreakerOpenException,
-                )
+        with self._breaker_admission() as permit:
+            return await self._execute_admitted_async(func, args, kwargs, context, permit)
 
-                raise CircuitBreakerOpenException(f"Circuit breaker is open. State: {self._circuit_breaker.state.value}")
+    async def _execute_admitted_async(
+        self, func: Callable[..., Coroutine[Any, Any, T]], args: tuple[Any, ...], kwargs: dict[str, Any],
+        context: OperationContext | None, permit: CircuitBreakerPermit | None,
+    ) -> T:
 
         config = self._get_context_config(context)
         max_retries = config["max_retries"]
@@ -78,6 +80,8 @@ class UnifiedRetryHandler(BaseUnifiedRetryHandler):
         for attempt in range(max_retries):
             try:
                 result = await func(*args, **kwargs)
+                if self._circuit_breaker is not None and permit is not None:
+                    self._circuit_breaker.record_success(permit)
 
                 if self._health_tracker and start_time:
                     self._record_success(start_time)
@@ -94,6 +98,8 @@ class UnifiedRetryHandler(BaseUnifiedRetryHandler):
                 is_last_attempt = attempt == max_retries - 1
 
                 if not should_retry or is_last_attempt:
+                    if self._circuit_breaker is not None and permit is not None and is_breaker_failure(exc):
+                        self._circuit_breaker.record_failure(permit)
                     self._log_permanent_failure(exc, should_retry, is_last_attempt)
                     raise
 
