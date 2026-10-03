@@ -37,9 +37,87 @@ from prdiffer.domain.exceptions import (
 )
 from prdiffer.domain.error_codes import E1001_INVALID_URL, E2002_AUTH_FAILED
 from fastmcp.exceptions import ToolError
+from prdiffer.domain.exceptions import (
+    GitLabAPIError, ResourceError, ProcessingError, CacheError, ConfigurationError, SecurityError,
+    InvalidRepositoryError, InvalidPRNumberError, InputSanitizationError, SuspiciousOperationError,
+    ProviderCapabilityUnavailableError,
+)
+import anyio
 
 
 ProviderName = Literal["github", "gitlab"]
+
+
+ERROR_CASES = [
+    (kind, None, None) for kind in (
+        AuthenticationError, RateLimitError, GitHubAPIError, GitLabAPIError, ValidationError,
+        ResourceError, ProcessingError, CacheError, ConfigurationError, SecurityError, TimeoutError,
+    )
+] + [
+    (InvalidURLError, ValidationError, "Invalid PR or merge request URL"),
+    (InvalidRepositoryError, ValidationError, "Invalid repository identifier"),
+    (InvalidPRNumberError, ValidationError, "Invalid pull request number"),
+    (InputSanitizationError, ValidationError, "Invalid input parameters"),
+    (SuspiciousOperationError, ValidationError, "Request contains suspicious patterns"),
+    (ValueError, ValidationError, "Invalid input value"),
+    (RuntimeError, GitHubAPIError, "Request processing failed"),
+    (KeyError, GitHubAPIError, "Missing required field"),
+    (AttributeError, GitHubAPIError, "Configuration error"),
+    (TypeError, GitHubAPIError, "Invalid input type"),
+    (ConnectionError, GitHubAPIError, "Connection to the VCS provider failed"),
+    (ProviderCapabilityUnavailableError, ToolError, "E5022_PROVIDER_CAPABILITY_UNAVAILABLE"),
+]
+
+
+@pytest.mark.parametrize("operation", ["get_pr_diff", "approve_pr", "describe_pr"])
+@pytest.mark.parametrize("kind,mapped,safe_message", ERROR_CASES, ids=[case[0].__name__ for case in ERROR_CASES])
+async def test_all_exception_outcomes_preserve_client_contract(operation, kind, mapped, safe_message, tool_registry, mock_metrics_tracker):
+    # Given: inject at a shared seam inside the original mapping boundary.
+    error = kind("distinctive provider failure")
+    tool_registry._check_rate_limit = Mock(side_effect=error)
+    capture = MCPToolCapture()
+    tool_registry.register_tools(capture)
+    arguments = {"pr_url": "https://github.com/owner/repo/pull/1"}
+    if operation == "approve_pr":
+        arguments["compliment"] = "Good work"
+    if operation == "describe_pr":
+        arguments["pr_description"] = "Description"
+    # When / Then: errors retain their previous type, code and exact message.
+    with pytest.raises(mapped or kind) as raised:
+        await getattr(capture, f"{operation}_tool")(**arguments)
+    if mapped is None:
+        assert raised.value is error
+    elif mapped is ToolError:
+        assert str(raised.value) == safe_message
+    else:
+        prefix = "Invalid request: " if mapped is ValidationError else f"Failed to complete {operation}: "
+        assert raised.value.message == prefix + safe_message
+        assert str(raised.value.error_code) == ("E1001_INVALID_URL" if mapped is ValidationError else "E5002_GITHUB_API_ERROR")
+    mock_metrics_tracker.track_request.assert_called_once()
+    assert mock_metrics_tracker.track_request.call_args.args[:2] == (operation, False)
+
+
+@pytest.mark.parametrize("operation", ["get_pr_diff", "approve_pr", "describe_pr"])
+@pytest.mark.parametrize("gate", ["authentication", "rate_limit"])
+async def test_cancelled_call_propagates_without_outcome(operation, gate, tool_registry, mock_metrics_tracker):
+    # Given: backend cancellation at either request gate.
+    cancellation = anyio.get_cancelled_exc_class()("cancelled")
+    if gate == "authentication":
+        tool_registry._authenticate_request = AsyncMock(side_effect=cancellation)
+    else:
+        tool_registry._check_rate_limit = Mock(side_effect=cancellation)
+    capture = MCPToolCapture()
+    tool_registry.register_tools(capture)
+    arguments = {"pr_url": "https://github.com/owner/repo/pull/1"}
+    if operation == "approve_pr":
+        arguments["compliment"] = "Good work"
+    if operation == "describe_pr":
+        arguments["pr_description"] = "Description"
+    # When / Then.
+    with pytest.raises(anyio.get_cancelled_exc_class()) as raised:
+        await getattr(capture, f"{operation}_tool")(**arguments)
+    assert raised.value is cancellation
+    mock_metrics_tracker.track_request.assert_not_called()
 
 
 @pytest.mark.parametrize("operation", ["get_pr_diff", "approve_pr", "describe_pr"])
@@ -131,8 +209,7 @@ async def test_http_missing_peer_fails_closed_once(tool_registry, mock_authentic
             await tool_registry._authenticate_request("id", 0, "valid", operation=operation)
     assert raised.value.error_code == E2002_AUTH_FAILED
     mock_authentication.authenticate.assert_not_called()
-    mock_metrics_tracker.track_request.assert_called_once()
-    assert mock_metrics_tracker.track_request.call_args.args[:2] == (operation, False)
+    mock_metrics_tracker.track_request.assert_not_called()
 
 
 @pytest.mark.parametrize("transport", ["http", "stdio"])
@@ -616,7 +693,7 @@ class TestLogMetricsAndReturnSuccess:
 
         result = tool_registry._log_metrics_and_return_success(start_time, sample_pr_diff)
 
-        mock_metrics_tracker.track_request.assert_called_once()
+        mock_metrics_tracker.track_request.assert_not_called()
         mock_logger.info.assert_called()
         assert result is sample_pr_diff
 
@@ -631,7 +708,7 @@ class TestHandleSecurityException:
         with pytest.raises(ValidationError):
             tool_registry._handle_security_exception(error, 0.0, "req-123", "https://github.com/owner/repo/pull/123")
 
-        mock_metrics_tracker.track_request.assert_called_once()
+        mock_metrics_tracker.track_request.assert_not_called()
         mock_logger.warning.assert_called()
 
 
@@ -645,7 +722,7 @@ class TestHandleValidationException:
         with pytest.raises(ValidationError):
             tool_registry._handle_validation_exception(error, 0.0, "req-123", "https://github.com/owner/repo/pull/123")
 
-        mock_metrics_tracker.track_request.assert_called_once()
+        mock_metrics_tracker.track_request.assert_not_called()
         mock_logger.warning.assert_called()
 
 
@@ -659,7 +736,7 @@ class TestHandleRuntimeException:
         with pytest.raises(GitHubAPIError):
             tool_registry._handle_runtime_exception(error, 0.0, "req-123", "https://github.com/owner/repo/pull/123")
 
-        mock_metrics_tracker.track_request.assert_called_once()
+        mock_metrics_tracker.track_request.assert_not_called()
         mock_logger.error.assert_called()
 
 
@@ -699,8 +776,7 @@ class TestAuthenticateRequest:
         with pytest.raises(AuthenticationError):
             await tool_registry._authenticate_request("req-123", 0.0, "api-key-123", operation=operation)
 
-        mock_metrics_tracker.track_request.assert_called_once()
-        assert mock_metrics_tracker.track_request.call_args.args[:2] == (operation, False)
+        mock_metrics_tracker.track_request.assert_not_called()
 
 
 class TestExecuteUseCaseWithCoalescing:
