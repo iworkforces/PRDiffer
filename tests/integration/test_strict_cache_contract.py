@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -19,6 +19,7 @@ from prdiffer.domain.entities.pr_diff_cache import (
 from prdiffer.domain.exceptions import FullDiffIncompleteError, FullDiffIncompleteReason
 from prdiffer.domain.interfaces.pr_diff_reader import PRDiffSnapshot
 from prdiffer.domain.usecases.pr_diff_usecases import GetPRDiffUseCase
+from prdiffer.infrastructure.cache.service import CacheService
 
 _MB = "b" * 40
 _HD = "c" * 40
@@ -115,6 +116,42 @@ async def test_github_v3_hit_and_miss() -> None:
     build2.assert_not_awaited()
     assert cache.sets == 1
     assert session2.closed is True
+
+
+@pytest.mark.integration
+@pytest.mark.anyio
+@pytest.mark.parametrize("mode", [(True, True), (True, False), (False, False)])
+@pytest.mark.parametrize("provider", ["github", "gitlab"])
+async def test_oversized_build_returns_intact_closes_and_removes_stale_cache(mode: tuple[bool, bool], provider: str) -> None:
+    # Given a real cache with a stale token under the exact session identity.
+    settings = Mock()
+    settings.get.side_effect = lambda key, default: {
+        "cache.max_bytes": 200,
+        "cache.use_hashed_keys": mode[0],
+        "cache.store_key_mapping": mode[1],
+    }.get(key, default)
+    with patch("prdiffer.infrastructure.settings.get_settings_service", return_value=settings):
+        cache = CacheService()
+    identity = (
+        github_full_diff_v3_identity("o", "r", 1, _MB, _HD)
+        if provider == "github"
+        else gitlab_full_diff_v1_identity("o", "r", 1, 9, "b", "s", "h", host="gitlab.example.com")
+    )
+    await cache.set(identity.cache_key, "stale-token", _pr())
+    value = PRDiff(
+        files=(FileDiffResponse(path="新.py", status=EDIT_TYPE.MODIFIED, stats=FileStats(additions=1, deletions=0), diff="雪" * 1000),)
+    )
+    session = FakeSession(identity, AsyncMock(return_value=value))
+    # When strict diff construction succeeds above the cache admission budget.
+    result = await GetPRDiffUseCase(SessionReader(session), cache).execute("o", "r", 1)
+    # Then non-admission neither truncates success nor leaks the session/stale state.
+    assert result is value
+    assert session.closed is True
+    assert await cache.get(identity.cache_key, "stale-token") is None
+    assert await cache.get(identity.cache_key, identity.validation_token) is None
+    assert cache.get_stats()["cache_bytes"] == 0
+    assert cache._entry_keys == {}
+    assert cache._key_mapping == {}
 
 
 @pytest.mark.integration

@@ -122,7 +122,9 @@ github.diff_max_workers = 4          # Maximum worker threads for parallel proce
 
 # Cache settings
 cache.ttl = 600  # 10 minutes
-cache.max_size = 1000
+cache.max_size = 1000  # Positive entry limit (default: 1000); both limits enforce LRU eviction
+# UTF-8 size of the complete compact JSON PRDiff payload, not exact Python heap usage.
+cache.max_bytes = 67108864  # Positive byte budget (default: 64 MiB); larger results are returned uncached
 cache.enabled = true
 
 # Cache key hashing settings
