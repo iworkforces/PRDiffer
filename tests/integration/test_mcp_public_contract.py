@@ -479,10 +479,9 @@ async def test_health_call_public_contract() -> None:
     assert result.is_error is False
     assert result.structured_content == {
         "status": "healthy",
-        "service": "prdiffer",
         "authentication": {"authentication_enabled": False},
-        "cache": {"size": 0},
-        "request_coalescing": {"pending_count": 0, "pending_keys": [], "total_waiters": 0},
+        "cache": {},
+        "request_coalescing": {"pending_count": 0, "total_waiters": 0},
     }
     assert "repository_cache" not in result.structured_content
     assert result.content

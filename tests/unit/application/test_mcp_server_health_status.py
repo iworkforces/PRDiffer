@@ -14,7 +14,7 @@ class DummyCoalescingService:
 def test_health_status_includes_cache_and_coalescing():
     settings_service = Mock()
     cache_service = Mock()
-    cache_service.get_stats.return_value = {"size": 1}
+    cache_service.get_stats.return_value = {"cache_size": 1, "keys": ["private-repository"]}
 
     logger = Mock()
     rate_limiter = Mock()
@@ -46,7 +46,7 @@ def test_health_status_includes_cache_and_coalescing():
 
     health = anyio.run(server._health_endpoints._get_health_status)
 
-    assert health["cache"] == {"size": 1}
+    assert health["cache"] == {"cache_size": 1}
     assert "repository_cache" not in health
-    assert health["request_coalescing"]["pending_count"] == 0
+    assert health["request_coalescing"] == {"pending_count": 0, "total_waiters": 0}
     assert health["authentication"]["authentication_enabled"] is False

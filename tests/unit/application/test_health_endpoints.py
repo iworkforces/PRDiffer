@@ -1,9 +1,72 @@
 """Comprehensive tests for health_endpoints.py."""
 
 import pytest
+import anyio
+import json
 from unittest.mock import Mock, AsyncMock
 
 from prdiffer.application.health_endpoints import HealthEndpoints
+from prdiffer.application.components.authentication import AuthenticationMiddleware
+from prdiffer.application.components.metrics_tracker import MetricsTracker
+from prdiffer.application.components.rate_limiter import RateLimiter
+from prdiffer.application.components.health_monitor import HealthMonitor
+from prdiffer.infrastructure.cache.service import CacheService
+from prdiffer.infrastructure.utils.coalescing_service import RequestCoalescingService
+from prdiffer.domain.entities.pr_diff import PRDiff
+
+
+@pytest.mark.parametrize("failed_monitor", [False, True])
+async def test_public_health_real_components_redact_identifiers(monkeypatch, failed_monitor):
+    # Given: real sensitive statistics and an outstanding request.
+    monkeypatch.setenv("MCP_AUTH_ENABLED", "true")
+    monkeypatch.setenv("MCP_API_KEYS", "privacy_api_key_12345678901")
+    auth = AuthenticationMiddleware()
+    auth._default_client_id = "privacy-client-identifier"
+    tracker = MetricsTracker()
+    limiter = RateLimiter()
+    monitor = HealthMonitor(tracker, limiter)
+    cache = CacheService()
+    key = "github-full-diff-v3:privacy-owner:privacy-repository:987654321:privacy-base-sha:privacy-head-sha"
+    await cache.set(key, "privacy-head-sha", PRDiff(files=()))
+    coalescer = RequestCoalescingService(logger=Mock())
+    entered, release = anyio.Event(), anyio.Event()
+
+    async def pending():
+        entered.set()
+        await release.wait()
+        return PRDiff(files=())
+
+    async def run_pending():
+        await coalescer.coalesce(key, pending)
+
+    if failed_monitor:
+        limiter.get_rate_limit_info = Mock(side_effect=RuntimeError("privacy-monitor-distinctive-error"))
+    endpoints = HealthEndpoints(monitor, tracker, cache, auth, coalescer, Mock())
+    async with anyio.create_task_group() as group:
+        group.start_soon(run_pending)
+        await entered.wait()
+        # When: zero-argument public health, without authentication.
+        result = await endpoints.get_health_handler()()
+        # Then: fixed aggregate keys only; internal statistics stay intact.
+        assert set(result) == {
+            "status", "uptime_seconds", "uptime_human", "total_requests", "successful_requests", "failed_requests",
+            "success_rate", "current_rate", "rate_limit", "rate_limit_window", "remaining_requests",
+            "authentication", "cache", "request_coalescing",
+        }
+        assert set(result["authentication"]) == {"authentication_enabled", "api_keys_configured", "admin_api_key_configured"}
+        assert set(result["cache"]) == {
+            "cache_size", "cache_bytes", "cache_max_bytes", "cache_hits", "cache_misses", "cache_expirations",
+            "cache_evictions_ttl", "cache_evictions_size",
+        }
+        assert result["request_coalescing"] == {"pending_count": 1, "total_waiters": 1}
+        assert "privacy-" not in json.dumps(result)
+        assert "987654321" not in json.dumps(result)
+        assert result["status"] == ("unhealthy" if failed_monitor else "healthy")
+        assert tracker.get_metrics_summary()["total_requests"] == 0
+        assert key in cache.get_stats()["keys"]
+        assert key in (await coalescer.get_stats())["pending_keys"]
+        assert auth.get_status()["default_client_id"] == "privacy-client-identifier"
+        release.set()
 
 
 class TestHealthEndpoints:
@@ -74,7 +137,7 @@ class TestHealthEndpoints:
         result = await handler()
 
         assert result["status"] == "unhealthy"
-        assert "error" in result
+        assert result == {"status": "unhealthy"}
         health_endpoints._logger.error.assert_called()
 
     @pytest.mark.anyio
