@@ -16,6 +16,16 @@ DEFAULT_MAX_WAITERS = 100
 
 
 @dataclass
+class CoalescedOwnerCancelledError(RuntimeError):
+    """The shared owner was cancelled, independently of this waiter."""
+
+    key: str
+
+    def __str__(self) -> str:
+        return f"Coalesced request owner cancelled for key '{self.key}'"
+
+
+@dataclass
 class CoalescedRequest:
     key: str
     event: anyio.Event = field(default_factory=anyio.Event)
@@ -97,8 +107,7 @@ class RequestCoalescingService:
                     if self._pending_requests:
                         oldest_key = next(iter(self._pending_requests))
                         oldest_request = self._pending_requests[oldest_key]
-                        oldest_request.event.set()  # Signal waiters to stop waiting
-                        oldest_request.exception = TimeoutError("Evicted due to pending request limit")
+                        self._settle_request(oldest_request, exception=TimeoutError("Evicted due to pending request limit"))
                         del self._pending_requests[oldest_key]
                         self._logger.info(f"Evicted pending request for key '{oldest_key}' to make room for new request")
 
@@ -155,7 +164,17 @@ class RequestCoalescingService:
             self._logger.error(f"Coalesced request failed for key '{key}'")
             raise
         finally:
-            await self._decrement_waiter(key)
+            # Level cancellation must not interrupt acquisition of the bookkeeping lock.
+            with anyio.CancelScope(shield=True):
+                await self._decrement_waiter(existing_request)
+
+    def _settle_request(self, request: CoalescedRequest, *, result: Any = None, exception: BaseException | None = None) -> None:
+        """Settle once while holding the service lock, including pending-cap eviction."""
+        if request.event.is_set():
+            return
+        request.result = result
+        request.exception = exception
+        request.event.set()
 
     async def _publish_terminal(
         self,
@@ -167,12 +186,7 @@ class RequestCoalescingService:
     ) -> None:
         """Publish terminal result/exception, signal waiters, remove exact owner entry."""
         async with self._lock:
-            if exception is not None:
-                request.exception = exception
-            else:
-                request.result = result
-                request.exception = None
-            request.event.set()
+            self._settle_request(request, result=result, exception=exception)
             pending = self._pending_requests.get(key)
             if pending is request:
                 del self._pending_requests[key]
@@ -188,20 +202,8 @@ class RequestCoalescingService:
             with anyio.fail_after(timeout):
                 result = await fetch_func()
 
-            async with self._lock:
-                if key in self._pending_requests and self._pending_requests[key] is new_request:
-                    waiter_count = self._pending_requests[key].request_count
-                    new_request.result = result
-                    new_request.exception = None
-                    new_request.event.set()
-                    del self._pending_requests[key]
-                    self._logger.info(f"Request completed for key '{key}' (served {waiter_count} waiters)")
-                else:
-                    new_request.result = result
-                    new_request.exception = None
-                    new_request.event.set()
-                    self._logger.warning(f"Request completed for key '{key}' but state was modified")
-
+            await self._publish_terminal(key, new_request, result=result)
+            self._logger.info(f"Request completed for key '{key}' (served {new_request.request_count} waiters)")
             return result
 
         except TimeoutError:
@@ -218,25 +220,21 @@ class RequestCoalescingService:
             self._logger.error(f"Request failed for key '{key}': {e}")
             raise
 
-        except BaseException as e:
-            # Owner cancellation (and other BaseException): publish terminal, wake waiters,
-            # drop pending entry, then re-raise so waiters terminate with the same cancel.
+        except anyio.get_cancelled_exc_class():
+            # Cancellation belongs to the owner task, not independent joined callers.
             with anyio.CancelScope(shield=True):
-                await self._publish_terminal(key, new_request, exception=e)
+                await self._publish_terminal(key, new_request, exception=CoalescedOwnerCancelledError(key))
                 self._logger.info(f"Request owner cancelled for key '{key}'; waiters notified")
             raise
 
-    async def _decrement_waiter(self, key: str) -> None:
-        async with self._lock:
-            if key not in self._pending_requests:
-                return
-            pending = self._pending_requests[key]
-            if pending.request_count > 0:
-                pending.request_count -= 1
+        except BaseException as e:
+            with anyio.CancelScope(shield=True):
+                await self._publish_terminal(key, new_request, exception=e)
+            raise
 
-            if pending.request_count <= 0 and pending.event.is_set():
-                del self._pending_requests[key]
-                self._logger.debug(f"Cleaned up request for key '{key}' (no more waiters)")
+    async def _decrement_waiter(self, request: CoalescedRequest) -> None:
+        async with self._lock:
+            request.request_count -= 1
 
     async def clear(self) -> None:
         async with self._lock:
