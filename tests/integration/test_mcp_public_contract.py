@@ -306,7 +306,7 @@ class AllowAllRateLimiter:
 
 
 class AllowAllAuthentication:
-    def authenticate(self, api_key: str | None) -> tuple[bool, str]:
+    def authenticate(self, api_key: str | None, *, source: str) -> tuple[bool, str]:
         return True, "contract-client"
 
     def extract_client_identifier(self, headers: dict[str, str]) -> tuple[None, str]:

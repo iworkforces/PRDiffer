@@ -91,12 +91,12 @@ class TestAuthenticationPerformance:
         auth._hashed_api_keys.add(auth._hash_api_key(api_key))
 
         # Warm up
-        auth.authenticate(api_key)
+        auth.authenticate(api_key, source="stdio:local")
 
         start = time.perf_counter()
         iterations = 10000
         for _ in range(iterations):
-            auth.authenticate(api_key)
+            auth.authenticate(api_key, source="stdio:local")
         elapsed = time.perf_counter() - start
 
         assert elapsed < 1.0, f"Authentication too slow: {elapsed:.3f}s for {iterations} operations"

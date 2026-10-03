@@ -11,6 +11,98 @@ from unittest.mock import Mock, patch
 import pytest
 
 from prdiffer.application.components.authentication import AuthenticationMiddleware
+from prdiffer.domain.exceptions import AuthenticationError
+
+
+@pytest.fixture
+def source_auth(monkeypatch):
+    monkeypatch.setenv("MCP_AUTH_ENABLED", "true")
+    monkeypatch.setenv("MCP_API_KEYS", "valid_key_12345678901")
+    clock = Mock(return_value=1000.0)
+    return AuthenticationMiddleware(clock=clock), clock
+
+
+def test_source_lock_blocks_rotated_and_valid_keys_until_fixed_expiry(source_auth):
+    auth, clock = source_auth
+    for index in range(5):
+        assert auth.authenticate(f"wrong_key_{index:020}", source="http:peer") == (False, None)
+    with patch.object(auth, "_hash_api_key", side_effect=AssertionError("blocked key validated")):
+        clock.return_value = 1059.0
+        with pytest.raises(AuthenticationError):
+            auth.authenticate("valid_key_12345678901", source="http:peer")
+    assert auth.authenticate("valid_key_12345678901", source="http:other")[0]
+    clock.return_value = 1060.0
+    assert auth.authenticate("valid_key_12345678901", source="http:peer")[0]
+
+
+def test_source_failures_use_rolling_window(source_auth):
+    auth, clock = source_auth
+    for timestamp in (1000.0, 1030.0, 1040.0, 1050.0):
+        clock.return_value = timestamp
+        assert not auth.authenticate(None, source="stdio:local")[0]
+    clock.return_value = 1060.0
+    assert not auth.authenticate(None, source="stdio:local")[0]
+    assert auth.authenticate("valid_key_12345678901", source="stdio:local")[0]
+
+
+def test_source_capacity_refuses_unknown_valid_keys_and_preserves_locks(source_auth):
+    auth, clock = source_auth
+    for index in range(500):
+        assert not auth.authenticate(None, source=f"http:{index}")[0]
+    for _ in range(4):
+        assert not auth.authenticate(None, source="http:0")[0]
+    with pytest.raises(AuthenticationError):
+        auth.authenticate("valid_key_12345678901", source="http:501")
+    with pytest.raises(AuthenticationError):
+        auth.authenticate("valid_key_12345678901", source="http:0")
+    assert len(auth._auth_failures) == 500
+    assert auth.authenticate("valid_key_12345678901", source="http:1")[0]
+    clock.return_value = 1060.0
+    assert auth.authenticate("valid_key_12345678901", source="http:501")[0]
+    assert not auth._auth_failures
+
+
+def test_source_reclaims_old_failures_without_evicting_later_live_lock(source_auth):
+    auth, clock = source_auth
+    for index in range(500):
+        auth.authenticate(None, source=f"http:{index}")
+    clock.return_value = 1050.0
+    for _ in range(4):
+        auth.authenticate(None, source="http:0")
+    clock.return_value = 1060.0
+    assert auth.authenticate("valid_key_12345678901", source="http:new")[0]
+    with pytest.raises(AuthenticationError):
+        auth.authenticate("valid_key_12345678901", source="http:0")
+    assert len(auth._auth_failures) == 1
+    clock.return_value = 1110.0
+    assert auth.authenticate("valid_key_12345678901", source="http:0")[0]
+
+
+def test_source_success_clears_failures_and_preserves_rate_identity(source_auth, monkeypatch):
+    auth, _ = source_auth
+    for _ in range(4):
+        auth.authenticate(None, source="http:peer")
+    success, identity = auth.authenticate("valid_key_12345678901", source="http:peer")
+    assert success and identity == "api_key_" + auth._hash_api_key("valid_key_12345678901")[:16]
+    for _ in range(4):
+        assert auth.authenticate(None, source="http:peer") == (False, None)
+    assert auth.authenticate("valid_key_12345678901", source="http:peer")[0]
+    monkeypatch.setenv("MCP_AUTH_ENABLED", "false")
+    disabled = AuthenticationMiddleware()
+    for _ in range(6):
+        assert disabled.authenticate(None, source="stdio:local") == (True, "anonymous")
+    assert not disabled._auth_failures
+
+
+def test_source_concurrent_failures_lock_atomically(source_auth):
+    from concurrent.futures import ThreadPoolExecutor
+
+    auth, _ = source_auth
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        results = list(executor.map(lambda _: auth.authenticate(None, source="http:peer"), range(5)))
+    assert results == [(False, None)] * 5
+    with pytest.raises(AuthenticationError):
+        auth.authenticate("valid_key_12345678901", source="http:peer")
 
 
 class TestAuthenticationMiddlewareInitialization:
@@ -152,7 +244,7 @@ class TestAuthenticationMiddlewareAuthenticate:
         """Test authentication disabled allows all requests."""
         auth = AuthenticationMiddleware()
 
-        is_auth, client_id = auth.authenticate(None)
+        is_auth, client_id = auth.authenticate(None, source="stdio:local")
 
         assert is_auth is True
         assert client_id == "anonymous"
@@ -162,7 +254,7 @@ class TestAuthenticationMiddlewareAuthenticate:
         """Test authentication fails when no key provided."""
         auth = AuthenticationMiddleware()
 
-        is_auth, client_id = auth.authenticate(None)
+        is_auth, client_id = auth.authenticate(None, source="stdio:local")
 
         assert is_auth is False
         assert client_id is None
@@ -172,7 +264,7 @@ class TestAuthenticationMiddlewareAuthenticate:
         """Test authentication succeeds with valid key."""
         auth = AuthenticationMiddleware()
 
-        is_auth, client_id = auth.authenticate("test_key_12345678901")
+        is_auth, client_id = auth.authenticate("test_key_12345678901", source="stdio:local")
 
         assert is_auth is True
         assert client_id is not None
@@ -183,7 +275,7 @@ class TestAuthenticationMiddlewareAuthenticate:
         """Test authentication fails with invalid key."""
         auth = AuthenticationMiddleware()
 
-        is_auth, client_id = auth.authenticate("wrong_key_too_short")
+        is_auth, client_id = auth.authenticate("wrong_key_too_short", source="stdio:local")
 
         assert is_auth is False
         assert client_id is None
@@ -196,7 +288,7 @@ class TestAuthenticationMiddlewareAuthenticate:
         """Test admin API key authentication."""
         auth = AuthenticationMiddleware()
 
-        is_auth, client_id = auth.authenticate("admin_secret_12345678901")
+        is_auth, client_id = auth.authenticate("admin_secret_12345678901", source="stdio:local")
 
         assert is_auth is True
         assert client_id == "admin"
@@ -212,8 +304,8 @@ class TestAuthenticationMiddlewareAuthenticate:
         """Test authentication with multiple valid keys."""
         auth = AuthenticationMiddleware()
 
-        is_auth1, client_id1 = auth.authenticate("key1_12345678901")
-        is_auth2, client_id2 = auth.authenticate("key2_12345678901")
+        is_auth1, client_id1 = auth.authenticate("key1_12345678901", source="stdio:local")
+        is_auth2, client_id2 = auth.authenticate("key2_12345678901", source="stdio:local")
 
         assert is_auth1 is True
         assert is_auth2 is True
@@ -271,7 +363,7 @@ class TestAuthenticationMiddlewareExtractClientIdentifier:
         api_key, client_id = auth.extract_client_identifier({"x-forwarded-for": "192.168.1.1"})
 
         assert api_key is None
-        assert client_id == "192.168.1.1"
+        assert client_id is None
 
     @patch.dict(os.environ, {"MCP_AUTH_ENABLED": "false"})
     def test_extract_x_real_ip_header(self):
@@ -281,7 +373,7 @@ class TestAuthenticationMiddlewareExtractClientIdentifier:
         api_key, client_id = auth.extract_client_identifier({"x-real-ip": "10.0.0.1"})
 
         assert api_key is None
-        assert client_id == "10.0.0.1"
+        assert client_id is None
 
     @patch.dict(os.environ, {"MCP_AUTH_ENABLED": "false"})
     def test_extract_x_forwarded_for_multiple_ips(self):
@@ -291,7 +383,7 @@ class TestAuthenticationMiddlewareExtractClientIdentifier:
         api_key, client_id = auth.extract_client_identifier({"x-forwarded-for": "192.168.1.1, 10.0.0.1, 172.16.0.1"})
 
         assert api_key is None
-        assert client_id == "192.168.1.1"
+        assert client_id is None
 
     @patch.dict(os.environ, {"MCP_AUTH_ENABLED": "false"})
     def test_extract_no_identifier(self):
@@ -519,7 +611,7 @@ class TestAuthenticationMiddlewareEdgeCases:
         """Test authenticating with empty string."""
         auth = AuthenticationMiddleware()
 
-        is_auth, client_id = auth.authenticate("")
+        is_auth, client_id = auth.authenticate("", source="stdio:local")
 
         assert is_auth is True  # Disabled, so allows all
         assert client_id == "anonymous"
@@ -529,7 +621,7 @@ class TestAuthenticationMiddlewareEdgeCases:
         """Test authenticating with empty string when enabled."""
         auth = AuthenticationMiddleware()
 
-        is_auth, client_id = auth.authenticate("")
+        is_auth, client_id = auth.authenticate("", source="stdio:local")
 
         assert is_auth is False
         assert client_id is None
@@ -562,7 +654,7 @@ class TestAuthenticationMiddlewareEdgeCases:
         auth = AuthenticationMiddleware()
         auth.add_api_key("TestKey1234567890")
 
-        is_auth, _ = auth.authenticate("testkey1234567890")  # Lowercase
+        is_auth, _ = auth.authenticate("testkey1234567890", source="stdio:local")  # Lowercase
 
         assert is_auth is False
 

@@ -523,12 +523,12 @@ class TestAuthenticationErrorScenarios:
         )
 
     def test_authentication_with_invalid_api_key(self, server):
-        is_auth, client_id = server._authentication.authenticate("invalid_key")
+        is_auth, client_id = server._authentication.authenticate("invalid_key", source="stdio:local")
 
         assert is_auth is True
 
     def test_authentication_with_none_api_key(self, server):
-        is_auth, client_id = server._authentication.authenticate(None)
+        is_auth, client_id = server._authentication.authenticate(None, source="stdio:local")
 
         assert is_auth is True
         assert client_id == "anonymous"

@@ -169,6 +169,11 @@ logging.json_pretty = false  # Pretty-print JSON output (development only)
 # - MCP_AUTH_ENABLED=true enables API key authentication (disabled when unset or false)
 # - MCP_API_KEYS="key1,key2,key3" (comma-separated) and/or MCP_ADMIN_API_KEY
 # Brute-force protection uses built-in defaults: 5 failures per minute, 60s lockout.
+# Failures share a bucket per HTTP transport peer; forwarded headers are ignored.
+# HTTP proxy-header rewriting is disabled, so clients behind one proxy share its bucket.
+# All stdio callers share the local "stdio:local" bucket. Blocked attempts do not extend lockout.
+# State is capped at 500 sources: unknown sources are refused while full, even with valid keys,
+# until expired records are reclaimed. Live lockouts are never evicted to admit another source.
 
 # Security headers for HTTP/SSE transports
 # NOTE: FastMCP runs on uvicorn. For production deployments, use a reverse proxy
