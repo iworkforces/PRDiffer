@@ -73,10 +73,16 @@ Review the pull request identified by `$1`. `$1` is the sole argument and is
    exactly `pr-{pr_number}-review-report.yml`. Form `report_path` only as that
    direct entry under `canonical_cwd`; reject any untrusted directory component
    and require its parent to be the authorized report parent.
-2. Call `prdiffer-mcp_get_pr_diff` MCP tool with `pr_url` set to `canonical_pr_url`. If the
-   fetch fails, is incomplete, or does not expose `result.files`, stop
-   immediately without creating or changing the report.
-3. Create one immutable review snapshot from every `result.files` entry in
+2. Call `prdiffer-mcp_get_pr_diff` MCP tool with `pr_url` set to `canonical_pr_url`.
+   The returned payload exposes a top-level `files` array (`{"files": [...]}`),
+   not `result.files`. If the tool display is truncated and the full output is
+   saved to a file, inspect the saved payload under the confined-read requirements
+   above before assessing completeness. Display truncation alone does not mean
+   the diff is incomplete. If the complete payload cannot be inspected within
+   those requirements, the fetch fails, the payload is incomplete, or the
+   top-level `files` array is missing, stop immediately without creating or
+   changing the report.
+3. Create one immutable review snapshot from every top-level `files` entry in
    provider order. For each entry, include its `path`, `previous_path` when
    present, `status`, `stats`, and complete full-context `diff`. Do not
    partition, sample, truncate, or omit files, statuses, or file types.
@@ -224,7 +230,7 @@ Review the pull request identified by `$1`. `$1` is the sole argument and is
    snapshot in entry count, order, keys, or values, stop before reading or writing
    the report.
 6. The parent is the sole report reader and writer. It must independently review
-   every `result.files` entry from first line through last line of the complete
+   every top-level `files` entry from first line through last line of the complete
    full-context `diff`, using only parent-selected confined LSP and local-source
    reads under the requirements above.
    For each candidate, independently confirm it against the full diff and local
@@ -329,7 +335,7 @@ Review the pull request identified by `$1`. `$1` is the sole argument and is
      plus all and only the approved new findings, then serialize the complete
      document in memory.
     Steps 10 and 11 are mutually exclusive. For every finding, set
-    `relevant_file` to the `path` of the matching `result.files` entry. Before
+     `relevant_file` to the `path` of the matching top-level `files` entry. Before
     any publication, parse and revalidate the complete serialized document under
     the universal YAML policy: its sole top-level key must be `findings`, every
     finding must use exactly the five keys below with string `relevant_file`,

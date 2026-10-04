@@ -37,10 +37,26 @@ class HealthEndpoints:
 
     async def _get_health_status(self) -> dict[str, Any]:
         """Get health status and metrics for the MCP server."""
-        health_status = self._health_monitor.check_health()
-        health_status["authentication"] = self._authentication.get_status()
-        health_status["cache"] = self._cache_service.get_stats()
-        health_status["request_coalescing"] = await self._request_coalescing.get_stats()
+        # Project each component independently; diagnostic identifiers and errors
+        # remain available internally but never cross this unauthenticated boundary.
+        monitor = self._health_monitor.check_health()
+        health_status = {key: monitor[key] for key in (
+            "status", "uptime_seconds", "uptime_human", "total_requests", "successful_requests", "failed_requests",
+            "success_rate", "current_rate", "rate_limit", "rate_limit_window", "remaining_requests",
+        ) if key in monitor}
+        authentication = self._authentication.get_status()
+        health_status["authentication"] = {key: authentication[key] for key in (
+            "authentication_enabled", "api_keys_configured", "admin_api_key_configured",
+        ) if key in authentication}
+        cache = self._cache_service.get_stats()
+        health_status["cache"] = {key: cache[key] for key in (
+            "cache_size", "cache_bytes", "cache_max_bytes", "cache_hits", "cache_misses", "cache_expirations",
+            "cache_evictions_ttl", "cache_evictions_size",
+        ) if key in cache}
+        coalescing = await self._request_coalescing.get_stats()
+        health_status["request_coalescing"] = {key: coalescing[key] for key in (
+            "pending_count", "total_waiters",
+        ) if key in coalescing}
         return health_status
 
     def get_health_handler(self) -> Callable[[], Awaitable[dict[str, Any]]]:
@@ -56,8 +72,7 @@ class HealthEndpoints:
                     error=str(e),
                     error_type=type(e).__name__,
                 )
-                safe_message = self._create_safe_error_message(e)
-                return {"status": "unhealthy", "error": safe_message}
+                return {"status": "unhealthy"}
 
         return health
 

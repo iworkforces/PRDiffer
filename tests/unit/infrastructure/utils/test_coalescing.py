@@ -2,14 +2,255 @@
 
 import pytest
 import anyio
+from typing import Any
 from unittest.mock import Mock, AsyncMock, patch
 
 from prdiffer.infrastructure.utils.coalescing_service import (
     RequestCoalescingService,
     CoalescedRequest,
+    CoalescedOwnerCancelledError,
     get_request_coalescing_service,
     DEFAULT_MAX_WAITERS,
 )
+
+
+class ObservedCoalescer(RequestCoalescingService):
+    """Signal joined waiters without relying on scheduling delays."""
+
+    def __init__(self) -> None:
+        super().__init__(logger=Mock(), max_waiters=50)
+        self.joined = anyio.Event()
+        self.waiter_gate: anyio.Event | None = None
+        self.observed: CoalescedRequest | None = None
+        self.cleanup_started = anyio.Event()
+
+    async def _wait_for_request(self, existing_request: CoalescedRequest, key: str, timeout: float) -> Any:
+        self.observed = existing_request
+        self.joined.set()
+        if self.waiter_gate is not None:
+            await self.waiter_gate.wait()
+        return await super()._wait_for_request(existing_request, key, timeout)
+
+    async def _decrement_waiter(self, request: CoalescedRequest) -> None:
+        self.cleanup_started.set()
+        await super()._decrement_waiter(request)
+
+
+@pytest.mark.anyio
+async def test_owner_only_cancellation_is_ordinary_for_independent_waiter() -> None:
+    service = ObservedCoalescer()
+    started, owner_done, waiter_done = anyio.Event(), anyio.Event(), anyio.Event()
+    owner_scope = anyio.CancelScope()
+    outcomes: list[BaseException] = []
+    calls = 0
+
+    async def fetch() -> str:
+        nonlocal calls
+        calls += 1
+        started.set()
+        await anyio.Event().wait()
+        return "unreachable"
+
+    async def owner() -> None:
+        with owner_scope:
+            try:
+                await service.coalesce("shared", fetch)
+            except anyio.get_cancelled_exc_class() as exc:
+                outcomes.append(exc)
+                raise
+            finally:
+                owner_done.set()
+
+    async def waiter() -> None:
+        try:
+            await service.coalesce("shared", fetch)
+        except BaseException as exc:
+            outcomes.append(exc)
+        finally:
+            waiter_done.set()
+
+    with anyio.fail_after(2):
+        async with anyio.create_task_group() as group:
+            group.start_soon(owner)
+            await started.wait()
+            group.start_soon(waiter)
+            await service.joined.wait()
+            assert (await service.get_stats())["total_waiters"] == 2
+            owner_scope.cancel()
+            await owner_done.wait()
+            await waiter_done.wait()
+    assert isinstance(outcomes[0], anyio.get_cancelled_exc_class())
+    assert isinstance(outcomes[1], Exception)
+    assert isinstance(outcomes[1], CoalescedOwnerCancelledError)
+    assert outcomes[1].key == "shared"
+    assert calls == 1
+    assert await service.get_stats() == {"pending_count": 0, "pending_keys": [], "total_waiters": 0}
+    retry = AsyncMock(return_value="fresh")
+    assert await service.coalesce("shared", retry) == "fresh"
+    retry.assert_awaited_once()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("timeout", [30.0, 0.0])
+async def test_waiter_cleanup_is_shielded_while_owner_and_sibling_live(timeout: float) -> None:
+    service = ObservedCoalescer()
+    started, release, done = anyio.Event(), anyio.Event(), anyio.Event()
+    scope = anyio.CancelScope()
+    results: list[str] = []
+    failures: list[BaseException] = []
+    fetch = AsyncMock()
+
+    async def blocked_fetch() -> str:
+        await fetch()
+        started.set()
+        await release.wait()
+        return "shared-result"
+
+    async def normal() -> None:
+        results.append(await service.coalesce("key", blocked_fetch))
+
+    async def cancelled_waiter() -> None:
+        with scope:
+            try:
+                await service.coalesce("key", blocked_fetch, timeout=timeout)
+            except BaseException as exc:
+                failures.append(exc)
+                if isinstance(exc, anyio.get_cancelled_exc_class()):
+                    raise
+            finally:
+                done.set()
+
+    with anyio.fail_after(2):
+        async with anyio.create_task_group() as group:
+            group.start_soon(normal)
+            await started.wait()
+            group.start_soon(normal)
+            await service.joined.wait()
+            service.joined = anyio.Event()
+            group.start_soon(cancelled_waiter)
+            await service.joined.wait()
+            if timeout:
+                async with service._lock:
+                    scope.cancel()
+                    await service.cleanup_started.wait()
+                await done.wait()
+            else:
+                await done.wait()
+            assert (await service.get_stats())["total_waiters"] == 2
+            release.set()
+    assert len(failures) == 1
+    assert isinstance(failures[0], anyio.get_cancelled_exc_class() if timeout else TimeoutError)
+    assert results == ["shared-result", "shared-result"]
+    fetch.assert_awaited_once()
+    assert (await service.get_stats())["pending_count"] == 0
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("late_failure", [False, True])
+async def test_eviction_settles_once_and_old_waiter_cannot_decrement_successor(late_failure: bool) -> None:
+    service = ObservedCoalescer()
+    service._max_pending_requests = 1
+    service.waiter_gate = anyio.Event()
+    started, release, old_done, waiter_done = anyio.Event(), anyio.Event(), anyio.Event(), anyio.Event()
+    successor_started, successor_release = anyio.Event(), anyio.Event()
+    failures: list[Exception] = []
+    owner_outcomes: list[str | ValueError] = []
+    late_error = ValueError("late failure")
+
+    async def old_fetch() -> str:
+        started.set()
+        await release.wait()
+        if late_failure:
+            raise late_error
+        return "late success"
+
+    async def old_owner() -> None:
+        try:
+            owner_outcomes.append(await service.coalesce("key", old_fetch))
+        except ValueError as exc:
+            owner_outcomes.append(exc)
+        finally:
+            old_done.set()
+
+    async def old_waiter() -> None:
+        try:
+            await service.coalesce("key", old_fetch)
+        except Exception as exc:
+            failures.append(exc)
+        finally:
+            waiter_done.set()
+
+    async def successor_fetch() -> str:
+        successor_started.set()
+        await successor_release.wait()
+        return "fresh"
+
+    with anyio.fail_after(2):
+        async with anyio.create_task_group() as group:
+            group.start_soon(old_owner)
+            await started.wait()
+            group.start_soon(old_waiter)
+            await service.joined.wait()
+            old_request = service.observed
+            assert old_request is not None
+            await service.coalesce("evictor", AsyncMock(return_value="eviction"))
+            eviction = old_request.exception
+            assert isinstance(eviction, TimeoutError)
+            group.start_soon(service.coalesce, "key", successor_fetch)
+            await successor_started.wait()
+            release.set()
+            await old_done.wait()
+            assert owner_outcomes == [late_error if late_failure else "late success"]
+            assert old_request.exception is eviction
+            service.waiter_gate.set()
+            await waiter_done.wait()
+            assert await service.get_stats() == {"pending_count": 1, "pending_keys": ["key"], "total_waiters": 1}
+            successor_release.set()
+    assert failures == [eviction]
+    assert await service.get_stats() == {"pending_count": 0, "pending_keys": [], "total_waiters": 0}
+
+
+@pytest.mark.anyio
+async def test_pending_cap_eviction_wakes_waiter_before_old_owner_finishes() -> None:
+    service = ObservedCoalescer()
+    service._max_pending_requests = 1
+    started, release, waiter_done = anyio.Event(), anyio.Event(), anyio.Event()
+    failures: list[Exception] = []
+    owner_results: list[str] = []
+    calls = 0
+
+    async def fetch() -> str:
+        nonlocal calls
+        calls += 1
+        started.set()
+        await release.wait()
+        return "owner-result"
+
+    async def owner() -> None:
+        owner_results.append(await service.coalesce("evicted", fetch))
+
+    async def waiter() -> None:
+        try:
+            await service.coalesce("evicted", fetch)
+        except Exception as exc:
+            failures.append(exc)
+        finally:
+            waiter_done.set()
+
+    with anyio.fail_after(2):
+        async with anyio.create_task_group() as group:
+            group.start_soon(owner)
+            await started.wait()
+            group.start_soon(waiter)
+            await service.joined.wait()
+            assert await service.coalesce("new", AsyncMock(return_value="new-result")) == "new-result"
+            await waiter_done.wait()
+            assert len(failures) == 1 and isinstance(failures[0], TimeoutError)
+            assert owner_results == []
+            assert calls == 1
+            release.set()
+    assert owner_results == ["owner-result"]
+    assert await service.get_stats() == {"pending_count": 0, "pending_keys": [], "total_waiters": 0}
 
 
 @pytest.fixture

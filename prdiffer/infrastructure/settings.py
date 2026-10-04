@@ -2,6 +2,7 @@ import logging
 from typing import Any
 import os
 from pathlib import Path
+from importlib.resources import files
 from threading import RLock
 
 from dotenv import load_dotenv
@@ -84,7 +85,13 @@ class SettingsService(SettingsServiceInterface):
             if cwd_toml.is_file():
                 settings_files = ["settings.toml", ".secrets.toml"]
             else:
-                settings_files = [str(root / "settings.toml"), str(root / ".secrets.toml")]
+                # Wheels carry the canonical TOML as package data; editable
+                # installs and checkouts still read the single root source.
+                defaults = files("prdiffer").joinpath("settings.toml")
+                settings_files = [
+                    str(defaults) if defaults.is_file() else str(root / "settings.toml"),
+                    str(root / ".secrets.toml"),
+                ]
 
         self.settings = Dynaconf(
             settings_files=settings_files,

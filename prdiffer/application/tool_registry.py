@@ -22,6 +22,7 @@ from prdiffer.domain.interfaces.input_validation import InputValidatorProtocol
 from prdiffer.domain.interfaces.request_coalescing import RequestCoalescingProtocol
 from prdiffer.application.provider_resolver import ProviderCapabilityResolver
 from prdiffer.application.pr_diff_executor import CoalescedPRDiffExecutionMixin
+from prdiffer.application.tool_outcomes import record_outcome
 
 from prdiffer.domain.exceptions import (
     InvalidURLError,
@@ -123,8 +124,6 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
                     error_code=E2002_AUTH_FAILED,
                 )
         except AuthenticationError as error:
-            execution_time = time.time() - start_time
-            self._metrics_tracker.track_request(operation, False, execution_time)
             self._logger.warning(
                 "Authentication failed",
                 request_id=request_id,
@@ -163,9 +162,6 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
         return "Request processing failed"
 
     def _log_metrics_and_return_success(self, start_time: float, pr_diff: PRDiff) -> PRDiff:
-        execution_time = time.time() - start_time
-        self._metrics_tracker.track_request("get_pr_diff", True, execution_time)
-
         diff_size = len(pr_diff.files)
         diff_hash = hashlib.md5(str(pr_diff.files).encode()).hexdigest()[:8]
 
@@ -194,9 +190,6 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
         *,
         operation: str = "get_pr_diff",
     ) -> NoReturn:
-        execution_time = time.time() - start_time
-        self._metrics_tracker.track_request(operation, False, execution_time)
-
         self._logger.warning(
             f"Security validation error in {operation} request",
             request_id=request_id,
@@ -217,9 +210,6 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
         *,
         operation: str = "get_pr_diff",
     ) -> NoReturn:
-        execution_time = time.time() - start_time
-        self._metrics_tracker.track_request(operation, False, execution_time)
-
         self._logger.warning(
             f"Validation error in {operation} request",
             request_id=request_id,
@@ -239,9 +229,6 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
         *,
         operation: str = "get_pr_diff",
     ) -> NoReturn:
-        execution_time = time.time() - start_time
-        self._metrics_tracker.track_request(operation, False, execution_time)
-
         self._logger.error(
             f"Failed to complete {operation}",
             request_id=request_id,
@@ -257,14 +244,13 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
         )
 
     def _handle_capability_exception(self, exception: ProviderCapabilityUnavailableError, start_time: float, operation: str) -> NoReturn:
-        """Return the stable unsupported-capability error and record one failure metric."""
-        execution_time = time.time() - start_time
-        self._metrics_tracker.track_request(operation, False, execution_time)
+        """Return the stable unsupported-capability error."""
         raise ToolError(str(E5022_PROVIDER_CAPABILITY_UNAVAILABLE)) from exception
 
     def register_tools(self, mcp: FastMCP) -> None:
 
         @mcp.tool()
+        @record_outcome(self._metrics_tracker, "get_pr_diff")
         async def get_pr_diff(pr_url: str, api_key: str | None = None) -> PRDiff:
             """Get a complete structured full-context GitHub PR/GitLab MR diff (all-or-nothing).
 
@@ -322,8 +308,6 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
 
             except FullDiffIncompleteError as e:
                 # Preserve machine-readable E5020 at the raw FastMCP boundary.
-                execution_time = time.time() - start_time
-                self._metrics_tracker.track_request("get_pr_diff", False, execution_time)
                 payload: dict[str, object] = {
                     "error_code": str(E5020_FULL_DIFF_INCOMPLETE),
                     "message": e.message,
@@ -358,6 +342,7 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
         _ = get_pr_diff  # registered via @mcp.tool() decorator
 
         @mcp.tool()
+        @record_outcome(self._metrics_tracker, "approve_pr")
         async def approve_pr(pr_url: str, compliment: str, api_key: str | None = None) -> str:
             """Approve a GitHub PR or GitLab MR with a compliment comment/note.
 
@@ -406,9 +391,6 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
                 capability = self._provider_resolver.resolve_approval(target)
                 result = await capability.approve(target, compliment)
 
-                execution_time = time.time() - start_time
-                self._metrics_tracker.track_request("approve_pr", True, execution_time)
-
                 self._logger.info(f"Successfully approved PR\n{result}")
                 return result
 
@@ -439,6 +421,7 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
         _ = approve_pr  # registered via @mcp.tool() decorator
 
         @mcp.tool()
+        @record_outcome(self._metrics_tracker, "describe_pr")
         async def describe_pr(pr_url: str, pr_description: str, api_key: str | None = None) -> str:
             """Update a GitHub PR or GitLab MR description/body.
 
@@ -485,9 +468,6 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
 
                 capability = self._provider_resolver.resolve_description(target)
                 result = await capability.describe(target, pr_description)
-
-                execution_time = time.time() - start_time
-                self._metrics_tracker.track_request("describe_pr", True, execution_time)
 
                 self._logger.info(f"Successfully updated PR description\n{result}")
                 return result
