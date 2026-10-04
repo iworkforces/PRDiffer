@@ -1,6 +1,6 @@
 [project]
 name = "prdiffer"
-version = "1.1.0"
+version = "1.1.2"
 description = "PRDiffer Is A MCP Server For GitHub PR/GitLab MR Review Process With Full Contexts."
 readme = "README.md"
 license = { text = "MIT" }
@@ -27,7 +27,7 @@ dependencies = [
     "anyio>=4.15.1",
     "python-dotenv>=1.2.4",
     "dynaconf>=3.3.5",
-    "mcp>=2.2.0",
+    "mcp>=2.3.0",
     "uvloop>=0.23.0",
     "httptools>=0.8.0",
     "starlette>=1.7.0",
@@ -73,7 +73,7 @@ exclude = ["**/.env", "**/.secrets.toml"]
 
 [dependency-groups]
 dev = [
-    "hatchling>=1.27.0",
+    "hatchling>=1.32.4",
     "ruff>=0.16.10",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
