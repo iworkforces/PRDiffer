@@ -4,6 +4,7 @@ Validates GitHub PR/GitLab MR URLs and free-text inputs against injection patter
 (SQL, command, path traversal) and sanitizes values for logging.
 """
 
+from prdiffer.domain.entities.gitlab_merge_request_url import parse_gitlab_merge_request_url
 from prdiffer.domain.exceptions import (
     InvalidURLError,
     InputSanitizationError,
@@ -44,8 +45,6 @@ class InputValidator:
 
     def validate_gitlab_url(self, url: str) -> tuple[str, str, int]:
         """Validate and parse a canonical GitLab merge request URL."""
-        from prdiffer.infrastructure.utils.url_parser import parse_gitlab_merge_request_url
-
         url = url.strip()
         if not url:
             raise InvalidURLError("URL cannot be empty")

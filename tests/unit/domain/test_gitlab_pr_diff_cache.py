@@ -20,6 +20,7 @@ from prdiffer.domain.entities.pr_diff import PRDiff
 
 def _diff() -> PRDiff:
     return PRDiff(
+        head_sha="c" * 40,
         files=(
             FileDiffResponse(
                 path="a.py",
@@ -27,7 +28,7 @@ def _diff() -> PRDiff:
                 stats=FileStats(additions=1, deletions=0),
                 diff="+x",
             ),
-        )
+        ),
     )
 
 
@@ -41,9 +42,7 @@ def test_gitlab_v1_key_exact_format_and_casefold() -> None:
         start_sha="startSHA",
         head_sha="headSHA",
     )
-    assert key == (
-        f"{GITLAB_FULL_DIFF_CACHE_PREFIX}:gitlab.com:group/subgroup:project:42:99:baseSHA:startSHA:headSHA"
-    )
+    assert key == (f"{GITLAB_FULL_DIFF_CACHE_PREFIX}:gitlab.com:group/subgroup:project:42:99:baseSHA:startSHA:headSHA")
 
 
 def test_gitlab_v1_key_includes_custom_host() -> None:
@@ -57,9 +56,7 @@ def test_gitlab_v1_key_includes_custom_host() -> None:
         head_sha="h",
         host="gitlab.example.com",
     )
-    assert key == (
-        f"{GITLAB_FULL_DIFF_CACHE_PREFIX}:gitlab.example.com:trace-analysis:oh-my-grokbuild:1:3:b:s:h"
-    )
+    assert key == (f"{GITLAB_FULL_DIFF_CACHE_PREFIX}:gitlab.example.com:trace-analysis:oh-my-grokbuild:1:3:b:s:h")
 
 
 def test_gitlab_v1_validation_token_contains_version_and_three_refs() -> None:

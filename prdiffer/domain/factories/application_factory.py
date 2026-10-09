@@ -2,6 +2,7 @@
 
 from abc import ABC, abstractmethod
 
+from prdiffer.domain.config.mcp_server_config import MCPServerConfig
 from prdiffer.domain.services.logger import LoggerServiceInterface
 from prdiffer.domain.services.settings import SettingsServiceInterface
 
@@ -39,6 +40,8 @@ class ApplicationFactoryInterface(ABC):
         self,
         settings_service: SettingsServiceInterface,
         logger: LoggerServiceInterface,
+        *,
+        mcp_config: MCPServerConfig,
     ) -> ServerConfigurationProtocol:
         pass
 

@@ -9,11 +9,14 @@ from unittest.mock import Mock, patch, AsyncMock
 from starlette.requests import Request
 
 from prdiffer.application.mcp_server import FastMCPServer
+from prdiffer.domain.config.mcp_server_config import MCPServerConfig
 from prdiffer.application.provider_resolver import ProviderCapabilityResolver
 from prdiffer.application.webhook_handler import WebhookHandler
 from prdiffer.domain.entities.pr_diff import PRDiff
 from prdiffer.domain.entities.pr_diff_cache import github_full_diff_v3_identity, gitlab_full_diff_v1_identity
 from prdiffer.infrastructure.cache.service import CacheService
+from prdiffer.infrastructure.security.input_validator import InputValidator
+from prdiffer.infrastructure.utils.coalescing_service import RequestCoalescingService
 
 
 @pytest.fixture
@@ -46,6 +49,7 @@ def mcp_server(mock_cache_service, mock_settings):
     mock_server_configuration.get_mcp_instructions = Mock(return_value="Test instructions")
 
     server = FastMCPServer(
+        mcp_config=MCPServerConfig(transport="http", host="127.0.0.1", port=9102, path="/mcp"),
         settings_service=mock_settings,
         cache_service=mock_cache_service,
         logger=mock_logger,
@@ -54,6 +58,8 @@ def mcp_server(mock_cache_service, mock_settings):
         metrics_tracker=mock_metrics_tracker,
         health_monitor=mock_health_monitor,
         server_configuration=mock_server_configuration,
+        input_validator=InputValidator(),
+        request_coalescing_service=RequestCoalescingService(),
     )
     return server
 
@@ -288,7 +294,7 @@ async def _seed_webhook_caches(diff_cache: CacheService) -> dict[str, tuple[str,
         "other_repo": github_full_diff_v3_identity("owner", "other", 42, "base-4", "head-4"),
         "gitlab": gitlab_full_diff_v1_identity("owner", "repo", 42, 1, "base", "start", "head"),
     }
-    entries = {label: (identity.cache_key, identity.validation_token, PRDiff()) for label, identity in identities.items()}
+    entries = {label: (identity.cache_key, identity.validation_token, PRDiff(head_sha="c" * 40)) for label, identity in identities.items()}
     for key, token, value in entries.values():
         await diff_cache.set(key, token, value)
     return entries

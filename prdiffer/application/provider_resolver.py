@@ -37,7 +37,7 @@ class ProviderTargetParser(Protocol):
 class ApprovalCapability(Protocol):
     """Approve a validated provider target."""
 
-    async def approve(self, target: ProviderTarget, compliment: str, /) -> str:
+    async def approve(self, target: ProviderTarget, compliment: str, /, *, expected_head_sha: str | None = None) -> str:
         """Approve the target with the supplied compliment."""
         ...
 
@@ -137,9 +137,9 @@ class GitHubWriteCapability:
     def __init__(self, repository_factory: Callable[[str, str, int], PRDiffRepositoryInterface]) -> None:
         self._repository_factory = repository_factory
 
-    async def approve(self, target: ProviderTarget, compliment: str, /) -> str:
+    async def approve(self, target: ProviderTarget, compliment: str, /, *, expected_head_sha: str | None = None) -> str:
         repository = self._repository_factory(target.repo_owner, target.repo_name, target.pr_number)
-        return await repository.approve_pr_with_comment(pr_url=target.url, compliment=compliment)
+        return await repository.approve_pr_with_comment(pr_url=target.url, compliment=compliment, expected_head_sha=expected_head_sha)
 
     async def describe(self, target: ProviderTarget, description: str, /) -> str:
         repository = self._repository_factory(target.repo_owner, target.repo_name, target.pr_number)
@@ -152,13 +152,14 @@ class GitLabWriteCapability:
     def __init__(self, operations: GitLabPROperationsProtocol) -> None:
         self._operations = operations
 
-    async def approve(self, target: ProviderTarget, compliment: str, /) -> str:
+    async def approve(self, target: ProviderTarget, compliment: str, /, *, expected_head_sha: str | None = None) -> str:
         return await self._operations.approve_pr_with_comment(
             target.repo_owner,
             target.repo_name,
             target.pr_number,
             compliment,
             base_url=target.base_url,
+            expected_head_sha=expected_head_sha,
         )
 
     async def describe(self, target: ProviderTarget, description: str, /) -> str:

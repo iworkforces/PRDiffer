@@ -1,11 +1,9 @@
-import os
-from typing import Literal, TypeAlias
-
 from fastmcp import FastMCP
 
 from prdiffer.application.provider_resolver import ProviderCapabilityResolver
 from prdiffer.version import __version__
 
+from prdiffer.domain.config.mcp_server_config import MCPServerConfig
 from prdiffer.domain.services.settings import SettingsServiceInterface
 from prdiffer.domain.services.cache import CacheServiceInterface
 from prdiffer.domain.services.logger import LoggerServiceInterface
@@ -24,9 +22,6 @@ from prdiffer.application.webhook_handler import WebhookHandler
 from prdiffer.application.health_endpoints import HealthEndpoints
 
 
-TransportMode: TypeAlias = Literal["stdio", "http", "sse", "streamable-http"]
-
-
 class FastMCPServer:
     """FastMCP server for fetching GitHub PR diffs with detailed file change information."""
 
@@ -40,11 +35,13 @@ class FastMCPServer:
         metrics_tracker: MetricsTrackerProtocol,
         health_monitor: HealthMonitorProtocol,
         server_configuration: ServerConfigurationProtocol,
+        input_validator: InputValidatorProtocol,
+        request_coalescing_service: RequestCoalescingProtocol,
+        mcp_config: MCPServerConfig,
         authentication: AuthenticationProtocol | None = None,
-        input_validator: InputValidatorProtocol | None = None,
-        request_coalescing_service: RequestCoalescingProtocol | None = None,
     ):
         self._settings_service = settings_service
+        self._mcp_config = mcp_config
         self._cache_service = cache_service
         self._logger = logger
         self._provider_resolver = provider_resolver
@@ -63,21 +60,8 @@ class FastMCPServer:
         else:
             self._authentication = authentication
 
-        if input_validator is None:
-            from prdiffer.infrastructure.factories.infrastructure_factory import get_infrastructure_factory
-
-            self._input_validator = get_infrastructure_factory().create_input_validator()
-        else:
-            self._input_validator = input_validator
-
-        if request_coalescing_service is None:
-            from prdiffer.infrastructure.utils.coalescing_service import (
-                get_request_coalescing_service,
-            )
-
-            self._request_coalescing = get_request_coalescing_service()
-        else:
-            self._request_coalescing = request_coalescing_service
+        self._input_validator = input_validator
+        self._request_coalescing = request_coalescing_service
 
         self._server_configuration.setup_logging()
 
@@ -138,37 +122,11 @@ class FastMCPServer:
         self.mcp.custom_route("/webhook", methods=["POST"])(webhook_handler_func)
 
     def run(self) -> None:
-        """Start the FastMCP server with configured transport and port.
-
-        Configuration priority (highest to lowest):
-        1. Environment variables (MCP_TRANSPORT, MCP_PORT, MCP_HOST, MCP_PATH)
-        2. Settings file (settings.toml)
-        3. Defaults (http transport, port 9102, host 127.0.0.1, path /mcp)
-
-        Supported transports include "stdio", "http", "sse", and "streamable-http".
-        """
-
-        # Get MCP settings from environment variables first, then fall back to settings service
-        transport_raw = os.getenv("MCP_TRANSPORT") or self._settings_service.get("mcp.transport", "http")
-        port = int(os.getenv("MCP_PORT", "0")) or self._settings_service.get("mcp.port", 9102)
-        host = os.getenv("MCP_HOST") or self._settings_service.get("mcp.host", "127.0.0.1")
-        path = os.getenv("MCP_PATH") or self._settings_service.get("mcp.path", "/mcp")
-
-        valid_transports: tuple[TransportMode, ...] = (
-            "stdio",
-            "http",
-            "sse",
-            "streamable-http",
-        )
-        if transport_raw not in valid_transports:
-            self._logger.warning(f"Invalid transport '{transport_raw}', defaulting to 'stdio'")
-            transport: TransportMode = "stdio"
-        else:
-            transport = transport_raw
-
-        if transport == "stdio":
+        """Start using only the immutable configuration resolved before initialization."""
+        config = self._mcp_config
+        if config.is_stdio:
             self._logger.info("Running MCP server with stdio transport")
             self.mcp.run(transport="stdio")
         else:
-            self._logger.info(f"Running MCP server with {transport} transport on {host}:{port}{path}")
-            self.mcp.run(transport=transport, port=port, host=host, path=path, uvicorn_config={"proxy_headers": False})
+            self._logger.info(f"Running MCP server with {config.transport} transport on {config.host}:{config.port}{config.path}")
+            self.mcp.run(transport=config.transport, port=config.port, host=config.host, path=config.path, uvicorn_config={"proxy_headers": False})

@@ -1,6 +1,8 @@
 """Comprehensive tests for ToolRegistry."""
 
 import pytest
+import json
+from fastmcp import FastMCP
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal, assert_never
@@ -34,12 +36,21 @@ from prdiffer.domain.exceptions import (
     RateLimitError,
     ValidationError,
     GitHubAPIError,
+    HeadSHAMismatchError,
 )
 from prdiffer.domain.error_codes import E1001_INVALID_URL, E2002_AUTH_FAILED
 from fastmcp.exceptions import ToolError
 from prdiffer.domain.exceptions import (
-    GitLabAPIError, ResourceError, ProcessingError, CacheError, ConfigurationError, SecurityError,
-    InvalidRepositoryError, InvalidPRNumberError, InputSanitizationError, SuspiciousOperationError,
+    GitLabAPIError,
+    ResourceError,
+    ProcessingError,
+    CacheError,
+    ConfigurationError,
+    SecurityError,
+    InvalidRepositoryError,
+    InvalidPRNumberError,
+    InputSanitizationError,
+    SuspiciousOperationError,
     ProviderCapabilityUnavailableError,
 )
 import anyio
@@ -49,9 +60,19 @@ ProviderName = Literal["github", "gitlab"]
 
 
 ERROR_CASES = [
-    (kind, None, None) for kind in (
-        AuthenticationError, RateLimitError, GitHubAPIError, GitLabAPIError, ValidationError,
-        ResourceError, ProcessingError, CacheError, ConfigurationError, SecurityError, TimeoutError,
+    (kind, None, None)
+    for kind in (
+        AuthenticationError,
+        RateLimitError,
+        GitHubAPIError,
+        GitLabAPIError,
+        ValidationError,
+        ResourceError,
+        ProcessingError,
+        CacheError,
+        ConfigurationError,
+        SecurityError,
+        TimeoutError,
     )
 ] + [
     (InvalidURLError, ValidationError, "Invalid PR or merge request URL"),
@@ -123,8 +144,13 @@ async def test_cancelled_call_propagates_without_outcome(operation, gate, tool_r
 @pytest.mark.parametrize("operation", ["get_pr_diff", "approve_pr", "describe_pr"])
 @pytest.mark.parametrize("rejection", ["missing", "false", "lock"])
 async def test_auth_rejection_records_one_named_failure_before_provider(
-    operation, rejection, tool_registry, mock_authentication, mock_metrics_tracker,
-    mock_github_repository_class, session_reader,
+    operation,
+    rejection,
+    tool_registry,
+    mock_authentication,
+    mock_metrics_tracker,
+    mock_github_repository_class,
+    session_reader,
 ):
     if rejection == "missing":
         tool_registry._authentication = None
@@ -152,22 +178,20 @@ async def test_auth_rejection_records_one_named_failure_before_provider(
 @pytest.mark.parametrize("transport", ["http", "sse", "streamable-http", "stdio"])
 def test_server_transport_preserves_actual_peer_identity(monkeypatch, transport):
     from prdiffer.application.mcp_server import FastMCPServer
+    from prdiffer.domain.config.mcp_server_config import MCPServerConfig
 
     server = object.__new__(FastMCPServer)
     server._settings_service = MagicMock()
     server._logger = MagicMock()
     server.mcp = MagicMock()
-    monkeypatch.setenv("MCP_TRANSPORT", transport)
-    monkeypatch.setenv("MCP_PORT", "9102")
-    monkeypatch.setenv("MCP_HOST", "127.0.0.1")
-    monkeypatch.setenv("MCP_PATH", "/mcp")
+    server._mcp_config = MCPServerConfig(transport=transport, port=None if transport == "stdio" else 9102, host="127.0.0.1", path="/mcp")
+    monkeypatch.setenv("MCP_TRANSPORT", "invalid")
+    monkeypatch.setenv("MCP_PORT", "abc")
     server.run()
     if transport == "stdio":
         server.mcp.run.assert_called_once_with(transport="stdio")
     else:
-        server.mcp.run.assert_called_once_with(
-            transport=transport, port=9102, host="127.0.0.1", path="/mcp", uvicorn_config={"proxy_headers": False}
-        )
+        server.mcp.run.assert_called_once_with(transport=transport, port=9102, host="127.0.0.1", path="/mcp", uvicorn_config={"proxy_headers": False})
 
 
 @pytest.mark.parametrize("port", [1234, 5678])
@@ -214,13 +238,18 @@ async def test_http_missing_peer_fails_closed_once(tool_registry, mock_authentic
 
 @pytest.mark.parametrize("transport", ["http", "stdio"])
 async def test_real_source_lock_blocks_all_tools_before_all_providers(
-    monkeypatch, tool_registry, mock_metrics_tracker, mock_github_repository_class, session_reader, transport,
+    monkeypatch,
+    tool_registry,
+    mock_metrics_tracker,
+    mock_github_repository_class,
+    session_reader,
+    transport,
 ):
     monkeypatch.setenv("MCP_AUTH_ENABLED", "true")
     monkeypatch.setenv("MCP_API_KEYS", "valid_key_12345678901")
     auth = AuthenticationMiddleware(clock=Mock(return_value=1000.0))
     tool_registry._authentication = auth
-    gitlab_reader = ProviderReader(PRDiff(files=()), "gitlab-head", provider="gitlab")
+    gitlab_reader = ProviderReader(PRDiff(files=(), head_sha="f" * 40), "gitlab-head", provider="gitlab")
     gitlab_operations = RecordingGitLabPROps()
     tool_registry._provider_resolver = create_test_provider_resolver(
         session_reader, mock_github_repository_class, gitlab_reader=gitlab_reader, gitlab_operations=gitlab_operations
@@ -487,12 +516,9 @@ def mock_github_repository_class():
 
 @dataclass
 class RecordingGitLabPROps:
-    approve_calls: list[tuple[str, str, int, str, str | None]] = field(
-        default_factory=list[tuple[str, str, int, str, str | None]]
-    )
-    describe_calls: list[tuple[str, str, int, str, str | None]] = field(
-        default_factory=list[tuple[str, str, int, str, str | None]]
-    )
+    approve_calls: list[tuple[str, str, int, str, str | None, str | None]] = field(default_factory=list)
+    approval_error: HeadSHAMismatchError | None = None
+    describe_calls: list[tuple[str, str, int, str, str | None]] = field(default_factory=list[tuple[str, str, int, str, str | None]])
 
     async def approve_pr_with_comment(
         self,
@@ -503,8 +529,11 @@ class RecordingGitLabPROps:
         /,
         *,
         base_url: str | None = None,
+        expected_head_sha: str | None = None,
     ) -> str:
-        self.approve_calls.append((owner, repo, pr, compliment, base_url))
+        self.approve_calls.append((owner, repo, pr, compliment, base_url, expected_head_sha))
+        if self.approval_error is not None:
+            raise self.approval_error
         return f"gitlab-approved:{owner}/{repo}!{pr}"
 
     async def update_pr_description(
@@ -523,7 +552,7 @@ class RecordingGitLabPROps:
 
 @pytest.fixture
 def session_reader() -> ProviderReader:
-    return ProviderReader(PRDiff(files=()), "github-head")
+    return ProviderReader(PRDiff(files=(), head_sha="github-head"), "github-head")
 
 
 @pytest.fixture
@@ -558,9 +587,81 @@ def tool_registry(
 
 
 @pytest.fixture
+def registered_approval_tools(tool_registry, session_reader, mock_github_repository_class):
+    operations = RecordingGitLabPROps()
+    tool_registry._provider_resolver = create_test_provider_resolver(session_reader, mock_github_repository_class, gitlab_operations=operations)
+    tool_registry._input_validator = ProviderAwareValidator()
+    mcp = FastMCP("approval-unit-contract")
+    tool_registry.register_tools(mcp)
+    return mcp, operations
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["github", "gitlab"])
+@pytest.mark.parametrize("sha", [None, "A" * 40, "B" * 64])
+async def test_registered_approval_dispatches_normalized_sha(provider, sha, registered_approval_tools, mock_github_repository_class):
+    mcp, operations = registered_approval_tools
+    url = "https://github.com/owner/repo/pull/17" if provider == "github" else "https://gitlab.com/owner/repo/-/merge_requests/17"
+    arguments = {"pr_url": url, "compliment": "Nice work"}
+    if sha is not None:
+        arguments["expected_head_sha"] = sha
+
+    result = await mcp.call_tool("approve_pr", arguments)
+
+    normalized = sha.lower() if sha is not None else None
+    if provider == "github":
+        mock_github_repository_class.return_value.approve_pr_with_comment.assert_awaited_once_with(
+            pr_url=url, compliment="Nice work", expected_head_sha=normalized
+        )
+        assert result.structured_content == {"result": "Approved!"}
+    else:
+        assert operations.approve_calls == [("owner", "repo", 17, "Nice work", "https://gitlab.com", normalized)]
+        assert result.structured_content == {"result": "gitlab-approved:owner/repo!17"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["github", "gitlab"])
+@pytest.mark.parametrize("sha", ["", "z" * 40, "a" * 39])
+async def test_registered_approval_rejects_malformed_sha(provider, sha, registered_approval_tools, mock_github_repository_class, mock_metrics_tracker):
+    mcp, operations = registered_approval_tools
+    url = "https://github.com/owner/repo/pull/17" if provider == "github" else "https://gitlab.com/owner/repo/-/merge_requests/17"
+
+    with pytest.raises(ToolError, match=r"\[E1001\] expected_head_sha"):
+        await mcp.call_tool("approve_pr", {"pr_url": url, "compliment": "Nice work", "expected_head_sha": sha})
+
+    mock_github_repository_class.assert_not_called()
+    assert operations.approve_calls == []
+    mock_metrics_tracker.track_request.assert_called_once_with("approve_pr", False, pytest.approx(0, abs=1))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["github", "gitlab"])
+async def test_registered_approval_mismatch_payload_and_metrics(
+    provider, registered_approval_tools, mock_github_repository_class, mock_metrics_tracker, mock_logger
+):
+    mcp, operations = registered_approval_tools
+    error = HeadSHAMismatchError(expected_head_sha="a" * 40, actual_head_sha="b" * 40)
+    operations.approval_error = error
+    mock_github_repository_class.return_value.approve_pr_with_comment.side_effect = error
+    url = "https://github.com/owner/repo/pull/17" if provider == "github" else "https://gitlab.com/owner/repo/-/merge_requests/17"
+
+    with pytest.raises(ToolError) as exc_info:
+        await mcp.call_tool("approve_pr", {"pr_url": url, "compliment": "Nice work", "expected_head_sha": "a" * 40})
+
+    assert json.loads(str(exc_info.value)) == {
+        "error_code": "E1011_HEAD_SHA_MISMATCH",
+        "message": error.message,
+        "details": {"expected_head_sha": "a" * 40, "actual_head_sha": "b" * 40},
+    }
+    mock_metrics_tracker.track_request.assert_called_once_with("approve_pr", False, pytest.approx(0, abs=1))
+    mock_logger.warning.assert_called_once_with("Approval refused because the head SHA changed", request_id="test-request-id")
+
+
+@pytest.fixture
 def sample_pr_diff():
     """Create sample PRDiff."""
     return PRDiff(
+        head_sha="github-head",
         files=(
             FileDiffResponse(
                 path="src/test.py",
@@ -568,7 +669,7 @@ def sample_pr_diff():
                 stats=FileStats(additions=10, deletions=5),
                 diff="test diff",
             ),
-        )
+        ),
     )
 
 
@@ -876,8 +977,8 @@ class TestGetPRDiffProviderDispatch:
         mock_authentication,
     ) -> None:
         # Given
-        github_diff = PRDiff(files=(FileDiffResponse("github.py", EDIT_TYPE.MODIFIED, FileStats(additions=1, deletions=0), "+github"),))
-        gitlab_diff = PRDiff(files=(FileDiffResponse("gitlab.py", EDIT_TYPE.ADDED, FileStats(additions=1, deletions=0), "+gitlab"),))
+        github_diff = PRDiff(head_sha="github-head", files=(FileDiffResponse("github.py", EDIT_TYPE.MODIFIED, FileStats(additions=1, deletions=0), "+github"),))
+        gitlab_diff = PRDiff(head_sha="f" * 40, files=(FileDiffResponse("gitlab.py", EDIT_TYPE.ADDED, FileStats(additions=1, deletions=0), "+gitlab"),))
         github_reader = ProviderReader(github_diff, "github-commit", provider="github")
         gitlab_reader = ProviderReader(gitlab_diff, "f" * 40, provider="gitlab")
         cache = RecordingCache()
@@ -931,9 +1032,7 @@ class TestGetPRDiffProviderDispatch:
                     "ffffffffffffffffffffffffffffffffffffffff"
                 )
                 assert session_identity.validation_token == (
-                    "7:dddddddddddddddddddddddddddddddddddddddd:"
-                    "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee:"
-                    "ffffffffffffffffffffffffffffffffffffffff"
+                    "7:dddddddddddddddddddddddddddddddddddddddd:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee:ffffffffffffffffffffffffffffffffffffffff"
                 )
                 assert session_identity.schema_version == 1
             case unreachable:
@@ -945,7 +1044,7 @@ class TestGetPRDiffProviderDispatch:
     @pytest.mark.anyio
     async def test_gitlab_reader_uses_base_url_netloc_for_cache_host(self) -> None:
         # Given
-        reader = ProviderReader(PRDiff(files=()), "f" * 40, provider="gitlab")
+        reader = ProviderReader(PRDiff(files=(), head_sha="f" * 40), "f" * 40, provider="gitlab")
 
         # When
         session = await reader.open_pr_diff_session(
@@ -980,7 +1079,7 @@ class TestFullDiffIncompleteToolError:
         class BoomReader(ProviderReader):
             def __init__(self) -> None:
                 super().__init__(
-                    PRDiff(files=()),
+                    PRDiff(files=(), head_sha="f" * 40),
                     "boom-head",
                     error=FullDiffIncompleteError(
                         FullDiffIncompleteReason.BINARY_CONTENT,
@@ -1050,7 +1149,7 @@ class TestFullDiffIncompleteToolError:
         class AuthBoom(ProviderReader):
             def __init__(self) -> None:
                 super().__init__(
-                    PRDiff(files=()),
+                    PRDiff(files=(), head_sha="f" * 40),
                     "auth-head",
                     error=AuthenticationError("nope", error_code=E2006_GITLAB_AUTH_FAILED),
                 )
@@ -1108,7 +1207,7 @@ class TestApproveDescribeProviderDispatch:
             rate_limiter=mock_rate_limiter,
             metrics_tracker=mock_metrics_tracker,
             provider_resolver=create_test_provider_resolver(
-                ProviderReader(PRDiff(files=()), "github-head"),
+                ProviderReader(PRDiff(files=(), head_sha="github-head"), "github-head"),
                 mock_github_repository_class,
                 gitlab_operations=RecordingGitLabPROps(),
             ),
@@ -1126,9 +1225,7 @@ class TestApproveDescribeProviderDispatch:
         mock_github_repository_class.assert_called_once_with("owner", "repo", 17)
         instance = mock_github_repository_class.return_value
         instance.approve_pr_with_comment.assert_awaited_once()
-        success_calls = [
-            call for call in mock_metrics_tracker.track_request.call_args_list if call.args[:2] == ("approve_pr", True)
-        ]
+        success_calls = [call for call in mock_metrics_tracker.track_request.call_args_list if call.args[:2] == ("approve_pr", True)]
         assert len(success_calls) == 1
 
     async def test_approve_pr_routes_gitlab_to_gitlab_operations(
@@ -1148,7 +1245,7 @@ class TestApproveDescribeProviderDispatch:
             rate_limiter=mock_rate_limiter,
             metrics_tracker=mock_metrics_tracker,
             provider_resolver=create_test_provider_resolver(
-                ProviderReader(PRDiff(files=()), "github-head"),
+                ProviderReader(PRDiff(files=(), head_sha="github-head"), "github-head"),
                 mock_github_repository_class,
                 gitlab_operations=gitlab_ops,
             ),
@@ -1168,7 +1265,7 @@ class TestApproveDescribeProviderDispatch:
 
         assert result == "gitlab-approved:owner/repo!17"
         assert gitlab_ops.approve_calls == [
-            ("owner", "repo", 17, "Great MR", "https://gitlab.com"),
+            ("owner", "repo", 17, "Great MR", "https://gitlab.com", None),
         ]
         mock_github_repository_class.assert_not_called()
 
@@ -1189,7 +1286,7 @@ class TestApproveDescribeProviderDispatch:
             rate_limiter=mock_rate_limiter,
             metrics_tracker=mock_metrics_tracker,
             provider_resolver=create_test_provider_resolver(
-                ProviderReader(PRDiff(files=()), "github-head"),
+                ProviderReader(PRDiff(files=(), head_sha="github-head"), "github-head"),
                 mock_github_repository_class,
                 gitlab_operations=gitlab_ops,
             ),
@@ -1228,7 +1325,7 @@ class TestApproveDescribeProviderDispatch:
             rate_limiter=mock_rate_limiter,
             metrics_tracker=mock_metrics_tracker,
             provider_resolver=create_test_provider_resolver(
-                ProviderReader(PRDiff(files=()), "github-head"),
+                ProviderReader(PRDiff(files=(), head_sha="github-head"), "github-head"),
                 mock_github_repository_class,
                 gitlab_operations=gitlab_ops,
             ),
@@ -1269,7 +1366,7 @@ class TestApproveDescribeProviderDispatch:
             rate_limiter=mock_rate_limiter,
             metrics_tracker=mock_metrics_tracker,
             provider_resolver=create_test_provider_resolver(
-                ProviderReader(PRDiff(files=()), "github-head"),
+                ProviderReader(PRDiff(files=(), head_sha="github-head"), "github-head"),
                 mock_github_repository_class,
                 gitlab_operations=gitlab_ops,
             ),
@@ -1309,7 +1406,7 @@ class TestApproveDescribeProviderDispatch:
             rate_limiter=mock_rate_limiter,
             metrics_tracker=mock_metrics_tracker,
             provider_resolver=create_test_provider_resolver(
-                ProviderReader(PRDiff(files=()), "github-head"),
+                ProviderReader(PRDiff(files=(), head_sha="github-head"), "github-head"),
                 mock_github_repository_class,
             ),
             authentication=mock_authentication,
@@ -1348,7 +1445,7 @@ class TestApproveDescribeProviderDispatch:
             rate_limiter=mock_rate_limiter,
             metrics_tracker=mock_metrics_tracker,
             provider_resolver=create_test_provider_resolver(
-                ProviderReader(PRDiff(files=()), "github-head"),
+                ProviderReader(PRDiff(files=(), head_sha="github-head"), "github-head"),
                 mock_github_repository_class,
                 gitlab_operations=gitlab_ops,
             ),
@@ -1384,7 +1481,7 @@ class TestApproveDescribeProviderDispatch:
             rate_limiter=mock_rate_limiter,
             metrics_tracker=mock_metrics_tracker,
             provider_resolver=create_test_provider_resolver(
-                ProviderReader(PRDiff(files=()), "github-head"),
+                ProviderReader(PRDiff(files=(), head_sha="github-head"), "github-head"),
                 mock_github_repository_class,
             ),
             authentication=mock_authentication,
@@ -1403,9 +1500,7 @@ class TestApproveDescribeProviderDispatch:
             )
 
         assert str(exc_info.value) == "E5022_PROVIDER_CAPABILITY_UNAVAILABLE"
-        fail_metrics = [
-            c for c in mock_metrics_tracker.track_request.call_args_list if c.args[:2] == ("approve_pr", False)
-        ]
+        fail_metrics = [c for c in mock_metrics_tracker.track_request.call_args_list if c.args[:2] == ("approve_pr", False)]
         assert len(fail_metrics) == 1
 
     async def test_approve_pr_forwards_nested_namespace_and_strips_compliment(
@@ -1430,7 +1525,7 @@ class TestApproveDescribeProviderDispatch:
             rate_limiter=mock_rate_limiter,
             metrics_tracker=mock_metrics_tracker,
             provider_resolver=create_test_provider_resolver(
-                ProviderReader(PRDiff(files=()), "github-head"),
+                ProviderReader(PRDiff(files=(), head_sha="github-head"), "github-head"),
                 mock_github_repository_class,
                 gitlab_operations=gitlab_ops,
             ),
@@ -1443,9 +1538,7 @@ class TestApproveDescribeProviderDispatch:
         assert mcp.approve_pr_tool is not None
 
         # parse_pr_target also calls parse_gitlab_merge_request_parts on real URL
-        with patch(
-            "prdiffer.infrastructure.utils.url_parser.parse_gitlab_merge_request_parts"
-        ) as mock_parts:
+        with patch("prdiffer.application.utils.pr_url_parser.parse_gitlab_merge_request_parts") as mock_parts:
             mock_parts.return_value = MagicMock(
                 namespace="group/sub",
                 project="project",
@@ -1460,7 +1553,7 @@ class TestApproveDescribeProviderDispatch:
 
         assert result == "gitlab-approved:group/sub/project!3"
         assert gitlab_ops.approve_calls == [
-            ("group/sub", "project", 3, "Solid nested MR", "https://gitlab.com"),
+            ("group/sub", "project", 3, "Solid nested MR", "https://gitlab.com", None),
         ]
 
 
@@ -1470,7 +1563,7 @@ class TestProviderCapabilityResolver:
     async def test_strict_diff_capability_rejects_reader_without_session_protocol(self) -> None:
         class NonSessionReader:
             async def get_pr_diff(self, repo_owner: str, repo_name: str, pr_number: int, /) -> PRDiff:
-                return PRDiff(files=())
+                return PRDiff(files=(), head_sha="c" * 40)
 
             async def get_latest_commit_sha(self, repo_owner: str, repo_name: str, pr_number: int, /) -> str:
                 return "head"
@@ -1486,13 +1579,13 @@ class TestProviderCapabilityResolver:
         mock_authentication,
     ) -> None:
         class ThirdProviderWrites:
-            async def approve(self, target: ProviderTarget, compliment: str, /) -> str:
+            async def approve(self, target: ProviderTarget, compliment: str, /, *, expected_head_sha: str | None = None) -> str:
                 return f"approved:{target.repo_owner}/{target.repo_name}:{compliment}"
 
             async def describe(self, target: ProviderTarget, description: str, /) -> str:
                 return f"described:{target.repo_owner}/{target.repo_name}:{description}"
 
-        third_diff = PRDiff(files=())
+        third_diff = PRDiff(files=(), head_sha="third-head")
         reader = ProviderReader(third_diff, "third-head")
         resolver = ProviderCapabilityResolver()
 
@@ -1599,7 +1692,7 @@ class TestProviderCapabilityResolver:
         resolver = create_test_provider_resolver(
             session_reader,
             mock_github_repository_class,
-            gitlab_reader=ProviderReader(PRDiff(files=()), "f" * 40, provider="gitlab"),
+            gitlab_reader=ProviderReader(PRDiff(files=(), head_sha="f" * 40), "f" * 40, provider="gitlab"),
         )
 
         target = resolver.resolve_target(padded_url, ProviderAwareValidator())
@@ -1644,7 +1737,7 @@ class TestProviderCapabilityResolver:
         mock_metrics_tracker,
         mock_authentication,
     ) -> None:
-        github_diff = PRDiff(files=())
+        github_diff = PRDiff(files=(), head_sha="github-head")
         github_reader = ProviderReader(github_diff, "github-commit", provider="github")
         registry = ToolRegistry(
             cache_service=RecordingCache(),

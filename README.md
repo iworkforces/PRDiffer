@@ -166,6 +166,7 @@ Once the `prdiffer` skill is installed and the MCP server is running, you can pr
 > use merge-base + head (`github-full-diff-v3`); snapshot drift returns `SNAPSHOT_CHANGED`.
 > Incomplete inventories, oversize/binary content, or generation failures return
 > `E5020_FULL_DIFF_INCOMPLETE` with a stable `reason` — never a partial `files` list.
+> Every successful response also carries `head_sha`, the head commit of the snapshot that was diffed.
 
 
 Use this to retrieve the full structured diff and perform a thorough code review.
@@ -187,6 +188,8 @@ Use this after analyzing a PR to submit a formal approval with a meaningful comp
 > Use the `prdiffer` skill to fetch the diff for `https://github.com/<owner>/<repository>/pull/<pull_number>`, verify the changes look correct and safe, then approve the PR with a genuine, specific compliment that references what was done well.
 
 The agent will call `prdiffer__get_pr_diff` to inspect the changes, then invoke `prdiffer__approve_pr` with a compliment derived from the actual diff content (e.g., praising a clean refactor or solid test coverage).
+
+Pass the diff's `head_sha` as `expected_head_sha` to bind the approval to the commit the agent actually read. If someone pushes after the review, the call fails with `E1011_HEAD_SHA_MISMATCH` and nothing is approved. On GitLab, if the head moves between the note and the approval (a 409), the server deletes the note it just posted and reports whether that cleanup succeeded. Calls without `expected_head_sha` behave as before.
 
 ---
 

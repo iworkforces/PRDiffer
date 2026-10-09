@@ -28,7 +28,7 @@ class StrictSession(PRDiffReadSessionInterface):
         return StrictPRDiffCacheIdentity("test:group:project:3", "token", 1)
 
     async def build_pr_diff(self) -> PRDiff:
-        return PRDiff(files=())
+        return PRDiff(files=(), head_sha="c" * 40)
 
     async def aclose(self) -> None:
         return None
@@ -37,9 +37,7 @@ class StrictSession(PRDiffReadSessionInterface):
 class ReaderOnly:
     """Diff reader without approve/describe methods."""
 
-    async def open_pr_diff_session(
-        self, owner: str, repo: str, pr: int, /, *, base_url: str | None = None
-    ) -> PRDiffReadSessionInterface:
+    async def open_pr_diff_session(self, owner: str, repo: str, pr: int, /, *, base_url: str | None = None) -> PRDiffReadSessionInterface:
         return StrictSession()
 
 
@@ -47,11 +45,9 @@ class DualRoleReader:
     """Structural dual: session reader methods + MR ops signatures."""
 
     def __init__(self) -> None:
-        self.approval_requests: list[tuple[str, str, int, str, str | None]] = []
+        self.approval_requests: list[tuple[str, str, int, str, str | None, str | None]] = []
 
-    async def open_pr_diff_session(
-        self, owner: str, repo: str, pr: int, /, *, base_url: str | None = None
-    ) -> PRDiffReadSessionInterface:
+    async def open_pr_diff_session(self, owner: str, repo: str, pr: int, /, *, base_url: str | None = None) -> PRDiffReadSessionInterface:
         return StrictSession()
 
     async def approve_pr_with_comment(
@@ -63,8 +59,9 @@ class DualRoleReader:
         /,
         *,
         base_url: str | None = None,
+        expected_head_sha: str | None = None,
     ) -> str:
-        self.approval_requests.append((owner, repo, pr, compliment, base_url))
+        self.approval_requests.append((owner, repo, pr, compliment, base_url, expected_head_sha))
         return f"approved:{owner}/{repo}!{pr}"
 
     async def update_pr_description(
@@ -107,6 +104,7 @@ class TestCreateMcpServerGitLabOpsWiring:
         """Patch infrastructure/application factories used by create_mcp_server."""
         infra = MagicMock()
         infra.create_settings_service.return_value = MagicMock()
+        infra.create_settings_service.return_value.get.return_value = None
         infra.create_logger_service.return_value = MagicMock()
         infra.create_cache_service.return_value = MagicMock()
         infra.create_pr_diff_service.return_value = ReaderOnly()
@@ -144,7 +142,7 @@ class TestCreateMcpServerGitLabOpsWiring:
         target = ProviderTarget("gitlab", "group", "project", 3, "https://gitlab.com/group/project/-/merge_requests/3", "https://gitlab.com")
         assert server._provider_resolver.resolve_strict_diff(target).reader is dual
         assert await server._provider_resolver.resolve_approval(target).approve(target, "Nice work") == "approved:group/project!3"
-        assert dual.approval_requests == [("group", "project", 3, "Nice work", "https://gitlab.com")]
+        assert dual.approval_requests == [("group", "project", 3, "Nice work", "https://gitlab.com", None)]
 
     @pytest.mark.anyio
     async def test_explicit_ops_preferred_over_reader(self) -> None:
@@ -169,7 +167,7 @@ class TestCreateMcpServerGitLabOpsWiring:
         target = ProviderTarget("gitlab", "group", "project", 3, "https://gitlab.com/group/project/-/merge_requests/3", "https://gitlab.com")
         assert await server._provider_resolver.resolve_approval(target).approve(target, "Nice work") == "approved:group/project!3"
         assert dual.approval_requests == []
-        assert explicit.approval_requests == [("group", "project", 3, "Nice work", "https://gitlab.com")]
+        assert explicit.approval_requests == [("group", "project", 3, "Nice work", "https://gitlab.com", None)]
 
     def test_reader_without_ops_leaves_ops_none(self) -> None:
         reader = ReaderOnly()

@@ -13,8 +13,8 @@ Strict full-context diffs are **all-or-nothing**: complete ordered multi-file co
 ### MCP tools (registered)
 | Tool | Purpose | VCS-provider-aware |
 |------|---------|--------------------|
-| `get_pr_diff` | Full-context strict PR/MR diff (all-or-nothing) | Yes — GitHub PR + GitLab MR |
-| `approve_pr` | Approve with non-empty compliment (GitHub review; GitLab **note then approve**) | Yes — GitHub PR + GitLab MR |
+| `get_pr_diff` | Full-context strict PR/MR diff (all-or-nothing) plus the snapshot `head_sha` | Yes — GitHub PR + GitLab MR |
+| `approve_pr` | Approve with non-empty compliment; optional `expected_head_sha` binds the approval to the reviewed head (E1011 on mismatch) (GitHub review; GitLab **note then approve**) | Yes — GitHub PR + GitLab MR |
 | `describe_pr` | Update PR/MR description body | Yes — GitHub PR + GitLab MR |
 | `health` | Server health + metrics snapshot | No (provider-agnostic; registered on `FastMCPServer`, not `ToolRegistry`) |
 
@@ -41,14 +41,16 @@ PRDiffer/
 | **Add VCS provider** | `application/provider_resolver.py`, `infrastructure/vcs_providers/` | Register a URL parser + strict-diff (`SessionPRDiffReader`) / approval / description capabilities |
 | **Add MCP tool** | `application/tool_registry.py` | Register via `@mcp.tool()` in `ToolRegistry.register_tools()` |
 | **Modify DI** | `infrastructure/factories/`, `application/factories/`, `application/factory.py` | Constructor injection; `InfrastructureFactory` / `ApplicationFactory` creation; module-level singletons (`get_*_service`) |
-| **Add exception / error code** | `domain/exceptions.py`, `error_codes.py`, `errors.py` | `E{category}{number}_{NAME}` (1xxx–5xxx); E5020 full-diff |
+| **Add exception / error code** | `domain/exceptions.py`, `error_codes.py`, `errors.py` | `E{category}{number}_{NAME}` (1xxx–5xxx); E5020 full-diff; E1011 approval head mismatch |
 | **Config changes** | `settings.toml`, `.env` / `.env.example`, `infrastructure/settings.py`, `domain/config/` | Dynaconf + frozen `GitHubConfig` / `GitLabConfig` |
+| **MCP startup settings** | `application/startup_config.py`, `domain/config/mcp_server_config.py`, `server.py` | One `MCPServerConfig` resolved before init; E5009 fail-fast |
 | **GitHub strict full-diff** | `infrastructure/github/` + `services/pr_diff_service.py` + `domain/usecases/pr_diff_usecases.py` | Session snapshot → inventory → git tree/blob content → ordered generate → MCP |
 | **GitLab strict full-diff** | `infrastructure/vcs_providers/gitlab_*.py` | Version pin → inventory → content → assembler → session reader |
-| **GitLab approve / describe** | `gitlab_operations.py` + `gitlab_repository.py` | `approve_with_client` (**note then approve**), `update_description_with_client`; async via `GitLabRuntime.run_blocking` |
+| **GitLab approve / describe** | `gitlab_operations.py` + `gitlab_repository.py` | `approve_with_client` (**note then approve**; with `expected_head_sha`: fresh `MR.sha` check before the note, `approve(sha=…)`, single-attempt mutations, 409 → E1011 + delete only this call's note), `update_description_with_client`; async via `GitLabRuntime.run_blocking` |
 | **GitLab host policy** | `domain/config/gitlab_config.py`, `settings.toml`, env `GITLAB_ALLOWED_HOSTS` | Default `gitlab.com`; opt-in custom hosts |
 | **URL parse (MCP)** | `application/utils/pr_url_parser.py` | `parse_pr_target` → GitHub/GitLab + `base_url` |
-| **URL parse (infra)** | `infrastructure/utils/url_parser.py` | Nested namespaces; custom GitLab hosts |
+| **URL parse (GitLab MR, pure)** | `domain/entities/gitlab_merge_request_url.py` | Nested namespaces; custom GitLab hosts (allowlist stays in infrastructure) |
+| **URL parse (GitHub, infra)** | `infrastructure/utils/url_parser.py` | `parse_github_pr_url` / `validate_github_pr_url` |
 | **Retry logic** | `infrastructure/utils/retry/` | `base.py`, `handler.py`, `models.py`, `factories.py` |
 | **Caching** | `infrastructure/cache/` | GitHub v3 (merge-base+head) + GitLab v1 strict keys |
 | **Security** | `infrastructure/security/` | `input_validator.py`, `injection_detector.py`, `sanitizer.py` |
@@ -59,15 +61,17 @@ PRDiffer/
 ## CODE MAP
 | Symbol | Type | Location | Role |
 |--------|------|----------|------|
-| PRDiff | Entity | `domain/entities/pr_diff.py` | Frozen dataclass; `files: tuple[FileDiffResponse, ...]` |
+| PRDiff | Entity | `domain/entities/pr_diff.py` | Frozen dataclass; `files: tuple[FileDiffResponse, ...]` + required keyword-only `head_sha` (session snapshot head) |
 | FilePatchInfo | Entity | `domain/entities/file_patch.py` | Rich domain model (~347): priority, smells, modes, validate |
 | FileDiffResponse | Entity | `domain/entities/file_diff_response.py` | MCP DTO; optional `previous_path` for renames |
 | FileContentAvailable / Unavailable | Entity | `domain/entities/file_content.py` | Typed content acquisition results |
 | GeneratedFileDiff | Entity | `domain/entities/generated_file_diff.py` | Ordered full-context generation result |
 | StrictPRDiffCacheIdentity | Entity | `domain/entities/pr_diff_cache.py` | Provider-neutral key + validation token |
 | FullDiffIncompleteError | Exception | `domain/exceptions.py` | E5020 fail-closed completeness (incl. `SNAPSHOT_CHANGED`) |
+| HeadSHAMismatchError | Exception | `domain/exceptions.py` | E1011 head-bound approval refused (`expected_head_sha`, optional `actual_head_sha`, `compliment_note`) |
 | GitHubConfig | Config | `domain/config/github_config.py` | Timeouts, size limits, parallel flags (~266) |
 | GitLabConfig | Config | `domain/config/gitlab_config.py` | Limits + `allowed_hosts` (~129) |
+| MCPServerConfig | Config | `domain/config/mcp_server_config.py` | Validated transport/host/port/path (stdio => port `None`) |
 | SessionPRDiffReader | Interface | `domain/interfaces/pr_diff_reader.py` | Session-capable reader contract (`open_pr_diff_session`) |
 | GetPRDiffUseCase | Use case | `domain/usecases/pr_diff_usecases.py` | Session open → cache by snapshot identity → build → close (+ optional `base_url`) (~60) |
 | UnifiedRetryHandler | Service | `infrastructure/utils/retry/handler.py` | Context-aware retry + circuit breaker |
@@ -81,7 +85,7 @@ PRDiffer/
 | GitLabRuntime | Infra | `infrastructure/vcs_providers/gitlab_runtime.py` | Shared limiter; per-call base_url/deadline (~386) |
 | GitLabOperations | Infra | `infrastructure/vcs_providers/gitlab_operations.py` | Stateless MR version pin + approve/describe on a runtime-provided client (`select_with_client`, note-then-`approve_with_client`, `update_description_with_client`) (~301) |
 | GitLabSessionPRDiffReader | Infra | `infrastructure/vcs_providers/gitlab_diff_session.py` | Open/build/close strict MR session (~197) |
-| FastMCPServer | Application | `application/mcp_server.py` | MCP orchestrator (~194) |
+| FastMCPServer | Application | `application/mcp_server.py` | MCP orchestrator; `run()` uses only the injected `MCPServerConfig` |
 | ToolRegistry | Application | `application/tool_registry.py` | Tools: get_pr_diff, approve_pr, describe_pr (GitHub+GitLab via `ProviderCapabilityResolver`; per-tool failure metrics) (~512) |
 | GitLabPROperationsProtocol | Protocol | `domain/interfaces/protocols.py` | GitLab approve + description port for MCP tools |
 | WebhookHandler | Application | `application/webhook_handler.py` | Webhook cache invalidation (~171) |
@@ -97,22 +101,22 @@ PRDiffer/
 - **Infrastructure**: Implements domain interfaces. Handles network, cache, security, logging.
 - **Application**: Orchestrates MCP tools/components. May depend on domain interfaces and factories.
 - **Layer direction**: Outer → inner only. Domain must not import application/infrastructure.
-- **Analyzer**: `python3 scripts/analyze_dependencies.py --path prdiffer` (AST; top-level imports).
-- **Current analyzer result**: 1 Application → Infrastructure violation (`application.factory` → `infrastructure.factories.infrastructure_factory`). Lazy/in-function infrastructure imports exist for factory fallbacks.
+- **Analyzer**: `python3 scripts/analyze_dependencies.py --path prdiffer` — one stdlib AST rule engine shared with `tests/unit/application/test_architecture.py`; checks imports at any depth (incl. in-function, relative, plain `import`); unparseable files fail; runs in CI.
+- **Current analyzer result**: 0 violations. Only the exact path `prdiffer/application/factory.py` (composition root) may import infrastructure.
 
 ### Full-diff completeness (strict)
 - Selected files must all succeed or raise **E5020** with `FullDiffIncompleteReason` (incl. `SNAPSHOT_CHANGED` on post-build metadata drift).
 - No truncation notices / partial payloads on size limit (`RESPONSE_SIZE_LIMIT`).
 - Per-file line limit: `diff.max_diff_size` defaults to **100_000** lines; overflow raises E5020 `RESPONSE_SIZE_LIMIT` in `diff_utils.py`.
 - Content cache keys: `(repo_full_name, path, ref)`; unavailable results are not cached as success.
-- PR-diff response cache: **GitHub** `github-full-diff-v3:{owner}:{repo}:{pr}:{merge_base}:{head}` (token `merge_base:head`; value is the bare `PRDiff`); **GitLab** `gitlab-full-diff-v1:{host}:…` (host/port-aware).
+- PR-diff response cache: **GitHub** `github-full-diff-v3:{owner}:{repo}:{pr}:{merge_base}:{head}` (token `merge_base:head`; value is the bare `PRDiff`); **GitLab** `gitlab-full-diff-v1:{host}:…` (host/port-aware). A cached `PRDiff` whose `head_sha` differs from the open session's snapshot head is a miss and is rebuilt under the same key.
 - Parallel fetch/generation defaults **on** (`performance.parallel_* = true`); capacity uses `github.max_concurrent` / `gitlab.max_concurrent` (disable flags for serialized capacity 1).
 - GitHub content: recursive git trees at merge-base/head + blobs by object id (modes, symlinks, gitlinks, renames); missing `get_git_tree` or truncated trees hard-fail E5020.
 - Blocking SDK calls stay off the event loop via session + `anyio.to_thread` / `GitLabRuntime.run_blocking` + limiter.
 - GitLab equal-content equal-mode modified → hard E5020 (no silent no-op).
 
 ### Dependency Injection
-- Constructor injection preferred; optional params with singleton factory fallbacks.
+- Constructor injection; application classes (`FastMCPServer`, `ToolRegistry`, `parse_pr_url` / `parse_pr_target`) require their ports — the composition root (`application/factory.py`) supplies infrastructure instances.
 - Module-level `get_*_service()` singletons; `InfrastructureFactory` / `ApplicationFactory` for creation.
 - Prefer injecting domain Protocols/interfaces over concrete infrastructure types.
 
@@ -125,7 +129,9 @@ PRDiffer/
 ### Configuration
 - **Dynaconf** via `settings.toml` + optional `.secrets.toml`.
 - Manual caching with `RLock` in `SettingsService` (Dynaconf unhashable → no `@lru_cache`).
-- Env overrides: `GITHUB_TOKEN`, `GITLAB_TOKEN`, `GITLAB_ALLOWED_HOSTS` (CSV), `MCP_AUTH_ENABLED`, `MCP_API_KEYS`, `MCP_TRANSPORT`, `MCP_PORT`, `MCP_HOST`, `MAX_FILES_ALLOWED`, `GITHUB_IGNORE_PATTERNS`.
+- Env overrides: `GITHUB_TOKEN`, `GITLAB_TOKEN`, `GITLAB_ALLOWED_HOSTS` (CSV), `MCP_AUTH_ENABLED`, `MCP_API_KEYS`, `MCP_TRANSPORT`, `MCP_PORT`, `MCP_HOST`, `MCP_PATH`, `MAX_FILES_ALLOWED`, `GITHUB_IGNORE_PATTERNS`.
+- MCP startup settings resolve once in `resolve_mcp_server_config()` with precedence: CLI flag > `MCP_*` env (incl. project `.env`) > active Dynaconf `mcp.*` > defaults (`http`, `127.0.0.1`, `9102`, `/mcp`). The shipped `settings.toml` sets `mcp.transport = "http"`.
+- All four transports are accepted (`stdio`, `http`, `sse`, `streamable-http`). An unknown transport or a non-numeric / out-of-range (1-65535) network port raises `ConfigurationError` **E5009** before anything binds; an explicit `--port 0` / `MCP_PORT=0` is rejected, never replaced. Blank `MCP_*` env values count as unset.
 - Copy `.env.example` → `.env`; `start-prdiffer-mcp-server.sh` sources `.env`.
 - `GitHubConfig` frozen dataclass: `timeout` (30), `pr_diff_request_timeout_seconds` (180), size limits, `parallel_*` default true.
 - `GitLabConfig` frozen slotted: same timeout shape + `allowed_hosts` default `("gitlab.com",)`.
@@ -135,6 +141,7 @@ PRDiffer/
 - Format: `E{category}{number}_{NAME}` (e.g. `E1001_INVALID_URL`, `E5020_FULL_DIFF_INCOMPLETE`).
 - Categories: 1xxx validation, 2xxx auth, 3xxx rate limit, 4xxx not found, 5xxx server.
 - GitLab ops: E2006 (401), E2007 (403), E3006 (429), E5021 (5xx), E4001/E4002/E4003 (not found), E5004 timeout, E5019 connection.
+- Head-bound approvals: `E1011_HEAD_SHA_MISMATCH` (`HeadSHAMismatchError`) surfaces as a ToolError with compact JSON `{"error_code","message","details"}`; a malformed `expected_head_sha` is E1001 before any provider call.
 - Constants in `error_codes.py` (import E-codes from there; `errors.py` does not re-export them); helpers/types in `errors.py`; exception hierarchy in `exceptions.py`.
 
 ### Testing
@@ -143,12 +150,13 @@ PRDiffer/
 - ~1874 test functions across 113 `test_*.py` files; phase tests at `tests/test_phase{1-4}_improvements.py`.
 - Executor cross-loop suite: `test_async_parallel_executor_cross_loop.py`.
 - GitLab strict suite: unit (`vcs_providers/`, `test_gitlab_*`, MR ops), integration `test_gitlab_strict_full_diff.py`, performance capacity/deadline.
-- GitLab MCP write path: `test_tool_registry.py` (approve/describe dispatch), `test_factory_gitlab_ops_wiring.py`, `test_gitlab_mr_operations.py`.
+- Startup config: `tests/integration/test_server_startup_config.py` runs the real `main()` with real Dynaconf + `.env` (project root and `ROOT_PATH_FOR_DYNACONF` pinned to `tmp_path`, `FastMCP.run` recorded) for every precedence level, both Dynaconf environments, and every E5009 rejection.
+- GitLab MCP write path: `test_tool_registry.py` (approve/describe dispatch), `test_factory_gitlab_ops_wiring.py`, `test_gitlab_mr_operations.py`, `test_gitlab_approval_retry_policy.py` (SHA-bound mutations are single-attempt through the real SDK).
 - Mock external I/O; no live GitHub/GitLab in unit tests (real API suite always-skipped).
 - Auto-use fixtures: `set_test_environment`, `reset_singletons` in `tests/conftest.py`.
 
 ### Build/CI
-- **GitHub Actions**: `.github/workflows/pr-quality.yml` — Lint (`ruff check`), Type check (`ty check`), Unit tests (`pytest`) on PRs to `main` or `develop` (parallel matrix, `uv sync --frozen --group dev`).
+- **GitHub Actions**: `.github/workflows/pr-quality.yml` — Lint (`ruff check`), Type check (`ty check`), Architecture (`scripts/analyze_dependencies.py --path prdiffer`), Unit tests (`pytest`) on PRs to `main` or `develop` (parallel matrix, `uv sync --frozen --group dev`).
 - **Pre-commit** available (`.pre-commit-config.yaml`: ruff, pyright, basic hooks).
 - Local quality gates: `start-lint.sh` (prefers `uv run ruff`), `start-type-check.sh` (ty), `start-unittest.sh`.
 - Git hooks: `scripts/setup-git-hooks.sh` copies `scripts/git-hooks/pre-push` (type-check + lint).
@@ -179,7 +187,7 @@ PRDiffer/
 - **NO static plugin registration** → Tools live in `ToolRegistry` (`@mcp.tool()`).
 - **NO synchronous blocking on tool path** → Tool handlers are async.
 - **NO bypassing circuit breaker** for external APIs when integrated.
-- Prefer domain Protocols over reaching into infrastructure from components (lazy factory imports are transitional).
+- **NO infrastructure imports in application outside `application/factory.py`** — not even lazy in-function imports (the analyzer gate fails).
 
 ### Security
 - **NO command injection** (shell metacharacters, substitution).
@@ -202,8 +210,10 @@ PRDiffer/
 
 ### Entry Point
 - `prdiffer/server.py` + console script `prdiffer = "prdiffer.server:main"`.
-- Transport-aware diagnostics (stdio must not corrupt JSON-RPC on stdout).
-- CLI args override env/settings (`--transport`, `--port`, `--host`, `--path`).
+- Startup order: parse args -> load `.env` -> settings -> resolve/validate `MCPServerConfig` -> pick output stream + `get_logger(transport=...)` -> cache -> server -> `run()`.
+- Config errors print one stderr line (`❌ E5009_CONFIGURATION_ERROR: ...`) and exit 2, with no traceback and nothing on stdout.
+- Transport-aware diagnostics: with stdio the banner and logs go to stderr only (JSON-RPC owns stdout).
+- CLI args (`--transport`, `--port`, `--host`, `--path`) are plain strings validated by the resolver and are never written into `os.environ`.
 - Dev convenience: `sys.path` injection for direct execution.
 
 ### Build Patterns
@@ -271,14 +281,15 @@ uv run python scripts/bench_diff_generation.py --matrix strict-v1 --phase baseli
 uv sync --frozen --group dev
 uv run ruff check .
 uv run ty check
+uv run python scripts/analyze_dependencies.py --path prdiffer
 uv run pytest tests -v --tb=short
 ```
 
 ## NOTES
 
-- **CI**: PRs targeting `main` or `develop` must pass Lint, Type check, and Unit tests (GitHub Actions).
+- **CI**: PRs targeting `main` or `develop` must pass Lint, Type check, Architecture, and Unit tests (GitHub Actions).
 - **Auth**: Controlled only by env `MCP_AUTH_ENABLED` (default off); API keys via `MCP_API_KEYS` / `MCP_ADMIN_API_KEY` when enabled.
-- **MCP tools**: `get_pr_diff`, `approve_pr`, `describe_pr` (all VCS-aware for GitHub PR + GitLab MR URLs), plus provider-agnostic `health`. Diff responses are full-context all-or-nothing. Routing uses `parse_pr_target`. Failure metrics use the real tool name (`operation=` on exception handlers). Empty/whitespace compliment & description rejected at the tool boundary.
+- **MCP tools**: `get_pr_diff`, `approve_pr`, `describe_pr` (all VCS-aware for GitHub PR + GitLab MR URLs), plus provider-agnostic `health`. Diff responses are full-context all-or-nothing. Routing uses `parse_pr_target`. Failure metrics use the real tool name (`operation=` on exception handlers). Empty/whitespace compliment & description rejected at the tool boundary. `get_pr_diff` returns `{files, head_sha}`; `approve_pr` takes an optional 40/64-hex `expected_head_sha` (GitHub re-reads the PR head and reviews that exact commit; GitLab compares the fresh `MR.sha` and passes `sha` to approve). GitHub has no atomic compare-and-approve, so a push between the head read and the review is still possible.
 - **VCS**: GitHub (session-isolated full-diff + approve review + describe) + GitLab (strict version-pinned full-diff + **note-then-approve** + description update; host allowlist). Factory auto-wires `gitlab_pr_operations` from dual-role `GitLabVCSRepository` when ops not injected separately.
 - **Custom GitLab**: `GITLAB_ALLOWED_HOSTS=gitlab.com,your.host` + `GITLAB_TOKEN` (write/`api` for approve/describe; read scopes suffice for diff-only); MR URLs via `https://host/group/project/-/merge_requests/N`.
 - **Package version**: `pyproject.toml` = `0.6.2` (keep `prdiffer/version.py` in sync when releasing).
@@ -286,4 +297,4 @@ uv run pytest tests -v --tb=short
 - **AGENTS.md coverage**: 40 files (root + layer/package docs under `prdiffer/`, `tests/`, `scripts/`).
 - **Skill**: `skills/prdiffer/SKILL.md` documents dual-provider tools, MR URL formats, GitLab error codes.
 - **Empty reserved dirs**: `application/plugins/`, `application/services/` (AGENTS only); `application/interfaces/` (`__init__.py` + AGENTS); `infrastructure/interfaces/` (AGENTS only). Protocols live in `domain/interfaces/`.
-- **Analyzer layers**: Application 21, Domain 34, Infrastructure 54 modules (112 total in `prdiffer/`); 1 Application→Infrastructure top-level violation (`factory.py` → `infrastructure_factory`). Lazy in-function App→Infra imports exist for DI fallbacks (analyzer ignores those).
+- **Analyzer layers**: Application 22, Domain 35, Infrastructure 53 modules incl. package `__init__` (113 total in `prdiffer/`); 0 violations at any import depth; only `prdiffer/application/factory.py` is exempt (composition root).

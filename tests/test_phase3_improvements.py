@@ -237,6 +237,7 @@ class TestPRDiffExtensions:
         from prdiffer.domain.entities.file_patch import EDIT_TYPE
 
         diff = PRDiff(
+            head_sha="c" * 40,
             files=(
                 FileDiffResponse(
                     path="test.py",
@@ -244,7 +245,7 @@ class TestPRDiffExtensions:
                     stats=FileStats(additions=1, deletions=1),
                     diff="@@ -1,3 +1,3 @@",
                 ),
-            )
+            ),
         )
         assert len(diff.files) == 1
 
@@ -252,7 +253,7 @@ class TestPRDiffExtensions:
         """Test that PRDiff can be empty."""
         from prdiffer.domain.entities.pr_diff import PRDiff
 
-        diff = PRDiff(files=())
+        diff = PRDiff(files=(), head_sha="c" * 40)
         assert len(diff.files) == 0
 
 
@@ -400,6 +401,7 @@ class TestPhase3Integration:
         from prdiffer.domain.entities.file_patch import EDIT_TYPE
 
         diff = PRDiff(
+            head_sha="c" * 40,
             files=(
                 FileDiffResponse(
                     path="test.py",
@@ -407,7 +409,7 @@ class TestPhase3Integration:
                     stats=FileStats(additions=1, deletions=1),
                     diff="@@ -1,10 +1,15 @@\n-old\n+new",
                 ),
-            )
+            ),
         )
 
         # Verify files array works correctly

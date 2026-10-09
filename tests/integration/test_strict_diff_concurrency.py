@@ -118,7 +118,7 @@ async def test_github_session_capacity_serializes_two_builds() -> None:
         return []
 
     service._generate_diff_content.side_effect = generate
-    service._build_pr_diff_strict.return_value = PRDiff(files=())
+    service._build_pr_diff_strict.return_value = PRDiff(files=(), head_sha="c" * 40)
 
     def make_session() -> GitHubPRDiffSession:
         repo = MagicMock()

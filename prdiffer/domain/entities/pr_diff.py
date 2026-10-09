@@ -15,3 +15,8 @@ class PRDiff:
     """
 
     files: tuple[FileDiffResponse, ...] = field(default_factory=tuple)
+    head_sha: str = field(kw_only=True)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.head_sha, str) or not self.head_sha:
+            raise ValueError("head_sha must be a nonempty string")

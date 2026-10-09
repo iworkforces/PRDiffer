@@ -1,263 +1,172 @@
 #!/usr/bin/env python3
-"""Generate dependency graph visualization for PRDiffer.
+"""Import-safe, stdlib AST engine for the package's Clean Architecture gate."""
 
-This script analyzes Python imports and creates a visual dependency graph
-showing relationships between modules and layers.
-"""
-
+import argparse
 import ast
 import sys
+from dataclasses import dataclass
 from pathlib import Path
-from collections import defaultdict
 
 
-class DependencyAnalyzer:
-    """Extract top-level import dependencies from a Python module.
+@dataclass(frozen=True, slots=True)
+class ImportViolation:
+    """A forbidden dependency at its source import statement."""
 
-    Only analyses module-scope and class-scope imports, not lazy imports
-    inside function/method bodies (which are acceptable for fallback DI)."""
-
-    def __init__(self, file_path: Path):
-        self.file_path = file_path
-        self.imports: set[str] = set()
-        self.current_module = self._get_module_name(file_path)
-
-    def _get_module_name(self, path: Path) -> str:
-        """Convert file path to module name."""
-        parts = path.parts
-        try:
-            # Find 'prdiffer' in path
-            prdiffer_idx = parts.index("prdiffer")
-            return ".".join(parts[prdiffer_idx:])
-        except ValueError:
-            # Not in prdiffer directory
-            return ".".join(parts)
-
-    def _collect_imports_from_node(self, node: ast.AST) -> None:
-        """Collect import statements from a single AST node."""
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                self.imports.add(alias.name)
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            self.imports.add(node.module)
-
-    def analyze(self, tree: ast.Module) -> None:
-        """Analyze top-level and class-level imports only."""
-        for node in ast.iter_child_nodes(tree):
-            self._collect_imports_from_node(node)
-            if isinstance(node, ast.ClassDef):
-                for class_node in ast.iter_child_nodes(node):
-                    self._collect_imports_from_node(class_node)
+    path: str
+    lineno: int
+    module: str
+    target: str
+    rule: str
 
 
-def analyze_directory(root: Path) -> dict[str, set[str]]:
-    """Analyze all Python files in directory.
+@dataclass(frozen=True, slots=True)
+class ParseFailure:
+    """Source that cannot be read, parsed, or resolved safely."""
 
-    Args:
-        root: Root directory to analyze
+    path: str
+    error: str
+    lineno: int = 1
+    rule: str = "parse-failure"
 
-    Returns:
-        Dict mapping module name to its dependencies
+
+@dataclass(frozen=True, slots=True)
+class ScanResult:
+    """Internal dependency graph and all failures from a package scan."""
+
+    dependencies: dict[str, set[str]]
+    violations: list[ImportViolation]
+    parse_failures: list[ParseFailure]
+
+    @property
+    def is_clean(self) -> bool:
+        return not self.violations and not self.parse_failures
+
+
+def _in_namespace(module: str, namespace: str) -> bool:
+    return module == namespace or module.startswith(namespace + ".")
+
+
+def _import_targets(node: ast.Import | ast.ImportFrom, anchor: str) -> list[str]:
+    """Resolve all syntactic dependency targets without importing any code."""
+    match node:
+        case ast.Import():
+            return [alias.name for alias in node.names]
+        case ast.ImportFrom():
+            base = node.module or ""
+            if node.level:
+                parts = anchor.split(".")
+                if node.level > len(parts):
+                    raise ValueError("relative import climbs above the top package")
+                base = ".".join(parts[: len(parts) - node.level + 1])
+                if node.module:
+                    base += "." + node.module
+            return [base] + [f"{base}.{alias.name}" for alias in node.names if alias.name != "*"]
+
+
+def scan_package(package_dir: Path) -> ScanResult:
+    """Scan every Python AST in a top package; unreadable source fails closed.
+
+    Paths are relative to the package's parent. Dependencies include internal
+    base and alias targets, even for imports in nested or unreachable code.
+    The sole layer exemption is application/factory.py, the composition root.
     """
-    dependencies = defaultdict(set)
+    package_dir = package_dir.resolve()
+    if not package_dir.is_dir():
+        return ScanResult({}, [], [ParseFailure(str(package_dir), "package directory not found")])
+    package = package_dir.name
+    dependencies: dict[str, set[str]] = {}
+    violations: list[ImportViolation] = []
+    failures: list[ParseFailure] = []
+    rules = (("domain", "application"), ("domain", "infrastructure"), ("application", "infrastructure"))
 
-    for py_file in root.rglob("*.py"):
-        # Skip test files and __pycache__
-        if "test" in py_file.parts or "__pycache__" in py_file.parts:
+    for source_path in sorted(package_dir.rglob("*.py")):
+        relative = source_path.relative_to(package_dir.parent)
+        if "__pycache__" in relative.parts:
+            continue
+        path = relative.as_posix()
+        module_parts = relative.with_suffix("").parts
+        is_package = source_path.name == "__init__.py"
+        module = ".".join(module_parts[:-1] if is_package else module_parts)
+        anchor = module if is_package else module.rpartition(".")[0]
+        dependencies[module] = set()
+        try:
+            tree = ast.parse(source_path.read_bytes(), filename=path)
+        except SyntaxError as error:
+            failures.append(ParseFailure(path, error.msg, error.lineno or 1))
+            continue
+        except (UnicodeDecodeError, ValueError, OSError) as error:
+            failures.append(ParseFailure(path, str(error)))
             continue
 
-        try:
-            with open(py_file, "r", encoding="utf-8") as f:
-                source = f.read()
-
-            tree = ast.parse(source)
-            analyzer = DependencyAnalyzer(py_file)
-            analyzer.analyze(tree)
-
-            module = analyzer.current_module
-            # Filter to only prdiffer dependencies
-            prdiffer_deps = {imp for imp in analyzer.imports if "prdiffer" in imp}
-            dependencies[module] = prdiffer_deps
-
-        except Exception as e:
-            print(f"Warning: Could not analyze {py_file}: {e}", file=sys.stderr)
-
-    return dependencies
-
-
-def detect_layer_violations(
-    dependencies: dict[str, set[str]],
-) -> list[tuple[str, str, str]]:
-    """Detect Clean Architecture layer violations.
-
-    Rules:
-    - Domain should not depend on Application
-    - Domain should not depend on Infrastructure
-    - Application should not depend on Infrastructure
-
-    Args:
-        dependencies: Module dependency graph
-
-    Returns:
-        List of (module, dependency, violation_type) tuples
-    """
-    violations = []
-
-    for module, deps in dependencies.items():
-        for dep in deps:
-            # Domain violations
-            if module.startswith("prdiffer.domain"):
-                if dep.startswith("prdiffer.application"):
-                    violations.append((module, dep, "Domain -> Application"))
-                elif dep.startswith("prdiffer.infrastructure"):
-                    violations.append((module, dep, "Domain -> Infrastructure"))
-
-            # Application violations
-            elif module.startswith("prdiffer.application"):
-                if dep.startswith("prdiffer.infrastructure"):
-                    violations.append((module, dep, "Application -> Infrastructure"))
-
-    return violations
+        imports = (node for node in ast.walk(tree) if isinstance(node, (ast.Import, ast.ImportFrom)))
+        for node in sorted(imports, key=lambda item: (item.lineno, item.col_offset)):
+            try:
+                targets = _import_targets(node, anchor)
+            except ValueError as error:
+                failures.append(ParseFailure(path, str(error), node.lineno, "relative-import"))
+                continue
+            for target in targets:
+                if not _in_namespace(target, package):
+                    continue
+                dependencies[module].add(target)
+                for source_layer, target_layer in rules:
+                    if not (_in_namespace(module, f"{package}.{source_layer}") and _in_namespace(target, f"{package}.{target_layer}")):
+                        continue
+                    if source_layer == "application" and path == f"{package}/application/factory.py":
+                        continue
+                    rule = f"{source_layer}->{target_layer}"
+                    violations.append(ImportViolation(path, node.lineno, module, target, rule))
+    return ScanResult(dependencies, violations, failures)
 
 
-def print_graph(dependencies: dict[str, set[str]]) -> None:
-    """Print dependency graph as ASCII art.
-
-    Args:
-        dependencies: Module dependency graph
-    """
-    print("\n" + "=" * 80)
-    print("DEPENDENCY GRAPH")
-    print("=" * 80 + "\n")
-
-    # Group by layer
-    layers = {"Domain": [], "Application": [], "Infrastructure": []}
-
-    for module in sorted(dependencies.keys()):
-        if module.startswith("prdiffer.domain"):
-            layers["Domain"].append(module)
-        elif module.startswith("prdiffer.application"):
-            layers["Application"].append(module)
-        elif module.startswith("prdiffer.infrastructure"):
-            layers["Infrastructure"].append(module)
-
-    for layer_name, modules in layers.items():
-        if modules:
-            print(f"\n{layer_name.upper()} LAYER:")
-            print("-" * 80)
-            for module in sorted(modules):
-                short_name = module.replace("prdiffer.", "")
-                deps = sorted(dependencies[module])
-                if deps:
-                    short_deps = [d.replace("prdiffer.", "") for d in deps]
-                    print(f"  {short_name}")
-                    print(f"    → {', '.join(short_deps)}")
-                else:
-                    print(f"  {short_name} (no internal deps)")
+def format_failures(result: ScanResult) -> list[str]:
+    """Shared readable diagnostics for CLI output and pytest assertions."""
+    return [f"{v.path}:{v.lineno}: {v.rule}: {v.module} imports {v.target}" for v in result.violations] + [
+        f"{f.path}:{f.lineno}: {f.rule}: {f.error}" for f in result.parse_failures
+    ]
 
 
-def print_violations(violations: list[tuple[str, str, str]]) -> None:
-    """Print detected violations.
-
-    Args:
-        violations: List of violations
-    """
-    print("\n" + "=" * 80)
-    print("LAYER VIOLATIONS")
-    print("=" * 80 + "\n")
-
-    if not violations:
-        print("✅ No layer violations detected!")
-        return
-
-    print(f"⚠️  Found {len(violations)} violation(s):\n")
-
-    for i, (module, dep, violation_type) in enumerate(violations, 1):
-        print(f"{i}. {violation_type}")
-        print(f"   Module:     {module}")
-        print(f"   Depends on:  {dep}")
-        print()
-
-
-def print_statistics(dependencies: dict[str, set[str]], violations: list[tuple[str, str, str]]) -> None:
-    """Print architecture statistics.
-
-    Args:
-        dependencies: Module dependency graph
-        violations: List of violations
-    """
-    print("\n" + "=" * 80)
-    print("ARCHITECTURE STATISTICS")
-    print("=" * 80 + "\n")
-
-    total_modules = len(dependencies)
-    total_edges = sum(len(deps) for deps in dependencies.values())
-
-    # Count modules per layer
-    layer_counts = defaultdict(int)
-    for module in dependencies.keys():
-        if module.startswith("prdiffer.domain"):
-            layer_counts["Domain"] += 1
-        elif module.startswith("prdiffer.application"):
-            layer_counts["Application"] += 1
-        elif module.startswith("prdiffer.infrastructure"):
-            layer_counts["Infrastructure"] += 1
-
-    print("Total Modules:          {}".format(total_modules))
-    print("Total Dependencies:       {}".format(total_edges))
-    print("Layer Violations:        {}".format(len(violations)))
-    print("\nModules per Layer:")
-    for layer, count in sorted(layer_counts.items()):
-        print("  {:20} {:3}".format(layer, count))
-
-    # Find most connected modules
-    print("\nTop 5 Most Connected Modules:")
-    sorted_by_deps = sorted(dependencies.items(), key=lambda x: len(x[1]), reverse=True)
-    for module, deps in sorted_by_deps[:5]:
-        short_name = module.replace("prdiffer.", "")
-        print("  {:40} {:2} deps".format(short_name, len(deps)))
-
-
-def main():
-    """Main entry point."""
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Generate dependency graph for PRDiffer")
-    parser.add_argument(
-        "--path",
-        type=str,
-        default="prdiffer",
-        help="Path to prdiffer directory (default: prdiffer)",
-    )
-    parser.add_argument("--output", type=str, help="Output file for DOT graph (requires graphviz)")
-
+def main() -> None:
+    """Print the dependency graph, failures and statistics; exit nonzero on failure."""
+    parser = argparse.ArgumentParser(description="Analyze package dependencies and enforce Clean Architecture")
+    parser.add_argument("--path", type=Path, default=Path("prdiffer"), help="Top package directory (default: prdiffer)")
     args = parser.parse_args()
-
-    # Find prdiffer directory
-    root = Path(args.path)
-    if not root.exists():
+    root = args.path
+    if not root.is_dir():
         print(f"Error: Directory {root} not found", file=sys.stderr)
         sys.exit(1)
 
-    # Analyze dependencies
     print(f"Analyzing dependencies in {root}...")
-    dependencies = analyze_directory(root)
+    result = scan_package(root)
+    package = root.resolve().name
+    print("\n" + "=" * 80 + "\nDEPENDENCY GRAPH\n" + "=" * 80)
+    layer_counts: dict[str, int] = {}
+    for layer in ("domain", "application", "infrastructure"):
+        modules = [module for module in result.dependencies if _in_namespace(module, f"{package}.{layer}")]
+        layer_counts[layer] = len(modules)
+        print(f"\n{layer.upper()} LAYER:\n" + "-" * 80)
+        for module in modules:
+            deps = sorted(result.dependencies[module])
+            print(f"  {module.removeprefix(package + '.')}")
+            print("    → " + (", ".join(dep.removeprefix(package + ".") for dep in deps) or "(no internal deps)"))
 
-    # Detect violations
-    violations = detect_layer_violations(dependencies)
-
-    # Print results
-    print_graph(dependencies)
-    print_violations(violations)
-    print_statistics(dependencies, violations)
-
-    # Exit with error code if violations found
-    if violations:
-        print(f"\n❌ Found {len(violations)} layer violation(s). Fix before proceeding.")
-        sys.exit(1)
-    else:
-        print("\n✅ Architecture is clean!")
-        sys.exit(0)
+    print("\n" + "=" * 80 + "\nLAYER VIOLATIONS / PARSE FAILURES\n" + "=" * 80)
+    messages = format_failures(result)
+    for message in messages:
+        print(message)
+    print("\n" + "=" * 80 + "\nARCHITECTURE STATISTICS\n" + "=" * 80)
+    print(f"Total Modules:          {len(result.dependencies)}")
+    print(f"Total Dependencies:     {sum(len(deps) for deps in result.dependencies.values())}")
+    print(f"Layer Violations:       {len(result.violations)}")
+    print(f"Parse Failures:         {len(result.parse_failures)}")
+    print("\nModules per Layer:")
+    for layer, count in layer_counts.items():
+        print(f"  {layer.title():20} {count:3}")
+    print("\nTop 5 Most Connected Modules:")
+    for module, deps in sorted(result.dependencies.items(), key=lambda item: len(item[1]), reverse=True)[:5]:
+        print(f"  {module.removeprefix(package + '.'):40} {len(deps):2} deps")
+    print("\n✅ Architecture is clean!" if result.is_clean else f"\n❌ Found {len(messages)} architecture failure(s). Fix before proceeding.")
+    sys.exit(0 if result.is_clean else 1)
 
 
 if __name__ == "__main__":

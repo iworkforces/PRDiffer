@@ -230,7 +230,7 @@ def mock_github_file():
 @pytest.fixture
 def sample_pr_diff():
     """Create a sample PRDiff entity for testing."""
-    return PRDiff(files=())
+    return PRDiff(files=(), head_sha="c" * 40)
 
 
 @pytest.fixture

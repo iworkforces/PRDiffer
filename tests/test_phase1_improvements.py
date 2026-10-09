@@ -8,6 +8,7 @@ from unittest.mock import Mock, patch
 
 from prdiffer.application.provider_resolver import ProviderCapabilityResolver
 from prdiffer.infrastructure.security.input_validator import InputValidator
+from prdiffer.infrastructure.utils.coalescing_service import RequestCoalescingService
 from prdiffer.infrastructure.utils.circuit_breaker_core import (
     CircuitBreaker,
     CircuitState,
@@ -20,7 +21,7 @@ class TestTTLExpiration:
     @pytest.fixture
     def sample_pr_diff(self):
         """Create sample PRDiff for testing."""
-        return PRDiff(files=())
+        return PRDiff(files=(), head_sha="c" * 40)
 
     @patch("prdiffer.infrastructure.settings.get_settings_service")
     @pytest.mark.asyncio
@@ -317,12 +318,16 @@ class TestErrorMessageSanitization:
     @pytest.fixture
     def mock_dependencies(self):
         """Create mock dependencies for FastMCPServer."""
+        from prdiffer.domain.config.mcp_server_config import MCPServerConfig
+
         return {
+            "mcp_config": MCPServerConfig(transport="http", host="127.0.0.1", port=9102, path="/mcp"),
             "settings_service": Mock(),
             "cache_service": Mock(),
             "logger": Mock(),
             "provider_resolver": ProviderCapabilityResolver(),
             "input_validator": Mock(),
+            "request_coalescing_service": RequestCoalescingService(),
             "rate_limiter": Mock(),
             "metrics_tracker": Mock(),
             "health_monitor": Mock(),

@@ -1,5 +1,6 @@
 """Concrete application factory implementation for creating application-layer components."""
 
+from prdiffer.domain.config.mcp_server_config import MCPServerConfig
 from prdiffer.domain.factories.application_factory import ApplicationFactoryInterface
 from prdiffer.domain.services.logger import LoggerServiceInterface
 from prdiffer.domain.services.settings import SettingsServiceInterface
@@ -44,10 +45,13 @@ class ApplicationFactory(ApplicationFactoryInterface):
         self,
         settings_service: SettingsServiceInterface,
         logger: LoggerServiceInterface,
+        *,
+        mcp_config: MCPServerConfig,
     ) -> ServerConfigurationProtocol:
         return ServerConfiguration(
             settings_service=settings_service,
             logger=logger,
+            mcp_config=mcp_config,
         )
 
     def create_authentication(self, logger: LoggerServiceInterface) -> AuthenticationProtocol:

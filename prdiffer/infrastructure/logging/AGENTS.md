@@ -14,7 +14,7 @@ prdiffer/infrastructure/logging/
 ## WHERE TO LOOK
 | Task | Location | Notes |
 |------|----------|-------|
-| **Logger singleton** | `console_logger.py` | `get_logger()` → `ConsoleLogger` |
+| **Logger singleton** | `console_logger.py` | `get_logger(transport=None)` → `ConsoleLogger`; a given transport picks the stream and switches an existing singleton via `use_transport()` |
 | **Sanitize exceptions** | `exception_utils.py` | `sanitize_exception_for_logging`, auth-header redaction |
 | **Domain port** | domain `LoggerServiceInterface` | Implemented by ConsoleLogger |
 

@@ -21,6 +21,8 @@ class GitLabDiffAssembler:
         self,
         inventory: tuple[GitLabInventoryFile, ...],
         contents: tuple[GitLabFileContents, ...],
+        *,
+        head_sha: str,
     ) -> PRDiff:
         if len(inventory) != len(contents):
             raise FullDiffIncompleteError(
@@ -119,7 +121,7 @@ class GitLabDiffAssembler:
                 )
             )
 
-        return PRDiff(files=tuple(responses))
+        return PRDiff(files=tuple(responses), head_sha=head_sha)
 
 
 def _count_unified_stats(diff: str) -> tuple[int, int]:

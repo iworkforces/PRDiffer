@@ -105,10 +105,10 @@ class GitHubPRDiffService:
         """Open a request-local GitHub session."""
         return await self._get_session_reader().open_pr_diff_session(repo_owner, repo_name, pr_number, base_url=base_url)
 
-    def _build_pr_diff_strict(self, file_patches: list[FilePatchInfo]) -> PRDiff:
+    def _build_pr_diff_strict(self, file_patches: list[FilePatchInfo], *, head_sha: str) -> PRDiff:
         """Build PRDiff from ordered full-context generation."""
         if not file_patches:
-            return PRDiff(files=())
+            return PRDiff(files=(), head_sha=head_sha)
 
         try:
             generated = self._diff_generator.generate_ordered_file_diffs(file_patches)
@@ -145,7 +145,7 @@ class GitHubPRDiffService:
             )
             responses.append(response)
 
-        return PRDiff(files=tuple(responses))
+        return PRDiff(files=tuple(responses), head_sha=head_sha)
 
     def _generate_diff_content(
         self,

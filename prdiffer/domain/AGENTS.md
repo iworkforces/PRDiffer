@@ -41,7 +41,7 @@ prdiffer/domain/
 ## CODE MAP
 | Symbol | Type | Location | Role |
 |--------|------|----------|------|
-| `PRDiff` | Entity | `entities/pr_diff.py` | `files: tuple[FileDiffResponse, ...]` |
+| `PRDiff` | Entity | `entities/pr_diff.py` | `files: tuple[FileDiffResponse, ...]` + required keyword-only `head_sha` |
 | `FileDiffResponse` | Entity | `entities/file_diff_response.py` | path/status/stats/diff/`previous_path` |
 | `FilePatchInfo` | Entity | `entities/file_patch.py` | Rich review model (~347) |
 | `FileContentAvailable` / `Unavailable` | Entity | `entities/file_content.py` | Typed content acquisition |
@@ -50,12 +50,14 @@ prdiffer/domain/
 | `SessionPRDiffReader` | Protocol | `interfaces/pr_diff_reader.py` | `open_pr_diff_session` |
 | `GetPRDiffUseCase` | Use case | `usecases/pr_diff_usecases.py` | Session path (+ `base_url`) (~60) |
 | `E5020_FULL_DIFF_INCOMPLETE` | ErrorCode | `error_codes.py` | Full-diff incompleteness |
+| `E1011_HEAD_SHA_MISMATCH` | ErrorCode | `error_codes.py` | Head-bound approval refused (head moved) |
 | `E2006_GITLAB_AUTH_FAILED` | ErrorCode | `error_codes.py` | GitLab 401 |
 | `E2007_GITLAB_INSUFFICIENT_PERMISSIONS` | ErrorCode | `error_codes.py` | GitLab 403 |
 | `E3006_GITLAB_RATE_LIMITED` | ErrorCode | `error_codes.py` | GitLab 429 |
 | `E5021_GITLAB_API_ERROR` | ErrorCode | `error_codes.py` | GitLab 5xx / upstream |
 | `GitLabAPIError` | Exception | `exceptions.py` | Operational GitLab errors; optional status_code |
 | `FullDiffIncompleteError` | Exception | `exceptions.py` | Maps to E5020; safe details only |
+| `HeadSHAMismatchError` | Exception | `exceptions.py` | E1011; details `expected_head_sha`, optional `actual_head_sha` / `compliment_note` |
 | `GitHubConfig` | Config VO | `config/github_config.py` | Frozen; full-diff admission limits |
 | `GitLabConfig` | Config VO | `config/gitlab_config.py` | Frozen+slots; limits + host allowlist |
 
@@ -87,12 +89,13 @@ prdiffer/domain/
   - Safe details only: `reason`, `path`, `previous_path`, `observed`, `limit` — never tokens or raw content.
 - Do **not** remap auth/permission/rate-limit/retry-exhausted network failures to E5020; unexpected algorithm defects stay `E5003_DIFF_GENERATION_ERROR`.
 - GitLab operational mapping: 401→E2006, 403→E2007, 429→E3006, 5xx→E5021; reuse E4001/E4002/E4003 for verified project/MR/file 404, E5004 timeout, E5019 connection. Never put `response_body`/tokens/credentials in details.
+- **Head-bound approvals**: `HeadSHAMismatchError` (E1011, not a `ValidationError`) means the PR/MR head moved away from the caller's `expected_head_sha`; the approval was not recorded. `compliment_note` (`deleted` / `cleanup_failed`) reports GitLab note cleanup after an approval 409.
 
 ### Full-diff correctness (0.6.x)
 - Success responses are complete by construction (no completeness boolean).
 - `FileDiffResponse.previous_path` only for `EDIT_TYPE.RENAMED`.
 - Content union: available empty text ≠ deterministic unavailability; operational failures raise.
-- Cache: `github-full-diff-v3` (merge-base+head) and host-aware `gitlab-full-diff-v1:{host}:…` keys hold bare `PRDiff` values; `unwrap_pr_diff_cache_value` requires the exact session identity key.
+- Cache: `github-full-diff-v3` (merge-base+head) and host-aware `gitlab-full-diff-v1:{host}:…` keys hold bare `PRDiff` values; `unwrap_pr_diff_cache_value` requires the exact session identity key. `GetPRDiffUseCase` treats a cached `PRDiff` whose `head_sha` differs from `session.snapshot.head_sha` as a miss; keys and tokens are unchanged.
 - Sessions expose `StrictPRDiffCacheIdentity` (provider-neutral key + validation token). GitHub snapshot: `base_tip_sha` + `merge_base_sha` + `head_sha` + authoritative count; post-build drift → E5020 `SNAPSHOT_CHANGED`.
 
 ## ANTI-PATTERNS

@@ -24,8 +24,9 @@ _HD = "c" * 40
 _BT = "a" * 40
 
 
-def _pr_diff() -> PRDiff:
+def _pr_diff(head_sha: str = _HD) -> PRDiff:
     return PRDiff(
+        head_sha=head_sha,
         files=(
             FileDiffResponse(
                 path="a.py",
@@ -33,7 +34,7 @@ def _pr_diff() -> PRDiff:
                 stats=FileStats(additions=1, deletions=0),
                 diff="+x",
             ),
-        )
+        ),
     )
 
 
@@ -73,12 +74,13 @@ class SessionReader:
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_session_path_uses_cache_identity_and_closes() -> None:
+@pytest.mark.parametrize("empty", [False, True])
+async def test_session_path_uses_cache_identity_and_closes(empty: bool) -> None:
     cache = MagicMock()
     cache.get = AsyncMock(return_value=None)
     cache.set = AsyncMock()
 
-    build = AsyncMock(return_value=_pr_diff())
+    build = AsyncMock(return_value=PRDiff(head_sha=_HD) if empty else _pr_diff())
     identity = github_full_diff_v3_identity("o", "r", 1, _MB, _HD)
     session = FakeSession(
         snapshot=PRDiffSnapshot("o", "r", 1, _BT, _MB, _HD, 1),
@@ -90,7 +92,8 @@ async def test_session_path_uses_cache_identity_and_closes() -> None:
 
     result = await use_case.execute("o", "r", 1)
 
-    assert result is not None
+    assert result.head_sha == session.snapshot.head_sha
+    assert bool(result.files) is not empty
     assert reader.open_calls == 1
     build.assert_awaited_once()
     cache.set.assert_awaited_once()
@@ -127,9 +130,31 @@ async def test_session_cache_hit_closes_without_build() -> None:
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+async def test_wrong_head_cache_value_is_rebuilt_without_relabeling() -> None:
+    cached = _pr_diff("d" * 40)
+    fresh = _pr_diff()
+    identity = github_full_diff_v3_identity("o", "r", 1, _MB, _HD)
+    cache = MagicMock()
+    cache.get = AsyncMock(return_value=cached)
+    cache.set = AsyncMock()
+    build = AsyncMock(return_value=fresh)
+    session = FakeSession(PRDiffSnapshot("o", "r", 1, _BT, _MB, _HD, 1), identity, build)
+
+    result = await GetPRDiffUseCase(SessionReader(session), cache).execute("o", "r", 1)
+
+    assert result is fresh
+    assert result.head_sha == session.snapshot.head_sha
+    assert cached.head_sha == "d" * 40
+    build.assert_awaited_once()
+    cache.set.assert_awaited_once_with(identity.cache_key, identity.validation_token, fresh)
+    assert session.closed
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
 async def test_gitlab_session_identity_cache_miss_and_hit() -> None:
     identity = gitlab_full_diff_v1_identity("ns", "repo", 1, 9, "b", "s", "h")
-    cached = _pr_diff()
+    cached = _pr_diff("h")
     cache = MagicMock()
     cache.get = AsyncMock(return_value=None)
     cache.set = AsyncMock()

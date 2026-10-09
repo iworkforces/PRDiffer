@@ -77,6 +77,7 @@ Fetch a **complete structured full-context** PR/MR diff (primary analysis tool).
 ```
 PRDiff {
   files: FileDiffResponse[]   // Changed files in provider order
+  head_sha: string            // Snapshot head, including cache hits and empty diffs
 }
 ```
 
@@ -145,6 +146,7 @@ Approve a GitHub PR or GitLab MR and attach a **non-empty** compliment.
 | `pr_url` | `string` | Yes | GitHub PR or GitLab MR URL |
 | `compliment` | `string` | Yes | Non-empty compliment text (review body / note) |
 | `api_key` | `string` | No | MCP API key when server auth is enabled |
+| `expected_head_sha` | `string|null` | No | 40/64 hexadecimal characters from get_pr_diff's `head_sha`; uppercase is accepted |
 
 **Returns:** `string` success message.
 
@@ -152,8 +154,12 @@ Approve a GitHub PR or GitLab MR and attach a **non-empty** compliment.
 
 | Provider | What the server does |
 |----------|----------------------|
-| **GitHub** | Creates a PR review with `event=APPROVE` and `body=compliment` (single API call) |
+| **GitHub** | Creates a PR review with `event=APPROVE` and `body=compliment`; when a SHA is supplied, checks the current head and binds the review to that commit |
 | **GitLab** | Creates a **note** with the compliment, then calls MR **approve** (two steps; note-first so a note failure cannot leave the MR approved while the tool errors) |
+
+Supplying `expected_head_sha` refuses approval with `E1011_HEAD_SHA_MISMATCH` if the head moved. Omitted/null retains existing behavior.
+GitLab checks the head and sends the SHA with approval. If approval is definitively rejected after creating the note, the server removes that
+compliment note; `details.compliment_note` reports `deleted` or `cleanup_failed` (only the note created by this request is cleaned up).
 
 **Requirements:**
 
@@ -238,10 +244,11 @@ Provider-agnostic server health / metrics snapshot (no PR URL). Use for connecti
 
 ### 2. Review and approve
 
-1. `prdiffer__get_pr_diff(pr_url)`.
+1. `result = prdiffer__get_pr_diff(pr_url)`; retain `result.head_sha`.
 2. Review statuses, patches, and risk (secrets, large binary, incomplete tests).
-3. If criteria pass: `prdiffer__approve_pr(pr_url, compliment)` with a **specific** compliment.
+3. If criteria pass: `prdiffer__approve_pr(pr_url, compliment, expected_head_sha=result.head_sha)` with a **specific** compliment.
 4. Same URL works for GitHub and GitLab; do not convert MR URLs to fake GitHub URLs.
+5. On E1011, re-run get_pr_diff and re-review before approving the new head.
 
 ### 3. Summarize and update description
 
@@ -267,7 +274,8 @@ Handle by structured `error_code` when present:
 
 | Error code | Meaning | Recovery |
 |------------|---------|----------|
-| `E1001_INVALID_URL` | Bad/unsupported URL, disallowed GitLab host, empty required text | Fix URL shape; check `GITLAB_ALLOWED_HOSTS`; use non-empty compliment/description |
+| `E1001_INVALID_URL` | Bad/unsupported URL, disallowed GitLab host, empty required text, malformed expected SHA | Fix URL/text; use the 40/64-hex `head_sha` from get_pr_diff |
+| `E1011_HEAD_SHA_MISMATCH` | Approval refused because the head moved; details: `expected_head_sha`, optional `actual_head_sha`, optional `compliment_note` (`deleted`/`cleanup_failed`) | Re-run get_pr_diff and re-review the new head; check note cleanup status on GitLab |
 | `E2002_AUTH_FAILED` | Missing/invalid MCP `api_key` | Pass valid `api_key` or disable client-side auth assumption |
 | `E2006_GITLAB_AUTH_FAILED` | GitLab token rejected (401) | Fix `GITLAB_TOKEN` |
 | `E2007_GITLAB_INSUFFICIENT_PERMISSIONS` | GitLab 403 | Broader token scopes / project membership |
@@ -290,6 +298,7 @@ except Exception as e:
 ```
 
 For E5020 via MCP `ToolError`, parse JSON text for `error_code`, `message`, and `details.reason`.
+E1011 also uses compact JSON `ToolError` text with exactly `error_code`, `message`, and `details`; unavailable actual heads are omitted.
 
 ---
 

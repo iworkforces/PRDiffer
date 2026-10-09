@@ -29,6 +29,7 @@ _MB2 = "e" * 40
 
 def _pr() -> PRDiff:
     return PRDiff(
+        head_sha=_HD,
         files=(
             FileDiffResponse(
                 path="a.py",
@@ -36,7 +37,7 @@ def _pr() -> PRDiff:
                 stats=FileStats(additions=1, deletions=0),
                 diff="+x\n",
             ),
-        )
+        ),
     )
 
 
@@ -85,6 +86,32 @@ class SessionReader:
     ) -> FakeSession:
         self.opens += 1
         return self.session
+
+
+@pytest.mark.integration
+@pytest.mark.anyio
+@pytest.mark.parametrize("provider", ["github", "gitlab"])
+async def test_real_cache_wrong_head_rebuilds_under_unchanged_identity(provider: str) -> None:
+    identity = github_full_diff_v3_identity("o", "r", 1, _MB, _HD) if provider == "github" else gitlab_full_diff_v1_identity("o", "r", 1, 7, _MB, _BT, _HD)
+    expected_key = f"github-full-diff-v3:o:r:1:{_MB}:{_HD}" if provider == "github" else f"gitlab-full-diff-v1:gitlab.com:o:r:1:7:{_MB}:{_BT}:{_HD}"
+    expected_token = f"{_MB}:{_HD}" if provider == "github" else f"7:{_MB}:{_BT}:{_HD}"
+    cache = CacheService()
+    stale = PRDiff(head_sha="d" * 40)
+    await cache.set(expected_key, expected_token, stale)
+    fresh = _pr()
+    build = AsyncMock(return_value=fresh)
+    session = FakeSession(identity, build)
+
+    result = await GetPRDiffUseCase(SessionReader(session), cache).execute("o", "r", 1)
+
+    assert result is fresh
+    assert result.head_sha == session.snapshot.head_sha
+    assert stale.head_sha == "d" * 40
+    build.assert_awaited_once()
+    assert identity.cache_key == expected_key
+    assert identity.validation_token == expected_token
+    assert await cache.get(expected_key, expected_token) is fresh
+    assert session.closed
 
 
 @pytest.mark.integration
@@ -139,7 +166,7 @@ async def test_oversized_build_returns_intact_closes_and_removes_stale_cache(mod
     )
     await cache.set(identity.cache_key, "stale-token", _pr())
     value = PRDiff(
-        files=(FileDiffResponse(path="新.py", status=EDIT_TYPE.MODIFIED, stats=FileStats(additions=1, deletions=0), diff="雪" * 1000),)
+        head_sha=_HD, files=(FileDiffResponse(path="新.py", status=EDIT_TYPE.MODIFIED, stats=FileStats(additions=1, deletions=0), diff="雪" * 1000),)
     )
     session = FakeSession(identity, AsyncMock(return_value=value))
     # When strict diff construction succeeds above the cache admission budget.
@@ -185,7 +212,7 @@ async def test_e5020_and_empty_cache_semantics() -> None:
     assert session.closed is True
 
     # Empty success is cacheable (PRDiff truthy)
-    empty = PRDiff(files=())
+    empty = PRDiff(files=(), head_sha=_HD)
     build_ok = AsyncMock(return_value=empty)
     session_ok = FakeSession(identity, build_ok)
     result = await GetPRDiffUseCase(SessionReader(session_ok), cache).execute("o", "r", 1)

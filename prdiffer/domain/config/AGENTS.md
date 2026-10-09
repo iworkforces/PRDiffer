@@ -8,6 +8,7 @@ prdiffer/domain/config/
 ├── github_config.py            # GitHubConfig frozen dataclass (~266)
 ├── github_config_interface.py  # GitHubConfigDict + GitHubConfigInterface Protocol (~108)
 ├── gitlab_config.py            # GitLabConfig frozen slotted VO (~129; limits + allowed_hosts)
+├── mcp_server_config.py        # MCPServerConfig + parse_transport / parse_port (E5009)
 └── __init__.py
 ```
 
@@ -24,6 +25,7 @@ prdiffer/domain/config/
 |--------|------|----------|------|
 | `GitHubConfig` | Frozen dataclass | `github_config.py` | Central GitHub settings VO |
 | `GitLabConfig` | Frozen slotted dataclass | `gitlab_config.py` | GitLab strict-diff limits/resilience + host allowlist |
+| `MCPServerConfig` | Frozen slotted dataclass | `mcp_server_config.py` | Validated MCP transport/host/port/path; stdio has `port=None` |
 | `GitHubConfigInterface` | Protocol | `github_config_interface.py` | DI / typing surface |
 | `GitHubConfigDict` | TypedDict | `github_config_interface.py` | `from_dict` / `with_overrides` keys |
 | `github_worker_capacity` | property | `GitHubConfig` | 1 when `parallel_file_fetch_enabled` is false |
@@ -58,7 +60,7 @@ Helpers: `is_host_allowed(host)` (casefold; strips `:port`).
 
 ## CONVENTIONS
 - Immutable config objects only; `__post_init__` validates positives and `timeout < pr_diff_request_timeout_seconds`.
-- GitLab uses `ValueError` on invalid bounds; GitHub uses `ConfigurationError`.
+- GitLab uses `ValueError` on invalid bounds; GitHub uses `ConfigurationError`; `MCPServerConfig` raises `ConfigurationError` E5009 naming the setting and its source (`--port`, `MCP_PORT`, `settings mcp.port`).
 - Infrastructure loads Dynaconf and maps into these domain types (`from_dict` / `to_dict`).
 - Never read env/files from this package.
 - Helpers (GitHub): `should_ignore_file`, `has_valid_extension`, `should_process_file`, `with_overrides`.

@@ -32,7 +32,7 @@ prdiffer/domain/interfaces/
 | `RequestCoalescingProtocol` | Protocol | `request_coalescing.py` | `coalesce` / clear / stats |
 | `RateLimiterProtocol` | Protocol | `protocols.py` | Rate limit checks |
 | `MetricsTrackerProtocol` | Protocol | `protocols.py` | Request metrics |
-| `GitLabPROperationsProtocol` | Protocol | `protocols.py` | GitLab MR approve + description for MCP tools |
+| `GitLabPROperationsProtocol` | Protocol | `protocols.py` | GitLab MR approve (optional keyword-only `expected_head_sha`) + description for MCP tools |
 | `HealthMonitorProtocol` | Protocol | `protocols.py` | Health status |
 | `ServerConfigurationProtocol` | Protocol | `protocols.py` | Transport/server config |
 | `AuthenticationProtocol` | Protocol | `protocols.py` | Auth + client id extraction |

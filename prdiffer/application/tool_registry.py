@@ -19,6 +19,7 @@ from prdiffer.domain.interfaces.protocols import (
     AuthenticationProtocol,
 )
 from prdiffer.domain.interfaces.input_validation import InputValidatorProtocol
+from prdiffer.domain.interfaces.pr_diff_reader import require_git_object_sha
 from prdiffer.domain.interfaces.request_coalescing import RequestCoalescingProtocol
 from prdiffer.application.provider_resolver import ProviderCapabilityResolver
 from prdiffer.application.pr_diff_executor import CoalescedPRDiffExecutionMixin
@@ -33,12 +34,14 @@ from prdiffer.domain.exceptions import (
     ValidationError,
     AuthenticationError,
     FullDiffIncompleteError,
+    HeadSHAMismatchError,
     GitHubAPIError,
     ProviderCapabilityUnavailableError,
     RateLimitError,
 )
 from prdiffer.domain.error_codes import (
     E1001_INVALID_URL,
+    E1011_HEAD_SHA_MISMATCH,
     E2002_AUTH_FAILED,
     E3001_RATE_LIMITED,
     E5002_GITHUB_API_ERROR,
@@ -59,9 +62,9 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
         rate_limiter: RateLimiterProtocol,
         metrics_tracker: MetricsTrackerProtocol,
         provider_resolver: ProviderCapabilityResolver,
+        input_validator: InputValidatorProtocol,
+        request_coalescing_service: RequestCoalescingProtocol,
         authentication: AuthenticationProtocol | None = None,
-        input_validator: InputValidatorProtocol | None = None,
-        request_coalescing_service: RequestCoalescingProtocol | None = None,
         pr_diff_request_timeout_seconds: float | None = None,
     ):
         self._cache_service = cache_service
@@ -72,21 +75,8 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
         self._pr_diff_request_timeout_seconds = pr_diff_request_timeout_seconds
         self._authentication = authentication
 
-        if input_validator is None:
-            from prdiffer.infrastructure.factories.infrastructure_factory import get_infrastructure_factory
-
-            self._input_validator = get_infrastructure_factory().create_input_validator()
-        else:
-            self._input_validator = input_validator
-
-        if request_coalescing_service is None:
-            from prdiffer.infrastructure.utils.coalescing_service import (
-                get_request_coalescing_service,
-            )
-
-            self._request_coalescing = get_request_coalescing_service()
-        else:
-            self._request_coalescing = request_coalescing_service
+        self._input_validator = input_validator
+        self._request_coalescing = request_coalescing_service
 
     def _generate_request_id(self) -> str:
         return self._metrics_tracker.generate_request_id()
@@ -343,15 +333,18 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
 
         @mcp.tool()
         @record_outcome(self._metrics_tracker, "approve_pr")
-        async def approve_pr(pr_url: str, compliment: str, api_key: str | None = None) -> str:
+        async def approve_pr(pr_url: str, compliment: str, api_key: str | None = None, expected_head_sha: str | None = None) -> str:
             """Approve a GitHub PR or GitLab MR with a compliment comment/note.
 
             Args:
                 pr_url: GitHub PR URL (e.g. https://github.com/owner/repo/pull/123)
                     or GitLab MR URL (e.g. https://gitlab.com/group/project/-/merge_requests/42)
                 compliment: Non-empty compliment text included in the approval review (GitHub)
-                    or as a note after approve (GitLab)
+                    or as a note before approve (GitLab)
                 api_key: Optional API key for authentication (required if authentication is enabled)
+                expected_head_sha: Optional 40/64-hex head_sha returned by get_pr_diff.
+                    When supplied, approval is refused with E1011_HEAD_SHA_MISMATCH if the
+                    PR/MR head moved. Omit it to keep the existing approval behavior.
 
             Returns:
                 str: Success message indicating the GitHub PR/GitLab MR was approved
@@ -388,11 +381,27 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
                     )
                 compliment = compliment.strip()
 
+                normalized_head_sha = None
+                if expected_head_sha is not None:
+                    try:
+                        normalized_head_sha = require_git_object_sha(expected_head_sha, field="expected_head_sha")
+                    except ValueError as e:
+                        raise ValidationError(str(e), error_code=E1001_INVALID_URL) from e
+
                 capability = self._provider_resolver.resolve_approval(target)
-                result = await capability.approve(target, compliment)
+                result = await capability.approve(target, compliment, expected_head_sha=normalized_head_sha)
 
                 self._logger.info(f"Successfully approved PR\n{result}")
                 return result
+
+            except HeadSHAMismatchError as e:
+                self._logger.warning("Approval refused because the head SHA changed", request_id=request_id)
+                raise ToolError(
+                    json.dumps(
+                        {"error_code": str(E1011_HEAD_SHA_MISMATCH), "message": e.message, "details": e.details},
+                        separators=(",", ":"),
+                    )
+                ) from e
 
             except (
                 InvalidURLError,

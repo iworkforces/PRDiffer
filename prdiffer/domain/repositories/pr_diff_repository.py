@@ -37,7 +37,7 @@ class PRDiffRepositoryInterface(ABC):
         pass
 
     @abstractmethod
-    async def approve_pr_with_comment(self, pr_url: str, compliment: str) -> str:
+    async def approve_pr_with_comment(self, pr_url: str, compliment: str, *, expected_head_sha: str | None = None) -> str:
         """Approve a PR with a compliment comment via the implementing provider.
 
         Typical GitHub path:
@@ -49,6 +49,9 @@ class PRDiffRepositoryInterface(ABC):
         Args:
             pr_url: Full PR URL for the implementing provider
             compliment: Non-empty compliment text included with the approval
+            expected_head_sha: Optional normalized head SHA the reviewer read. When
+                given, a moved head raises ``HeadSHAMismatchError`` before any review
+                is created and the review is bound to that commit.
 
         Returns:
             str: Success message indicating PR was approved

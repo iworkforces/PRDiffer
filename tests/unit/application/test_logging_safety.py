@@ -9,15 +9,18 @@ from unittest.mock import Mock
 import pytest
 
 from prdiffer.application.mcp_server import FastMCPServer
+from prdiffer.domain.config.mcp_server_config import MCPServerConfig
 from prdiffer.application.provider_resolver import ProviderCapabilityResolver
 from prdiffer.domain.entities.pr_diff import PRDiff
 from prdiffer.domain.entities.file_diff_response import FileDiffResponse, FileStats
 from prdiffer.domain.entities.file_patch import EDIT_TYPE
+from prdiffer.infrastructure.utils.coalescing_service import RequestCoalescingService
 
 
 def _create_pr_diff_with_content(diff_content: str) -> PRDiff:
     """Helper to create PRDiff with the new files structure."""
     return PRDiff(
+        head_sha="c" * 40,
         files=(
             FileDiffResponse(
                 path="file.py",
@@ -25,7 +28,7 @@ def _create_pr_diff_with_content(diff_content: str) -> PRDiff:
                 stats=FileStats(additions=5, deletions=2),
                 diff=diff_content,
             ),
-        )
+        ),
     )
 
 
@@ -44,6 +47,7 @@ def server_with_mock_logger(mock_logger: Mock) -> FastMCPServer:
     input_validator = Mock()
 
     return FastMCPServer(
+        mcp_config=MCPServerConfig(transport="http", host="127.0.0.1", port=9102, path="/mcp"),
         settings_service=settings_service,
         cache_service=cache_service,
         logger=mock_logger,
@@ -54,6 +58,7 @@ def server_with_mock_logger(mock_logger: Mock) -> FastMCPServer:
         server_configuration=server_configuration,
         authentication=authentication,
         input_validator=input_validator,
+        request_coalescing_service=RequestCoalescingService(),
     )
 
 

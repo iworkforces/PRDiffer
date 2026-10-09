@@ -12,6 +12,7 @@ from fastmcp.exceptions import ToolError, ValidationError as FastMCPValidationEr
 from mcp.types import TextContent
 
 from prdiffer.application.mcp_server import FastMCPServer
+from prdiffer.domain.config.mcp_server_config import MCPServerConfig
 from prdiffer.application.provider_resolver import create_provider_capability_resolver
 from prdiffer.domain.config.github_config import GitHubConfig
 from prdiffer.domain.entities.file_diff_response import FileDiffResponse, FileStats
@@ -22,7 +23,7 @@ from prdiffer.domain.entities.pr_diff_cache import (
     github_full_diff_v3_identity,
     gitlab_full_diff_v1_identity,
 )
-from prdiffer.domain.exceptions import FullDiffIncompleteError, FullDiffIncompleteReason
+from prdiffer.domain.exceptions import FullDiffIncompleteError, FullDiffIncompleteReason, HeadSHAMismatchError
 from prdiffer.domain.interfaces.pr_diff_reader import PRDiffSnapshot
 from prdiffer.domain.repositories.pr_diff_repository import PRDiffRepositoryInterface
 from prdiffer.domain.services.cache import CacheServiceInterface
@@ -34,7 +35,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.anyio]
 
 ProviderName = Literal["github", "gitlab"]
 OperationName = Literal["get_pr_diff", "approve_pr", "describe_pr"]
-ProviderFailure = RuntimeError | FullDiffIncompleteError
+ProviderFailure = RuntimeError | FullDiffIncompleteError | HeadSHAMismatchError
 
 GITHUB_URL = "https://github.com/octo-org/widgets/pull/17"
 GITLAB_URL = "https://gitlab.com/group/subgroup/project/-/merge_requests/42"
@@ -43,8 +44,9 @@ GITHUB_TARGET = ("octo-org", "widgets", 17, None)
 GITLAB_TARGET = ("group/subgroup", "project", 42, "https://gitlab.com")
 
 
-def sample_pr_diff() -> PRDiff:
+def sample_pr_diff(head_sha: str = "c" * 40) -> PRDiff:
     return PRDiff(
+        head_sha=head_sha,
         files=(
             FileDiffResponse(
                 path="src/main.py",
@@ -52,7 +54,7 @@ def sample_pr_diff() -> PRDiff:
                 stats=FileStats(additions=2, deletions=1),
                 diff="@@ full context\n-old\n+new\n context\n",
             ),
-        )
+        ),
     )
 
 
@@ -69,13 +71,15 @@ class RecordingCache(CacheServiceInterface):
     def __init__(self) -> None:
         self.reads: list[tuple[str, str]] = []
         self.writes: list[tuple[str, str, PRDiff]] = []
+        self.entries: dict[tuple[str, str], PRDiff] = {}
 
     async def get(self, cache_key: str, current_commit_sha: str) -> PRDiff | None:
         self.reads.append((cache_key, current_commit_sha))
-        return None
+        return self.entries.get((cache_key, current_commit_sha))
 
     async def set(self, cache_key: str, commit_sha: str, data: PRDiff) -> None:
         self.writes.append((cache_key, commit_sha, data))
+        self.entries[(cache_key, commit_sha)] = data
 
     async def invalidate(self, cache_key: str) -> None:
         return None
@@ -163,7 +167,8 @@ class RecordingGitHubRepository(PRDiffRepositoryInterface):
         self._pr_number = pr
         self.failure_operation = failure_operation
         self.error = error
-        self.approve_calls: list[tuple[str, str]] = []
+        self.approve_calls: list[tuple[str, str, str | None]] = []
+        self.current_head_sha: str | None = None
         self.describe_calls: list[tuple[str, str]] = []
 
     @property
@@ -178,10 +183,12 @@ class RecordingGitHubRepository(PRDiffRepositoryInterface):
     def pr_number(self) -> int:
         return self._pr_number
 
-    async def approve_pr_with_comment(self, pr_url: str, compliment: str) -> str:
-        self.approve_calls.append((pr_url, compliment))
+    async def approve_pr_with_comment(self, pr_url: str, compliment: str, *, expected_head_sha: str | None = None) -> str:
+        self.approve_calls.append((pr_url, compliment, expected_head_sha))
         if self.failure_operation == "approve_pr" and self.error is not None:
             raise self.error
+        if expected_head_sha is not None and self.current_head_sha is not None and expected_head_sha != self.current_head_sha:
+            raise HeadSHAMismatchError(expected_head_sha=expected_head_sha, actual_head_sha=self.current_head_sha)
         return "github-approved"
 
     async def update_pr_description(self, pr_url: str, description: str) -> str:
@@ -197,10 +204,12 @@ class RecordingGitHubFactory:
         self.error = error
         self.calls: list[tuple[str, str, int]] = []
         self.repositories: list[RecordingGitHubRepository] = []
+        self.current_head_sha: str | None = None
 
     def __call__(self, owner: str, repo: str, pr: int) -> RecordingGitHubRepository:
         self.calls.append((owner, repo, pr))
         repository = RecordingGitHubRepository(owner, repo, pr, self.failure_operation, self.error)
+        repository.current_head_sha = self.current_head_sha
         self.repositories.append(repository)
         return repository
 
@@ -209,7 +218,8 @@ class RecordingGitLabOperations:
     def __init__(self, failure_operation: OperationName | None = None, error: ProviderFailure | None = None) -> None:
         self.failure_operation = failure_operation
         self.error = error
-        self.approve_calls: list[tuple[str, str, int, str, str | None]] = []
+        self.approve_calls: list[tuple[str, str, int, str, str | None, str | None]] = []
+        self.current_head_sha: str | None = None
         self.describe_calls: list[tuple[str, str, int, str, str | None]] = []
 
     async def approve_pr_with_comment(
@@ -221,10 +231,13 @@ class RecordingGitLabOperations:
         /,
         *,
         base_url: str | None = None,
+        expected_head_sha: str | None = None,
     ) -> str:
-        self.approve_calls.append((owner, repo, pr, compliment, base_url))
+        self.approve_calls.append((owner, repo, pr, compliment, base_url, expected_head_sha))
         if self.failure_operation == "approve_pr" and self.error is not None:
             raise self.error
+        if expected_head_sha is not None and self.current_head_sha is not None and expected_head_sha != self.current_head_sha:
+            raise HeadSHAMismatchError(expected_head_sha=expected_head_sha, actual_head_sha=self.current_head_sha)
         return "gitlab-approved"
 
     async def update_pr_description(
@@ -384,7 +397,7 @@ class ContractHarness:
         gitlab_write_error = failure.error if failure and failure.provider == "gitlab" else None
 
         self.github_reader = RecordingReader("github", result, github_diff_error)
-        self.gitlab_reader = RecordingReader("gitlab", result, gitlab_diff_error)
+        self.gitlab_reader = RecordingReader("gitlab", sample_pr_diff("f" * 40), gitlab_diff_error)
         self.github_factory = RecordingGitHubFactory(github_write_operation, github_write_error)
         self.gitlab_operations = RecordingGitLabOperations(gitlab_write_operation, gitlab_write_error)
         self.cache = RecordingCache()
@@ -397,6 +410,7 @@ class ContractHarness:
             gitlab_operations=self.gitlab_operations if include_gitlab_capabilities else None,
         )
         self.server = FastMCPServer(
+            mcp_config=MCPServerConfig(transport="http", host="127.0.0.1", port=9102, path="/mcp"),
             settings_service=StubSettings(),
             cache_service=self.cache,
             logger=StubLogger(),
@@ -444,6 +458,9 @@ async def test_registered_tool_discovery_and_schema_contracts() -> None:
         assert properties["api_key"]["default"] is None
         assert {choice["type"] for choice in properties["api_key"]["anyOf"]} == {"string", "null"}
     assert tools["approve_pr"].parameters["properties"]["compliment"]["type"] == "string"
+    expected_head = tools["approve_pr"].parameters["properties"]["expected_head_sha"]
+    assert expected_head["default"] is None
+    assert {choice["type"] for choice in expected_head["anyOf"]} == {"string", "null"}
     assert tools["describe_pr"].parameters["properties"]["pr_description"]["type"] == "string"
 
     health_parameters = tools["health"].parameters
@@ -454,6 +471,8 @@ async def test_registered_tool_discovery_and_schema_contracts() -> None:
     diff_output = tools["get_pr_diff"].output_schema
     assert diff_output is not None
     assert diff_output["type"] == "object"
+    assert diff_output["properties"]["head_sha"]["type"] == "string"
+    assert "head_sha" in diff_output["required"]
     files_output = diff_output["properties"]["files"]
     assert files_output["type"] == "array"
     assert set(files_output["items"]["required"]) == {"path", "status", "stats", "diff"}
@@ -469,6 +488,90 @@ async def test_registered_tool_discovery_and_schema_contracts() -> None:
     assert health_output is not None
     assert health_output["type"] == "object"
     assert health_output["additionalProperties"] is True
+
+
+@pytest.mark.parametrize("provider", ["github", "gitlab"])
+@pytest.mark.parametrize("sha_length", [40, 64])
+async def test_head_bound_approval_normalizes_sha_public_contract(provider: ProviderName, sha_length: int) -> None:
+    harness = ContractHarness()
+    url = GITHUB_URL if provider == "github" else GITLAB_URL
+    arguments = call_arguments("approve_pr", url) | {"expected_head_sha": "A" * sha_length}
+
+    result = await harness.server.mcp.call_tool("approve_pr", arguments)
+
+    assert result.structured_content == {"result": f"{provider}-approved"}
+    if provider == "github":
+        assert harness.github_factory.repositories[0].approve_calls == [(url, "excellent work", "a" * sha_length)]
+    else:
+        assert harness.gitlab_operations.approve_calls == [(*GITLAB_TARGET[:3], "excellent work", GITLAB_TARGET[3], "a" * sha_length)]
+
+
+@pytest.mark.parametrize("provider", ["github", "gitlab"])
+@pytest.mark.parametrize("sha", ["", "g" * 40, "a" * 39, "a" * 41, "a" * 63, "a" * 65])
+async def test_malformed_approval_sha_public_contract(provider: ProviderName, sha: str) -> None:
+    harness = ContractHarness()
+    url = GITHUB_URL if provider == "github" else GITLAB_URL
+
+    with pytest.raises(ToolError, match=r"\[E1001\] expected_head_sha"):
+        await harness.server.mcp.call_tool("approve_pr", call_arguments("approve_pr", url) | {"expected_head_sha": sha})
+
+    assert harness.github_factory.calls == []
+    assert harness.gitlab_operations.approve_calls == []
+    assert harness.metrics.events == [("approve_pr", False)]
+
+
+@pytest.mark.parametrize("provider", ["github", "gitlab"])
+async def test_approval_head_mismatch_public_contract(provider: ProviderName) -> None:
+    harness = ContractHarness()
+    harness.github_factory.current_head_sha = "b" * 40
+    harness.gitlab_operations.current_head_sha = "b" * 40
+    url = GITHUB_URL if provider == "github" else GITLAB_URL
+    error = HeadSHAMismatchError(expected_head_sha="a" * 40, actual_head_sha="b" * 40)
+
+    with pytest.raises(ToolError) as exc_info:
+        await harness.server.mcp.call_tool("approve_pr", call_arguments("approve_pr", url) | {"expected_head_sha": "a" * 40})
+
+    assert json.loads(str(exc_info.value)) == {
+        "error_code": "E1011_HEAD_SHA_MISMATCH",
+        "message": error.message,
+        "details": {"expected_head_sha": "a" * 40, "actual_head_sha": "b" * 40},
+    }
+    assert harness.metrics.events == [("approve_pr", False)]
+
+
+async def test_gitlab_approval_mismatch_note_cleanup_public_contract() -> None:
+    error = HeadSHAMismatchError(expected_head_sha="a" * 40, compliment_note="deleted")
+    harness = ContractHarness(FailurePlan("gitlab", "approve_pr", error))
+
+    with pytest.raises(ToolError) as exc_info:
+        await harness.server.mcp.call_tool("approve_pr", call_arguments("approve_pr", GITLAB_URL) | {"expected_head_sha": "a" * 40})
+
+    assert json.loads(str(exc_info.value)) == {
+        "error_code": "E1011_HEAD_SHA_MISMATCH",
+        "message": error.message,
+        "details": {"expected_head_sha": "a" * 40, "compliment_note": "deleted"},
+    }
+
+
+@pytest.mark.parametrize("provider", ["github", "gitlab"])
+@pytest.mark.parametrize("empty", [False, True])
+async def test_diff_snapshot_head_on_cache_hit_public_contract(provider: ProviderName, empty: bool) -> None:
+    harness = ContractHarness()
+    reader = harness.github_reader if provider == "github" else harness.gitlab_reader
+    url = GITHUB_URL if provider == "github" else GITLAB_URL
+    head = ("c" if provider == "github" else "f") * 40
+    if empty:
+        reader.result = PRDiff(files=(), head_sha=head)
+    first = await harness.server.mcp.call_tool("get_pr_diff", {"pr_url": url})
+
+    cached = await harness.server.mcp.call_tool("get_pr_diff", {"pr_url": url})
+
+    assert cached.structured_content == first.structured_content
+    assert cached.structured_content is not None
+    assert cached.structured_content["head_sha"] == head == reader.sessions[1].snapshot.head_sha
+    assert [session.build_calls for session in reader.sessions] == [1, 0]
+    assert [session.close_calls for session in reader.sessions] == [1, 1]
+    assert len(harness.cache.writes) == 1
 
 
 async def test_health_call_public_contract() -> None:
@@ -505,6 +608,7 @@ async def test_vcs_success_public_contract(provider: ProviderName, operation: Op
     match operation:
         case "get_pr_diff":
             assert result.structured_content == {
+                "head_sha": ("c" if provider == "github" else "f") * 40,
                 "files": [
                     {
                         "path": "src/main.py",
@@ -513,7 +617,7 @@ async def test_vcs_success_public_contract(provider: ProviderName, operation: Op
                         "diff": "@@ full context\n-old\n+new\n context\n",
                         "previous_path": None,
                     }
-                ]
+                ],
             }
             selected = harness.github_reader if provider == "github" else harness.gitlab_reader
             other = harness.gitlab_reader if provider == "github" else harness.github_reader
@@ -528,11 +632,11 @@ async def test_vcs_success_public_contract(provider: ProviderName, operation: Op
             assert result.structured_content == {"result": expected_result}
             if provider == "github":
                 assert harness.github_factory.calls == [GITHUB_TARGET[:3]]
-                assert harness.github_factory.repositories[0].approve_calls == [(GITHUB_URL, "excellent work")]
+                assert harness.github_factory.repositories[0].approve_calls == [(GITHUB_URL, "excellent work", None)]
                 assert harness.gitlab_operations.approve_calls == []
             else:
                 assert harness.github_factory.calls == []
-                assert harness.gitlab_operations.approve_calls == [(*GITLAB_TARGET[:3], "excellent work", GITLAB_TARGET[3])]
+                assert harness.gitlab_operations.approve_calls == [(*GITLAB_TARGET[:3], "excellent work", GITLAB_TARGET[3], None)]
         case "describe_pr":
             expected_result = "github-described" if provider == "github" else "gitlab-described"
             assert result.structured_content == {"result": expected_result}
@@ -611,11 +715,11 @@ async def test_provider_runtime_failure_public_contract(provider: ProviderName, 
         case "approve_pr":
             if provider == "github":
                 assert harness.github_factory.calls == [GITHUB_TARGET[:3]]
-                assert harness.github_factory.repositories[0].approve_calls == [(GITHUB_URL, "excellent work")]
+                assert harness.github_factory.repositories[0].approve_calls == [(GITHUB_URL, "excellent work", None)]
                 assert harness.gitlab_operations.approve_calls == []
             else:
                 assert harness.github_factory.calls == []
-                assert harness.gitlab_operations.approve_calls == [(*GITLAB_TARGET[:3], "excellent work", GITLAB_TARGET[3])]
+                assert harness.gitlab_operations.approve_calls == [(*GITLAB_TARGET[:3], "excellent work", GITLAB_TARGET[3], None)]
         case "describe_pr":
             if provider == "github":
                 assert harness.github_factory.calls == [GITHUB_TARGET[:3]]

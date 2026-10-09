@@ -16,7 +16,7 @@ prdiffer/infrastructure/security/
 |------|----------|-------|
 | **Validate PR URL / params** | `input_validator.py` | Domain `InputValidatorProtocol` (4 methods) |
 | **GitHub URL** | `validate_github_url` | github.com PR paths |
-| **GitLab URL** | `validate_gitlab_url` | Delegates to `parse_gitlab_merge_request_url` (custom hosts) |
+| **GitLab URL** | `validate_gitlab_url` | Delegates to domain `parse_gitlab_merge_request_url` (`domain/entities/gitlab_merge_request_url.py`; custom hosts) |
 | **Free-text input** | `sanitize_string` | Length, null bytes, injection patterns → E1xxx |
 | **Threat patterns** | `injection_detector.py` | Precompiled command / path traversal / SQL-ish regexes |
 | **Sanitize for logs** | `sanitize_for_logging` → `InputSanitizer` | Length-limited printable strings |

@@ -26,9 +26,18 @@ def _file_response(path: str = "test.ts") -> FileDiffResponse:
 class TestPRDiffCreation:
     """Test suite for PRDiff creation and validation."""
 
+    def test_head_sha_is_required(self):
+        with pytest.raises(TypeError, match="head_sha"):
+            PRDiff(**{})
+
+    @pytest.mark.parametrize("head_sha", ["", None, 123, False, ()])
+    def test_invalid_head_sha_is_rejected(self, head_sha):
+        with pytest.raises(ValueError, match="nonempty string"):
+            PRDiff(head_sha=head_sha)
+
     def test_pr_diff_creation_empty_files(self):
         """Test creating a PRDiff with empty files list."""
-        pr_diff = PRDiff(files=())
+        pr_diff = PRDiff(files=(), head_sha="c" * 40)
 
         assert pr_diff.files == ()
 
@@ -48,7 +57,7 @@ class TestPRDiffCreation:
                 diff="@@ -1,3 +1,8 @@\n-old\n+new\n",
             ),
         )
-        pr_diff = PRDiff(files=files)
+        pr_diff = PRDiff(files=files, head_sha="c" * 40)
 
         assert len(pr_diff.files) == 2
         assert pr_diff.files[0].path == "src/file1.ts"
@@ -61,6 +70,7 @@ class TestPRDiffProperties:
     def test_has_files_true(self):
         """Test PRDiff has files when files array is not empty."""
         pr_diff = PRDiff(
+            head_sha="c" * 40,
             files=(
                 FileDiffResponse(
                     path="test.py",
@@ -68,14 +78,14 @@ class TestPRDiffProperties:
                     stats=FileStats(additions=1, deletions=1),
                     diff="diff",
                 ),
-            )
+            ),
         )
 
         assert len(pr_diff.files) == 1
 
     def test_has_files_false_empty(self):
         """Test PRDiff has no files when files array is empty."""
-        pr_diff = PRDiff(files=())
+        pr_diff = PRDiff(files=(), head_sha="c" * 40)
 
         assert len(pr_diff.files) == 0
 
@@ -111,7 +121,7 @@ class TestPRDiffEdgeCases:
                 diff="diff",
             ),
         )
-        pr_diff = PRDiff(files=files)
+        pr_diff = PRDiff(files=files, head_sha="c" * 40)
 
         assert len(pr_diff.files) == 4
         assert pr_diff.files[0].status == EDIT_TYPE.ADDED
@@ -125,6 +135,7 @@ class TestPRDiffSerialization:
 
     def test_asdict(self):
         pr_diff = PRDiff(
+            head_sha="c" * 40,
             files=(
                 FileDiffResponse(
                     path="test.ts",
@@ -132,7 +143,7 @@ class TestPRDiffSerialization:
                     stats=FileStats(additions=10, deletions=5),
                     diff="@@ -1,1 +1,1 @@\n-old\n+new",
                 ),
-            )
+            ),
         )
 
         data = asdict(pr_diff)
@@ -143,6 +154,7 @@ class TestPRDiffSerialization:
 
     def test_json_serialization(self):
         pr_diff = PRDiff(
+            head_sha="c" * 40,
             files=(
                 FileDiffResponse(
                     path="test.py",
@@ -150,7 +162,7 @@ class TestPRDiffSerialization:
                     stats=FileStats(additions=100, deletions=0),
                     diff="@@ -0,0 +1,100 @@\n+content",
                 ),
-            )
+            ),
         )
 
         json_string = json.dumps(asdict(pr_diff))
@@ -180,7 +192,7 @@ class TestPRDiffSerialization:
             )
             for file_data in data["files"]
         )
-        pr_diff = PRDiff(files=files)
+        pr_diff = PRDiff(files=files, head_sha="c" * 40)
 
         assert len(pr_diff.files) == 1
         assert pr_diff.files[0].path == "src/component.ts"
@@ -188,6 +200,7 @@ class TestPRDiffSerialization:
     def test_round_trip_serialization(self):
         """Test serialization and deserialization round trip."""
         original = PRDiff(
+            head_sha="c" * 40,
             files=(
                 FileDiffResponse(
                     path="test.ts",
@@ -195,13 +208,14 @@ class TestPRDiffSerialization:
                     stats=FileStats(additions=75, deletions=10),
                     diff="test diff",
                 ),
-            )
+            ),
         )
 
         json_data = json.dumps(asdict(original))
         payload = json.loads(json_data)
 
         restored = PRDiff(
+            head_sha=payload["head_sha"],
             files=tuple(
                 FileDiffResponse(
                     path=file_data["path"],
@@ -210,7 +224,7 @@ class TestPRDiffSerialization:
                     diff=file_data["diff"],
                 )
                 for file_data in payload["files"]
-            )
+            ),
         )
 
         assert len(restored.files) == len(original.files)
@@ -222,14 +236,14 @@ class TestPRDiffImmutability:
 
     def test_immutability_with_frozen(self):
         """Test that PRDiff instances are immutable (frozen=True)."""
-        pr_diff = PRDiff(files=(_file_response(),))
+        pr_diff = PRDiff(files=(_file_response(),), head_sha="c" * 40)
 
         with pytest.raises(FrozenInstanceError):
             setattr(pr_diff, "files", ())
 
     def test_replace_creates_new_instance(self):
         """Test dataclasses.replace creates updated copy."""
-        original = PRDiff(files=(_file_response(),))
+        original = PRDiff(files=(_file_response(),), head_sha="c" * 40)
         updated_files = (_file_response(path="modified.ts"),)
 
         copy = replace(original, files=updated_files)
