@@ -28,7 +28,6 @@ def test_build_pr_diff_maps_generated_full_context() -> None:
         diff_generator=generator,
         file_processor=MagicMock(),
         logger=MagicMock(),
-        max_total_chars=10_000,
     )
     patches = [
         FilePatchInfo(
@@ -57,7 +56,6 @@ def test_build_pr_diff_identity_mismatch_is_e5020() -> None:
         diff_generator=generator,
         file_processor=MagicMock(),
         logger=MagicMock(),
-        max_total_chars=10_000,
     )
     patches = [
         FilePatchInfo(filename="a.py", edit_type=EDIT_TYPE.MODIFIED, patch="+x", num_plus_lines=1),

@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from importlib import import_module
 from typing import Protocol
 from prdiffer.domain.services.settings import SettingsServiceInterface
-from prdiffer.domain.config.github_config import DEFAULT_MAX_TOTAL_CHARS, GitHubConfig
+from prdiffer.domain.config.github_config import GitHubConfig
 from prdiffer.domain.config.gitlab_config import GitLabConfig
 
 logger = logging.getLogger(__name__)
@@ -75,7 +75,7 @@ class SettingsService(SettingsServiceInterface):
         settings_files: list[str] | None = None,
     ) -> None:
         # Always load project-root .env before Dynaconf so os.getenv-based
-        # overrides (GITHUB_IGNORE_PATTERNS, MAX_FILES_ALLOWED, MAX_TOTAL_CHARS, …) work even
+        # overrides (GITHUB_IGNORE_PATTERNS, MAX_FILES_ALLOWED, …) work even
         # when the process cwd is not the repository root.
         load_project_dotenv(override=False)
 
@@ -185,7 +185,6 @@ class SettingsService(SettingsServiceInterface):
                 chunk_size=int(get_with_fallback("diff.chunk_size", 1000)),
                 max_diff_size=int(get_with_fallback("diff.max_diff_size", 100000)),
                 max_file_size_bytes=int(get_with_fallback("github.max_file_size_bytes", 10_485_760)),
-                max_total_chars=self._resolve_max_total_chars(get_with_fallback),
                 parallel_file_fetch_enabled=bool(get_with_fallback("performance.parallel_file_fetch_enabled", True)),
                 parallel_diff_generation_enabled=bool(get_with_fallback("performance.parallel_diff_generation_enabled", True)),
                 pr_diff_request_timeout_seconds=float(get_with_fallback("mcp.pr_diff_request_timeout_seconds", 180.0)),
@@ -217,11 +216,6 @@ class SettingsService(SettingsServiceInterface):
                 gitlab_key="gitlab.max_files_allowed",
             )
 
-            max_total = self._resolve_max_total_chars(
-                get_with_fallback,
-                gitlab_key="gitlab.max_total_chars",
-            )
-
             request_timeout = get_with_fallback("gitlab.pr_diff_request_timeout_seconds", None)
             if request_timeout is None:
                 request_timeout = get_with_fallback("mcp.pr_diff_request_timeout_seconds", 180.0)
@@ -245,7 +239,6 @@ class SettingsService(SettingsServiceInterface):
                 obey_rate_limit=bool(get_with_fallback("gitlab.obey_rate_limit", True)),
                 max_file_size_bytes=int(get_with_fallback("gitlab.max_file_size_bytes", 10_485_760)),
                 max_files_allowed=int(max_files),
-                max_total_chars=int(max_total),
                 pr_diff_request_timeout_seconds=float(request_timeout),
                 allowed_hosts=hosts_cfg.allowed_hosts,
             )
@@ -349,32 +342,6 @@ class SettingsService(SettingsServiceInterface):
                 return int(provider_val)
 
         return int(get_with_fallback("app.max_files_allowed", default))
-
-    @staticmethod
-    def _resolve_max_total_chars(
-        get_with_fallback: Any,
-        *,
-        gitlab_key: str | None = None,
-        default: int = DEFAULT_MAX_TOTAL_CHARS,
-    ) -> int:
-        """Resolve aggregate public-diff char budget (E5020 RESPONSE_SIZE_LIMIT).
-
-        Priority:
-        1) ``MAX_TOTAL_CHARS`` env (works with ``start-prdiffer-mcp-server.sh`` / ``.env``)
-        2) optional provider key (e.g. ``gitlab.max_total_chars``)
-        3) ``diff.max_total_chars`` from settings.toml
-        4) ``default`` (600_000)
-        """
-        env_val = os.getenv("MAX_TOTAL_CHARS")
-        if env_val is not None and env_val.strip():
-            return int(env_val.strip())
-
-        if gitlab_key is not None:
-            provider_val = get_with_fallback(gitlab_key, None)
-            if provider_val is not None:
-                return int(provider_val)
-
-        return int(get_with_fallback("diff.max_total_chars", default))
 
     @staticmethod
     def _resolve_ignore_patterns(get_with_fallback: Any) -> tuple[str, ...]:

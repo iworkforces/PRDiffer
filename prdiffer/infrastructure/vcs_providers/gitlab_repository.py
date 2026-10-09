@@ -31,7 +31,6 @@ class GitLabVCSRepository:
             content = GitLabContentFetcher(self._runtime, self._config)
             assembler = GitLabDiffAssembler(
                 DiffGenerator(diff_utils=DiffUtils(), parallel_enabled=False),
-                self._config,
             )
             self._session_reader = GitLabSessionPRDiffReader(
                 operations=self._operations,

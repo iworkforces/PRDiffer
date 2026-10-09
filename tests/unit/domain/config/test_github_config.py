@@ -58,7 +58,6 @@ class TestGitHubConfigDefaults:
         assert config.chunk_size == 1000
         assert config.max_diff_size == 100000
         assert config.max_file_size_bytes == 10_485_760
-        assert config.max_total_chars == 600_000
         assert config.pr_diff_request_timeout_seconds == 180.0
         assert config.parallel_file_fetch_enabled is True
         assert config.parallel_diff_generation_enabled is True
@@ -227,7 +226,6 @@ class TestGitHubConfigToDict:
             "chunk_size",
             "max_diff_size",
             "max_file_size_bytes",
-            "max_total_chars",
             "parallel_file_fetch_enabled",
             "parallel_diff_generation_enabled",
             "pr_diff_request_timeout_seconds",

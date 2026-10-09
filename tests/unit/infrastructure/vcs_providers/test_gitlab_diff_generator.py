@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import pytest
 
-from prdiffer.domain.config.gitlab_config import GitLabConfig
 from prdiffer.domain.entities.file_content import FileContentAvailable
 from prdiffer.domain.entities.file_patch import EDIT_TYPE
 from prdiffer.domain.exceptions import FullDiffIncompleteError, FullDiffIncompleteReason
@@ -60,7 +59,7 @@ def _content(
 class TestGitLabDiffAssembler:
     def test_mixed_status_ordered_full_context(self) -> None:
         gen = DiffGenerator(diff_utils=DiffUtils(), parallel_enabled=False)
-        assembler = GitLabDiffAssembler(gen, GitLabConfig())
+        assembler = GitLabDiffAssembler(gen)
         inv = (
             _item(0, EDIT_TYPE.MODIFIED, "a.py", "a.py"),
             _item(1, EDIT_TYPE.ADDED, "b.py", "b.py"),
@@ -90,7 +89,7 @@ class TestGitLabDiffAssembler:
     def test_equal_noop_modified_fails_hard(self) -> None:
         """Equal content + equal/missing modes must always E5020, even if gen emits text."""
         gen = DiffGenerator(diff_utils=DiffUtils(), parallel_enabled=False)
-        assembler = GitLabDiffAssembler(gen, GitLabConfig())
+        assembler = GitLabDiffAssembler(gen)
         inv = (_item(0, EDIT_TYPE.MODIFIED, "a.py", "a.py", a_mode="100644", b_mode="100644"),)
         contents = (
             _content(
@@ -110,7 +109,7 @@ class TestGitLabDiffAssembler:
 
     def test_equal_content_mode_change_allowed(self) -> None:
         gen = DiffGenerator(diff_utils=DiffUtils(), parallel_enabled=False)
-        assembler = GitLabDiffAssembler(gen, GitLabConfig())
+        assembler = GitLabDiffAssembler(gen)
         inv = (_item(0, EDIT_TYPE.MODIFIED, "mode.sh", "mode.sh", a_mode="100644", b_mode="100755"),)
         contents = (
             _content(
@@ -126,18 +125,29 @@ class TestGitLabDiffAssembler:
         pr_diff = assembler.assemble(inv, contents)
         assert pr_diff.files[0].diff.startswith("old mode 100644\nnew mode 100755\n")
 
-    def test_aggregate_size_limit(self) -> None:
+    @pytest.mark.parametrize("file_count,line_size", [(1, 650_000), (2, 350_000)], ids=["single", "aggregate"])
+    def test_large_full_output_preserved(self, file_count: int, line_size: int) -> None:
+        # Given real contents and the production full-context generator.
         gen = DiffGenerator(diff_utils=DiffUtils(), parallel_enabled=False)
-        assembler = GitLabDiffAssembler(gen, GitLabConfig(max_total_chars=10))
-        inv = (_item(0, EDIT_TYPE.MODIFIED, "a.py", "a.py"),)
-        contents = (_content(0, "a.py", EDIT_TYPE.MODIFIED, "aaaaaaaaaa\n", "bbbbbbbbbb\n"),)
-        with pytest.raises(FullDiffIncompleteError) as exc:
-            assembler.assemble(inv, contents)
-        assert exc.value.reason is FullDiffIncompleteReason.RESPONSE_SIZE_LIMIT
+        assembler = GitLabDiffAssembler(gen)
+        text = "x" * line_size + "\n"
+        inv = tuple(_item(i, EDIT_TYPE.ADDED, f"large{i}.py", f"large{i}.py") for i in range(file_count))
+        contents = tuple(_content(i, f"large{i}.py", EDIT_TYPE.ADDED, "", text) for i in range(file_count))
+
+        # When the assembler generates the response.
+        result = assembler.assemble(inv, contents)
+
+        # Then all files retain their exact full output, even in aggregate.
+        expected = ["\n@@ -0,0 +1,1 @@\n+" + "x" * line_size for _ in range(file_count)]
+        assert [file.path for file in result.files] == [f"large{i}.py" for i in range(file_count)]
+        assert [file.diff for file in result.files] == expected
+        assert sum(map(len, expected)) > 600_000
+        if file_count > 1:
+            assert all(len(diff) < 600_000 for diff in expected)
 
     def test_index_mismatch_fails(self) -> None:
         gen = DiffGenerator(diff_utils=DiffUtils(), parallel_enabled=False)
-        assembler = GitLabDiffAssembler(gen, GitLabConfig())
+        assembler = GitLabDiffAssembler(gen)
         inv = (_item(0, EDIT_TYPE.ADDED, "a.py", "a.py"),)
         contents = (_content(1, "a.py", EDIT_TYPE.ADDED, "", "x\n"),)
         with pytest.raises(FullDiffIncompleteError) as exc:

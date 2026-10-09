@@ -163,7 +163,6 @@ async def test_github_failure_mode_matches_serial_parallel() -> None:
             debug=lambda *a, **k: None,
             warning=lambda *a, **k: None,
         )
-        service._diff_max_total_chars = 600_000
         service._pr_diff_request_timeout_seconds = 180.0
         service._github_timeout_seconds = 30
         service._parallel_file_fetch_enabled = capacity > 1

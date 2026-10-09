@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from prdiffer.domain.config.gitlab_config import GitLabConfig
 from prdiffer.domain.entities.file_diff_response import FileDiffResponse, FileStats
 from prdiffer.domain.entities.file_patch import EDIT_TYPE, FilePatchInfo
 from prdiffer.domain.entities.pr_diff import PRDiff
@@ -15,13 +14,8 @@ from prdiffer.infrastructure.vcs_providers.gitlab_inventory import GitLabInvento
 class GitLabDiffAssembler:
     """Convert inventory + typed contents into ordered full-context PRDiff."""
 
-    def __init__(
-        self,
-        diff_generator: DiffGenerator,
-        config: GitLabConfig,
-    ) -> None:
+    def __init__(self, diff_generator: DiffGenerator) -> None:
         self._diff_generator = diff_generator
-        self._config = config
 
     def assemble(
         self,
@@ -71,7 +65,6 @@ class GitLabDiffAssembler:
             )
 
         responses: list[FileDiffResponse] = []
-        total_chars = 0
         for item, content, gen in zip(inventory, contents, generated, strict=True):
             if gen.index != item.index or gen.path != content.path:
                 raise FullDiffIncompleteError(
@@ -124,15 +117,6 @@ class GitLabDiffAssembler:
                     diff=gen.diff,
                     previous_path=previous_path,
                 )
-            )
-            total_chars += len(gen.diff)
-
-        if total_chars > self._config.max_total_chars:
-            raise FullDiffIncompleteError(
-                FullDiffIncompleteReason.RESPONSE_SIZE_LIMIT,
-                message=f"Aggregate diff size {total_chars} exceeds max_total_chars",
-                observed=total_chars,
-                limit=self._config.max_total_chars,
             )
 
         return PRDiff(files=tuple(responses))

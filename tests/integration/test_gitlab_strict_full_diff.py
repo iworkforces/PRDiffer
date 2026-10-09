@@ -166,7 +166,7 @@ def _build_reader(
     runtime = GitLabRuntime(config, client_factory=lambda *a, **k: client)
     ops = FakeOps(snapshot)
     content = GitLabContentFetcher(runtime, config, parallel_enabled=parallel_enabled)
-    assembler = GitLabDiffAssembler(DiffGenerator(diff_utils=DiffUtils(), parallel_enabled=False), config)
+    assembler = GitLabDiffAssembler(DiffGenerator(diff_utils=DiffUtils(), parallel_enabled=False))
     reader = GitLabSessionPRDiffReader(
         operations=ops,
         runtime=runtime,
@@ -388,7 +388,7 @@ async def test_ops_failure_no_cache_write() -> None:
     runtime = GitLabRuntime(config, client_factory=lambda *a, **k: client)
     ops = BoomOps(snap)
     content = GitLabContentFetcher(runtime, config)
-    assembler = GitLabDiffAssembler(DiffGenerator(diff_utils=DiffUtils(), parallel_enabled=False), config)
+    assembler = GitLabDiffAssembler(DiffGenerator(diff_utils=DiffUtils(), parallel_enabled=False))
     reader = GitLabSessionPRDiffReader(
         operations=ops,
         runtime=runtime,

@@ -178,7 +178,7 @@ def test_explicit_files_win_over_cwd_and_defaults(layout: Layout, tmp_path: Path
 
 def test_named_environment_overrides_win_over_files(layout: Layout, tmp_path: Path) -> None:
     (tmp_path / "settings.toml").write_text(
-        "[default]\ngithub.ignore_patterns=['file.lock']\ngitlab.allowed_hosts=['file.example']\napp.max_files_allowed=61\ndiff.max_total_chars=654321\n",
+        "[default]\ngithub.ignore_patterns=['file.lock']\ngitlab.allowed_hosts=['file.example']\napp.max_files_allowed=61\n",
         encoding="utf-8",
     )
     snapshot = layout.probe(
@@ -187,13 +187,11 @@ def test_named_environment_overrides_win_over_files(layout: Layout, tmp_path: Pa
             "GITHUB_IGNORE_PATTERNS": "env.lock, env/",
             "GITLAB_ALLOWED_HOSTS": "env.example, second.example",
             "MAX_FILES_ALLOWED": "83",
-            "MAX_TOTAL_CHARS": "765432",
         },
     )
     assert snapshot["github"]["ignore_patterns"] == ["env.lock", "env/"]
     assert snapshot["gitlab"]["allowed_hosts"] == ["env.example", "second.example"]
     assert snapshot["github"]["max_files_allowed"] == snapshot["gitlab"]["max_files_allowed"] == snapshot["app"]["max_files_allowed"] == 83
-    assert snapshot["github"]["max_total_chars"] == snapshot["gitlab"]["max_total_chars"] == 765432
 
 
 @pytest.mark.parametrize("ambient", [False, True])

@@ -14,7 +14,6 @@ from typing import Any, TypeGuard
 DEFAULT_GITLAB_TIMEOUT_SECONDS = 30
 DEFAULT_PR_DIFF_REQUEST_TIMEOUT_SECONDS = 180.0
 DEFAULT_MAX_FILE_SIZE_BYTES = 10_485_760  # 10 MiB
-DEFAULT_MAX_TOTAL_CHARS = 600_000
 DEFAULT_MAX_FILES_ALLOWED = 50
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_MAX_CONCURRENT = 4
@@ -79,7 +78,6 @@ class GitLabConfig:
     obey_rate_limit: bool = True
     max_file_size_bytes: int = DEFAULT_MAX_FILE_SIZE_BYTES
     max_files_allowed: int = DEFAULT_MAX_FILES_ALLOWED
-    max_total_chars: int = DEFAULT_MAX_TOTAL_CHARS
     pr_diff_request_timeout_seconds: float = DEFAULT_PR_DIFF_REQUEST_TIMEOUT_SECONDS
     # Hostnames only (casefolded). Default GitLab.com-only; opt-in custom hosts via settings.
     allowed_hosts: tuple[str, ...] = DEFAULT_ALLOWED_HOSTS
@@ -90,7 +88,6 @@ class GitLabConfig:
         _require_positive("max_concurrent", self.max_concurrent)
         _require_positive("max_file_size_bytes", self.max_file_size_bytes)
         _require_positive("max_files_allowed", self.max_files_allowed)
-        _require_positive("max_total_chars", self.max_total_chars)
         _require_positive("pr_diff_request_timeout_seconds", self.pr_diff_request_timeout_seconds)
 
         if self.timeout >= self.pr_diff_request_timeout_seconds:
@@ -120,7 +117,6 @@ class GitLabConfig:
             obey_rate_limit=_as_bool(config.get("obey_rate_limit"), True),
             max_file_size_bytes=_as_int(config.get("max_file_size_bytes"), DEFAULT_MAX_FILE_SIZE_BYTES),
             max_files_allowed=_as_int(config.get("max_files_allowed"), DEFAULT_MAX_FILES_ALLOWED),
-            max_total_chars=_as_int(config.get("max_total_chars"), DEFAULT_MAX_TOTAL_CHARS),
             pr_diff_request_timeout_seconds=_as_float(
                 config.get("pr_diff_request_timeout_seconds"),
                 DEFAULT_PR_DIFF_REQUEST_TIMEOUT_SECONDS,

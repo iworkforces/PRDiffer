@@ -24,7 +24,6 @@ from prdiffer.infrastructure.logging.exception_utils import (
 )
 from prdiffer.infrastructure.settings import get_settings_service
 from prdiffer.infrastructure.github.inventory import prepare_selected_inventory
-from prdiffer.infrastructure.utils.diff_limits import assert_aggregate_within_limit, assert_diff_within_limit
 
 
 # Exceptions to catch in PR diff service operations
@@ -55,7 +54,6 @@ class GitHubPRDiffService:
         file_processor: FileProcessor,
         github_api_client: GitHubAPIClient | None = None,
         logger: LoggerServiceInterface | None = None,
-        max_total_chars: int | None = None,
         github_timeout_seconds: int | None = None,
         pr_diff_request_timeout_seconds: float | None = None,
     ):
@@ -72,7 +70,6 @@ class GitHubPRDiffService:
         self._diff_generator = diff_generator
         self._file_processor = file_processor
 
-        self._diff_max_total_chars = int(max_total_chars if max_total_chars is not None else config.max_total_chars)
         self._pr_diff_request_timeout_seconds = float(
             pr_diff_request_timeout_seconds if pr_diff_request_timeout_seconds is not None else config.pr_diff_request_timeout_seconds
         )
@@ -109,7 +106,7 @@ class GitHubPRDiffService:
         return await self._get_session_reader().open_pr_diff_session(repo_owner, repo_name, pr_number, base_url=base_url)
 
     def _build_pr_diff_strict(self, file_patches: list[FilePatchInfo]) -> PRDiff:
-        """Build PRDiff from ordered full-context generation after size checks."""
+        """Build PRDiff from ordered full-context generation."""
         if not file_patches:
             return PRDiff(files=())
 
@@ -131,7 +128,6 @@ class GitHubPRDiffService:
                 limit=len(file_patches),
             )
         responses: list[FileDiffResponse] = []
-        diffs: list[str] = []
         for item, file_patch in zip(generated, file_patches, strict=True):
             if item.path != file_patch.filename:
                 raise FullDiffIncompleteError(
@@ -147,11 +143,8 @@ class GitHubPRDiffService:
                 diff=item.diff,
                 previous_path=item.previous_path,
             )
-            assert_diff_within_limit(response.diff, self._diff_max_total_chars, path=response.path)
             responses.append(response)
-            diffs.append(response.diff)
 
-        assert_aggregate_within_limit(diffs, self._diff_max_total_chars)
         return PRDiff(files=tuple(responses))
 
     def _generate_diff_content(
