@@ -38,6 +38,7 @@ tests/
 | **Strict MCP surface** | `integration/test_full_diff_mcp_surface.py` | In-process FastMCP (`get_pr_diff`) |
 | **GitLab integration** | `integration/test_gitlab_strict_full_diff.py` | No-network session + cache identity |
 | **Launcher token gate** | `integration/test_server_launcher.py` | Shell entry; isolated `ENV_FILE` |
+| **MCP startup config** | `integration/test_server_startup_config.py`, `unit/application/test_startup_config.py`, `unit/domain/config/test_mcp_server_config.py` | Precedence + E5009 fail-fast through real `main()` |
 | **E2E-ish flows** | `integration/` | Workflow, security, webhooks |
 | **Full-diff bench validity** | `performance/test_full_diff_benchmark.py` | Loads `scripts/bench_diff_generation.py` |
 | **GitLab capacity/deadline** | `performance/test_gitlab_strict_full_diff.py` | Runtime limiter + E5004 |

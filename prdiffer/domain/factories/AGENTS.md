@@ -26,12 +26,12 @@ prdiffer/domain/factories/
 - `create_rate_limiter` → `RateLimiterProtocol`
 - `create_metrics_tracker` → `MetricsTrackerProtocol`
 - `create_health_monitor` → `HealthMonitorProtocol`
-- `create_server_configuration` → `ServerConfigurationProtocol`
+- `create_server_configuration(settings_service, logger, *, mcp_config)` → `ServerConfigurationProtocol`
 - `create_authentication` → `AuthenticationProtocol`
 
 ### InfrastructureFactoryInterface methods
 - `create_settings_service` → `SettingsServiceInterface`
-- `create_logger_service` → `LoggerServiceInterface`
+- `create_logger_service(transport=None)` → `LoggerServiceInterface`
 - `create_cache_service` → `CacheServiceInterface`
 - `create_github_api_service` → `GitHubAPIServiceInterface`
 - `create_diff_service` → `DiffServiceInterface`

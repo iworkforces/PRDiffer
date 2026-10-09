@@ -19,6 +19,7 @@ prdiffer/application/
 ├── pr_diff_executor.py   # Coalesced PR diff execution (~62); host-aware coalesce key
 ├── health_endpoints.py   # HealthEndpoints (~120) — health MCP tool
 ├── webhook_handler.py    # WebhookHandler (~171)
+├── startup_config.py     # StartupOverrides + resolve_mcp_server_config() (CLI > MCP_* env > settings > defaults)
 └── factory.py            # create_mcp_server() (~107); wires gitlab_reader + auto gitlab_pr_operations
 ```
 
@@ -28,7 +29,8 @@ prdiffer/application/
 | **Add MCP tool** | `tool_registry.py` | `@mcp.tool()` inside `ToolRegistry.register_tools()` |
 | **Add component** | `components/*.py` | Constructor DI + domain Protocols |
 | **Wire server** | `factory.py` | `create_mcp_server()` |
-| **Lifecycle / transport** | `mcp_server.py` | Register tools, health tool, `/metrics`, `/webhook`; run stdio/http/sse/streamable-http |
+| **Lifecycle / transport** | `mcp_server.py` | Register tools, health tool, `/metrics`, `/webhook`; `run()` reads only the injected `MCPServerConfig` (network transports keep `uvicorn_config={"proxy_headers": False}`) |
+| **Startup settings** | `startup_config.py` | Resolves and validates transport/host/port/path once; `create_mcp_server()` resolves before creating the logger or cache when no config is passed |
 | **PR diff coalesce** | `pr_diff_executor.py` | Mixin used by `ToolRegistry`; `GetPRDiffUseCase` + request coalescing |
 | **URL parse** | `utils/pr_url_parser.py` | `parse_pr_url` (GitHub only), `parse_pr_target` (GitHub/GitLab + `base_url`) |
 

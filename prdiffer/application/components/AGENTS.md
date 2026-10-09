@@ -22,7 +22,7 @@ prdiffer/application/components/
 | **JWT metadata** | `jwt_handler.py` | Metadata only unless verified path; not primary auth |
 | **Rate limits** | `rate_limiter.py` | Per-client limits, thread-safe |
 | **Metrics / health** | `metrics_tracker.py`, `health_monitor.py` | Request success rate, degraded thresholds |
-| **Transport config** | `server_configuration.py` | Logging, MCP instructions, stdio/http/sse/streamable-http |
+| **Transport config** | `server_configuration.py` | Logging, MCP instructions; `get_server_info()` / `validate_configuration()` read the injected `MCPServerConfig` (no transport fallback) |
 
 ## CONVENTIONS
 - Mixins for auth concerns; `AuthenticationMiddleware` composes `JWTHandlerMixin` + `APIKeyManagerMixin`.

@@ -14,6 +14,7 @@ tests/integration/
 ├── test_gitlab_strict_full_diff.py  # No-network GitLab session + cache identity (~244)
 ├── test_real_github_api.py          # Always-skipped live API suite (skipif True)
 ├── test_server_launcher.py          # Process/launcher (token gate; isolated ENV_FILE)
+├── test_server_startup_config.py    # Real main(): precedence, Dynaconf envs, E5009 fail-fast
 ├── test_metrics_endpoint.py         # Metrics
 └── mcp_server_manual_test.py        # Manual harness helper
 ```
@@ -28,6 +29,7 @@ tests/integration/
 | **Attack / injection paths** | `test_security.py` | Marked `integration` |
 | **Webhook cache bust** | `test_webhook_invalidation.py` | Invalidation + error bodies |
 | **Launcher / tokens** | `test_server_launcher.py` | GitHub-only / GitLab-only / both / neither; sets `ENV_FILE` to avoid real `.env` |
+| **Startup config** | `test_server_startup_config.py` | Patches `project_root`, sets `ROOT_PATH_FOR_DYNACONF` + cwd to `tmp_path`; records `FastMCP.run` (nothing binds) |
 | **Live GitHub (disabled)** | `test_real_github_api.py` | Module-level `skipif(True)` — never runs in CI/local by default |
 
 ## CONVENTIONS

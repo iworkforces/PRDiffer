@@ -43,6 +43,7 @@ PRDiffer/
 | **Modify DI** | `infrastructure/factories/`, `application/factories/`, `application/factory.py` | Constructor injection; `InfrastructureFactory` / `ApplicationFactory` creation; module-level singletons (`get_*_service`) |
 | **Add exception / error code** | `domain/exceptions.py`, `error_codes.py`, `errors.py` | `E{category}{number}_{NAME}` (1xxx–5xxx); E5020 full-diff; E1011 approval head mismatch |
 | **Config changes** | `settings.toml`, `.env` / `.env.example`, `infrastructure/settings.py`, `domain/config/` | Dynaconf + frozen `GitHubConfig` / `GitLabConfig` |
+| **MCP startup settings** | `application/startup_config.py`, `domain/config/mcp_server_config.py`, `server.py` | One `MCPServerConfig` resolved before init; E5009 fail-fast |
 | **GitHub strict full-diff** | `infrastructure/github/` + `services/pr_diff_service.py` + `domain/usecases/pr_diff_usecases.py` | Session snapshot → inventory → git tree/blob content → ordered generate → MCP |
 | **GitLab strict full-diff** | `infrastructure/vcs_providers/gitlab_*.py` | Version pin → inventory → content → assembler → session reader |
 | **GitLab approve / describe** | `gitlab_operations.py` + `gitlab_repository.py` | `approve_with_client` (**note then approve**; with `expected_head_sha`: fresh `MR.sha` check before the note, `approve(sha=…)`, single-attempt mutations, 409 → E1011 + delete only this call's note), `update_description_with_client`; async via `GitLabRuntime.run_blocking` |
@@ -70,6 +71,7 @@ PRDiffer/
 | HeadSHAMismatchError | Exception | `domain/exceptions.py` | E1011 head-bound approval refused (`expected_head_sha`, optional `actual_head_sha`, `compliment_note`) |
 | GitHubConfig | Config | `domain/config/github_config.py` | Timeouts, size limits, parallel flags (~266) |
 | GitLabConfig | Config | `domain/config/gitlab_config.py` | Limits + `allowed_hosts` (~129) |
+| MCPServerConfig | Config | `domain/config/mcp_server_config.py` | Validated transport/host/port/path (stdio => port `None`) |
 | SessionPRDiffReader | Interface | `domain/interfaces/pr_diff_reader.py` | Session-capable reader contract (`open_pr_diff_session`) |
 | GetPRDiffUseCase | Use case | `domain/usecases/pr_diff_usecases.py` | Session open → cache by snapshot identity → build → close (+ optional `base_url`) (~60) |
 | UnifiedRetryHandler | Service | `infrastructure/utils/retry/handler.py` | Context-aware retry + circuit breaker |
@@ -83,7 +85,7 @@ PRDiffer/
 | GitLabRuntime | Infra | `infrastructure/vcs_providers/gitlab_runtime.py` | Shared limiter; per-call base_url/deadline (~386) |
 | GitLabOperations | Infra | `infrastructure/vcs_providers/gitlab_operations.py` | Stateless MR version pin + approve/describe on a runtime-provided client (`select_with_client`, note-then-`approve_with_client`, `update_description_with_client`) (~301) |
 | GitLabSessionPRDiffReader | Infra | `infrastructure/vcs_providers/gitlab_diff_session.py` | Open/build/close strict MR session (~197) |
-| FastMCPServer | Application | `application/mcp_server.py` | MCP orchestrator (~194) |
+| FastMCPServer | Application | `application/mcp_server.py` | MCP orchestrator; `run()` uses only the injected `MCPServerConfig` |
 | ToolRegistry | Application | `application/tool_registry.py` | Tools: get_pr_diff, approve_pr, describe_pr (GitHub+GitLab via `ProviderCapabilityResolver`; per-tool failure metrics) (~512) |
 | GitLabPROperationsProtocol | Protocol | `domain/interfaces/protocols.py` | GitLab approve + description port for MCP tools |
 | WebhookHandler | Application | `application/webhook_handler.py` | Webhook cache invalidation (~171) |
@@ -127,7 +129,9 @@ PRDiffer/
 ### Configuration
 - **Dynaconf** via `settings.toml` + optional `.secrets.toml`.
 - Manual caching with `RLock` in `SettingsService` (Dynaconf unhashable → no `@lru_cache`).
-- Env overrides: `GITHUB_TOKEN`, `GITLAB_TOKEN`, `GITLAB_ALLOWED_HOSTS` (CSV), `MCP_AUTH_ENABLED`, `MCP_API_KEYS`, `MCP_TRANSPORT`, `MCP_PORT`, `MCP_HOST`, `MAX_FILES_ALLOWED`, `GITHUB_IGNORE_PATTERNS`.
+- Env overrides: `GITHUB_TOKEN`, `GITLAB_TOKEN`, `GITLAB_ALLOWED_HOSTS` (CSV), `MCP_AUTH_ENABLED`, `MCP_API_KEYS`, `MCP_TRANSPORT`, `MCP_PORT`, `MCP_HOST`, `MCP_PATH`, `MAX_FILES_ALLOWED`, `GITHUB_IGNORE_PATTERNS`.
+- MCP startup settings resolve once in `resolve_mcp_server_config()` with precedence: CLI flag > `MCP_*` env (incl. project `.env`) > active Dynaconf `mcp.*` > defaults (`http`, `127.0.0.1`, `9102`, `/mcp`). The shipped `settings.toml` sets `mcp.transport = "http"`.
+- All four transports are accepted (`stdio`, `http`, `sse`, `streamable-http`). An unknown transport or a non-numeric / out-of-range (1-65535) network port raises `ConfigurationError` **E5009** before anything binds; an explicit `--port 0` / `MCP_PORT=0` is rejected, never replaced. Blank `MCP_*` env values count as unset.
 - Copy `.env.example` → `.env`; `start-prdiffer-mcp-server.sh` sources `.env`.
 - `GitHubConfig` frozen dataclass: `timeout` (30), `pr_diff_request_timeout_seconds` (180), size limits, `parallel_*` default true.
 - `GitLabConfig` frozen slotted: same timeout shape + `allowed_hosts` default `("gitlab.com",)`.
@@ -146,6 +150,7 @@ PRDiffer/
 - ~1874 test functions across 113 `test_*.py` files; phase tests at `tests/test_phase{1-4}_improvements.py`.
 - Executor cross-loop suite: `test_async_parallel_executor_cross_loop.py`.
 - GitLab strict suite: unit (`vcs_providers/`, `test_gitlab_*`, MR ops), integration `test_gitlab_strict_full_diff.py`, performance capacity/deadline.
+- Startup config: `tests/integration/test_server_startup_config.py` runs the real `main()` with real Dynaconf + `.env` (project root and `ROOT_PATH_FOR_DYNACONF` pinned to `tmp_path`, `FastMCP.run` recorded) for every precedence level, both Dynaconf environments, and every E5009 rejection.
 - GitLab MCP write path: `test_tool_registry.py` (approve/describe dispatch), `test_factory_gitlab_ops_wiring.py`, `test_gitlab_mr_operations.py`, `test_gitlab_approval_retry_policy.py` (SHA-bound mutations are single-attempt through the real SDK).
 - Mock external I/O; no live GitHub/GitLab in unit tests (real API suite always-skipped).
 - Auto-use fixtures: `set_test_environment`, `reset_singletons` in `tests/conftest.py`.
@@ -205,8 +210,10 @@ PRDiffer/
 
 ### Entry Point
 - `prdiffer/server.py` + console script `prdiffer = "prdiffer.server:main"`.
-- Transport-aware diagnostics (stdio must not corrupt JSON-RPC on stdout).
-- CLI args override env/settings (`--transport`, `--port`, `--host`, `--path`).
+- Startup order: parse args -> load `.env` -> settings -> resolve/validate `MCPServerConfig` -> pick output stream + `get_logger(transport=...)` -> cache -> server -> `run()`.
+- Config errors print one stderr line (`❌ E5009_CONFIGURATION_ERROR: ...`) and exit 2, with no traceback and nothing on stdout.
+- Transport-aware diagnostics: with stdio the banner and logs go to stderr only (JSON-RPC owns stdout).
+- CLI args (`--transport`, `--port`, `--host`, `--path`) are plain strings validated by the resolver and are never written into `os.environ`.
 - Dev convenience: `sys.path` injection for direct execution.
 
 ### Build Patterns
