@@ -9,6 +9,7 @@ prdiffer/domain/entities/
 ├── file_diff_response.py    # FileDiffResponse, FileStats (~54)
 ├── file_content.py          # Typed content union (~41)
 ├── generated_file_diff.py   # GeneratedFileDiff (~19)
+├── gitlab_merge_request_url.py  # GitLabURLParts + pure GitLab MR URL parsing (~160)
 ├── pr_diff_cache.py         # StrictPRDiffCacheIdentity + GitHub v3 / GitLab v1 keys
 ├── pr_diff.py               # PRDiff — files tuple of FileDiffResponse (~17)
 └── __init__.py
@@ -21,6 +22,7 @@ prdiffer/domain/entities/
 | **MCP file payload** | `file_diff_response.py` | path, status, stats, diff, `previous_path` (renames only) |
 | **Typed content** | `file_content.py` | Available empty text vs deterministic unavailability |
 | **Generated unit** | `generated_file_diff.py` | index + path + previous_path + full-context `diff` |
+| **GitLab MR URL syntax** | `gitlab_merge_request_url.py` | `parse_gitlab_merge_request_parts` / `_url` (nested NS, custom host:port); host allowlist stays in infrastructure |
 | **Strict cache identity** | `pr_diff_cache.py` | `StrictPRDiffCacheIdentity`; GitHub v3 / GitLab v1 builders |
 | **Aggregate response** | `pr_diff.py` | `files: tuple[FileDiffResponse, ...]` |
 

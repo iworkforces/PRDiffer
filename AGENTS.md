@@ -48,7 +48,8 @@ PRDiffer/
 | **GitLab approve / describe** | `gitlab_operations.py` + `gitlab_repository.py` | `approve_with_client` (**note then approve**), `update_description_with_client`; async via `GitLabRuntime.run_blocking` |
 | **GitLab host policy** | `domain/config/gitlab_config.py`, `settings.toml`, env `GITLAB_ALLOWED_HOSTS` | Default `gitlab.com`; opt-in custom hosts |
 | **URL parse (MCP)** | `application/utils/pr_url_parser.py` | `parse_pr_target` → GitHub/GitLab + `base_url` |
-| **URL parse (infra)** | `infrastructure/utils/url_parser.py` | Nested namespaces; custom GitLab hosts |
+| **URL parse (GitLab MR, pure)** | `domain/entities/gitlab_merge_request_url.py` | Nested namespaces; custom GitLab hosts (allowlist stays in infrastructure) |
+| **URL parse (GitHub, infra)** | `infrastructure/utils/url_parser.py` | `parse_github_pr_url` / `validate_github_pr_url` |
 | **Retry logic** | `infrastructure/utils/retry/` | `base.py`, `handler.py`, `models.py`, `factories.py` |
 | **Caching** | `infrastructure/cache/` | GitHub v3 (merge-base+head) + GitLab v1 strict keys |
 | **Security** | `infrastructure/security/` | `input_validator.py`, `injection_detector.py`, `sanitizer.py` |
@@ -97,8 +98,8 @@ PRDiffer/
 - **Infrastructure**: Implements domain interfaces. Handles network, cache, security, logging.
 - **Application**: Orchestrates MCP tools/components. May depend on domain interfaces and factories.
 - **Layer direction**: Outer → inner only. Domain must not import application/infrastructure.
-- **Analyzer**: `python3 scripts/analyze_dependencies.py --path prdiffer` (AST; top-level imports).
-- **Current analyzer result**: 1 Application → Infrastructure violation (`application.factory` → `infrastructure.factories.infrastructure_factory`). Lazy/in-function infrastructure imports exist for factory fallbacks.
+- **Analyzer**: `python3 scripts/analyze_dependencies.py --path prdiffer` — one stdlib AST rule engine shared with `tests/unit/application/test_architecture.py`; checks imports at any depth (incl. in-function, relative, plain `import`); unparseable files fail; runs in CI.
+- **Current analyzer result**: 0 violations. Only the exact path `prdiffer/application/factory.py` (composition root) may import infrastructure.
 
 ### Full-diff completeness (strict)
 - Selected files must all succeed or raise **E5020** with `FullDiffIncompleteReason` (incl. `SNAPSHOT_CHANGED` on post-build metadata drift).
@@ -112,7 +113,7 @@ PRDiffer/
 - GitLab equal-content equal-mode modified → hard E5020 (no silent no-op).
 
 ### Dependency Injection
-- Constructor injection preferred; optional params with singleton factory fallbacks.
+- Constructor injection; application classes (`FastMCPServer`, `ToolRegistry`, `parse_pr_url` / `parse_pr_target`) require their ports — the composition root (`application/factory.py`) supplies infrastructure instances.
 - Module-level `get_*_service()` singletons; `InfrastructureFactory` / `ApplicationFactory` for creation.
 - Prefer injecting domain Protocols/interfaces over concrete infrastructure types.
 
@@ -148,7 +149,7 @@ PRDiffer/
 - Auto-use fixtures: `set_test_environment`, `reset_singletons` in `tests/conftest.py`.
 
 ### Build/CI
-- **GitHub Actions**: `.github/workflows/pr-quality.yml` — Lint (`ruff check`), Type check (`ty check`), Unit tests (`pytest`) on PRs to `main` or `develop` (parallel matrix, `uv sync --frozen --group dev`).
+- **GitHub Actions**: `.github/workflows/pr-quality.yml` — Lint (`ruff check`), Type check (`ty check`), Architecture (`scripts/analyze_dependencies.py --path prdiffer`), Unit tests (`pytest`) on PRs to `main` or `develop` (parallel matrix, `uv sync --frozen --group dev`).
 - **Pre-commit** available (`.pre-commit-config.yaml`: ruff, pyright, basic hooks).
 - Local quality gates: `start-lint.sh` (prefers `uv run ruff`), `start-type-check.sh` (ty), `start-unittest.sh`.
 - Git hooks: `scripts/setup-git-hooks.sh` copies `scripts/git-hooks/pre-push` (type-check + lint).
@@ -179,7 +180,7 @@ PRDiffer/
 - **NO static plugin registration** → Tools live in `ToolRegistry` (`@mcp.tool()`).
 - **NO synchronous blocking on tool path** → Tool handlers are async.
 - **NO bypassing circuit breaker** for external APIs when integrated.
-- Prefer domain Protocols over reaching into infrastructure from components (lazy factory imports are transitional).
+- **NO infrastructure imports in application outside `application/factory.py`** — not even lazy in-function imports (the analyzer gate fails).
 
 ### Security
 - **NO command injection** (shell metacharacters, substitution).
@@ -271,12 +272,13 @@ uv run python scripts/bench_diff_generation.py --matrix strict-v1 --phase baseli
 uv sync --frozen --group dev
 uv run ruff check .
 uv run ty check
+uv run python scripts/analyze_dependencies.py --path prdiffer
 uv run pytest tests -v --tb=short
 ```
 
 ## NOTES
 
-- **CI**: PRs targeting `main` or `develop` must pass Lint, Type check, and Unit tests (GitHub Actions).
+- **CI**: PRs targeting `main` or `develop` must pass Lint, Type check, Architecture, and Unit tests (GitHub Actions).
 - **Auth**: Controlled only by env `MCP_AUTH_ENABLED` (default off); API keys via `MCP_API_KEYS` / `MCP_ADMIN_API_KEY` when enabled.
 - **MCP tools**: `get_pr_diff`, `approve_pr`, `describe_pr` (all VCS-aware for GitHub PR + GitLab MR URLs), plus provider-agnostic `health`. Diff responses are full-context all-or-nothing. Routing uses `parse_pr_target`. Failure metrics use the real tool name (`operation=` on exception handlers). Empty/whitespace compliment & description rejected at the tool boundary.
 - **VCS**: GitHub (session-isolated full-diff + approve review + describe) + GitLab (strict version-pinned full-diff + **note-then-approve** + description update; host allowlist). Factory auto-wires `gitlab_pr_operations` from dual-role `GitLabVCSRepository` when ops not injected separately.
@@ -286,4 +288,4 @@ uv run pytest tests -v --tb=short
 - **AGENTS.md coverage**: 40 files (root + layer/package docs under `prdiffer/`, `tests/`, `scripts/`).
 - **Skill**: `skills/prdiffer/SKILL.md` documents dual-provider tools, MR URL formats, GitLab error codes.
 - **Empty reserved dirs**: `application/plugins/`, `application/services/` (AGENTS only); `application/interfaces/` (`__init__.py` + AGENTS); `infrastructure/interfaces/` (AGENTS only). Protocols live in `domain/interfaces/`.
-- **Analyzer layers**: Application 21, Domain 34, Infrastructure 54 modules (112 total in `prdiffer/`); 1 Application→Infrastructure top-level violation (`factory.py` → `infrastructure_factory`). Lazy in-function App→Infra imports exist for DI fallbacks (analyzer ignores those).
+- **Analyzer layers**: Application 22, Domain 35, Infrastructure 53 modules incl. package `__init__` (113 total in `prdiffer/`); 0 violations at any import depth; only `prdiffer/application/factory.py` is exempt (composition root).

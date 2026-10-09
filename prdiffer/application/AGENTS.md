@@ -58,7 +58,7 @@ prdiffer/application/
 - Routing: `parse_pr_target` → GitHub or GitLab (`base_url` forwarded into use case / session for custom hosts).
 
 ### Components
-- Optional constructor DI with factory fallbacks for tests.
+- Constructor DI: `FastMCPServer` and `ToolRegistry` require `input_validator` and `request_coalescing_service` (no infrastructure fallbacks); tests pass protocol fakes or real instances.
 - Auth split: `authentication.py` + `jwt_handler.py` + `api_key_manager.py` mixins.
 - Prefer domain Protocols (`prdiffer/domain/interfaces/protocols.py`, `input_validation`, `request_coalescing`) in type hints.
 
@@ -68,8 +68,9 @@ prdiffer/application/
 - Webhooks invalidate repository/diff caches on relevant GitHub events (HMAC-verified).
 
 ## ARCHITECTURE NOTES
-- Analyzer reports **1** top-level Application → Infrastructure import: `factory.py` → `infrastructure.factories.infrastructure_factory`.
-- Lazy in-function App→Infra imports (validator/coalescing/GitLab URL parts) remain as DI fallbacks — analyzer ignores those; prefer injected ports.
+- Only `prdiffer/application/factory.py` (composition root) may import `prdiffer.infrastructure`, at any depth; it creates the input validator and request coalescer and injects them into `FastMCPServer` → `ToolRegistry`.
+- `scripts/analyze_dependencies.py` (shared by CI and `test_architecture.py`) checks imports at every depth, including in-function and relative imports; a quick import inside a tool handler fails the gate.
+- `parse_pr_url` / `parse_pr_target` require an explicit `InputValidatorProtocol`; pure GitLab MR URL parsing lives in `prdiffer/domain/entities/gitlab_merge_request_url.py`.
 - MCP tools call repositories / `GitLabPROperationsProtocol` directly through write capabilities; empty/whitespace compliment and description are rejected at the tool boundary.
 - MCP `get_pr_diff` resolves a `StrictDiffCapability` (session reader) via `ProviderCapabilityResolver`, then runs `GetPRDiffUseCase` under request coalescing (`pr_diff_executor.py`).
 

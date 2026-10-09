@@ -16,7 +16,7 @@ prdiffer/infrastructure/utils/
 ├── api_health_tracker.py       # Sliding window health (~131)
 ├── diff_utils.py               # DiffServiceInterface impl
 ├── pattern_matcher.py          # Ignore/extension patterns
-├── url_parser.py               # GitHub PR + GitLab MR URL parsing (~281; custom hosts)
+├── url_parser.py               # GitHub PR URL parsing (~123)
 └── retry_logger.py
 ```
 
@@ -29,7 +29,7 @@ prdiffer/infrastructure/utils/
 | **Indexed identity** | `execute_indexed_batch` | Ordered outcomes; strict `IndexedBatchError` |
 | **Coalesce** | `coalescing_service.py` | Deduplicate concurrent work |
 | **Per-file diff line limit** | `diff_utils.py` | `max_diff_size` → E5020 `RESPONSE_SIZE_LIMIT` |
-| **GitLab/GitHub URLs** | `url_parser.py` | `parse_github_*`, `parse_gitlab_merge_request_parts` (nested NS + host) |
+| **GitHub URLs** | `url_parser.py` | `parse_github_pr_url`, `validate_github_pr_url` (GitLab MR parsing: `domain/entities/gitlab_merge_request_url.py`) |
 
 ## CONVENTIONS
 - Prefer anyio over asyncio APIs in new code.

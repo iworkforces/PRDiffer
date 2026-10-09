@@ -25,7 +25,7 @@ tests/unit/infrastructure/
 ├── test_settings_*.py
 ├── test_request_coalescing.py
 ├── test_input_validator.py
-├── test_url_parser.py                   # GitHub + GitLab URL parse (custom hosts)
+├── test_url_parser.py                   # GitHub URL parse (GitLab MR parsing: unit/domain/entities/test_gitlab_merge_request_url.py)
 └── …
 ```
 

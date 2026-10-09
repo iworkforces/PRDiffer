@@ -60,7 +60,7 @@ Registered in `conftest.pytest_configure` (and partially in `pyproject.toml`):
 - GitLab allowlist tests may set `GITLAB_ALLOWED_HOSTS` via monkeypatch.
 - GitHub content tests use tree-capable fakes (`get_git_tree` / `get_git_blob`) and assert order, modes, and fail-closed E5020.
 - Live API suite `integration/test_real_github_api.py` is **always skipped** (`skipif(True)`); unit tests never require network.
-- CI: `.github/workflows/pr-quality.yml` runs `ruff check`, `ty check`, `pytest tests` on PRs to `main`/`develop` (`uv sync --frozen --group dev`).
+- CI: `.github/workflows/pr-quality.yml` runs `ruff check`, `ty check`, `scripts/analyze_dependencies.py --path prdiffer`, `pytest tests` on PRs to `main`/`develop` (`uv sync --frozen --group dev`).
 
 ## COMMANDS
 ```bash

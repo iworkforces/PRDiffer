@@ -35,7 +35,7 @@ prdiffer/infrastructure/
 | **GitHub API + content** | `github/` | Client (retry/CB), inventory, git tree/blob content, ordered processing |
 | **GitLab strict full-diff** | `vcs_providers/gitlab_*.py` | Runtime, ops, inventory, content, assembler, session |
 | **GitLab approve / describe** | `vcs_providers/gitlab_operations.py`, `gitlab_repository.py` | MR note-then-approve and description update for MCP tools |
-| **GitLab URL parse** | `utils/url_parser.py` | Nested NS + custom hosts (`parse_gitlab_merge_request_parts`) |
+| **GitHub URL parse** | `utils/url_parser.py` | `parse_github_pr_url`, `validate_github_pr_url` (GitLab MR parsing lives in `domain/entities/gitlab_merge_request_url.py`; allowlist stays in `vcs_providers/gitlab_runtime.py`) |
 | **Retry** | `utils/retry/` | base / handler / models / factories |
 | **Circuit breaker** | `utils/circuit_breaker_core.py` | State machine; one breaker per retry handler |
 | **Parallel I/O** | `utils/parallel/executor.py` | ~598; per-batch semaphore; `execute_indexed_batch` |

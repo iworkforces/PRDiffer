@@ -5,7 +5,7 @@ Developer tooling: architecture analysis, full-diff benchmarks, git hooks.
 ## STRUCTURE
 ```
 scripts/
-├── analyze_dependencies.py    # Clean Architecture AST analyzer (264)
+├── analyze_dependencies.py    # Clean Architecture AST rule engine + CLI (~173)
 ├── bench_diff_generation.py   # Deterministic strict-v1 full-diff harness (git-tree fake repository)
 ├── setup-git-hooks.sh         # Install versioned hooks (82)
 └── git-hooks/
@@ -51,12 +51,17 @@ uv run python scripts/bench_diff_generation.py \
 ```
 
 ## ARCHITECTURE ANALYZER
-- Top-level (module/class scope) imports only; lazy in-function imports are ignored.
+- One stdlib AST rule engine shared by the CLI and `tests/unit/application/test_architecture.py` (loaded by path via `importlib.util.spec_from_file_location`; importing it has no CLI side effects).
+- Public API: `scan_package(package_dir) -> ScanResult` (`dependencies`, `violations: list[ImportViolation]`, `parse_failures: list[ParseFailure]`, `is_clean`) and `format_failures(result)` for `path:line: rule: ...` messages.
+- Walks the whole AST: imports at any depth (function bodies, methods, class bodies, `if`/`try` blocks) count.
+- Covers `import x`, `from x import y`, and relative forms resolved against the module's package (`__init__.py` anchors to its own package; `from .. import infrastructure` resolves to `prdiffer.infrastructure`). Layer matching uses namespace boundaries, not raw prefixes.
 - Forbids Domain→Application, Domain→Infrastructure, Application→Infrastructure.
-- Exit non-zero on violations.
+- Only the exact path `prdiffer/application/factory.py` (composition root) is exempt, and only from Application→Infrastructure; any other `factory.py` is checked normally.
+- Fails closed: unparseable/undecodable source and relative imports that climb above the top package are failures.
+- Exit 0 only when clean; exit 1 on any violation or failure (also when `--path` is missing).
 
 ## CI / HOOKS RELATIONSHIP
-- PR CI (`.github/workflows/pr-quality.yml` on `main`/`develop`): matrix jobs for `uv run ruff check .`, `uv run ty check`, `uv run pytest tests -v --tb=short` after `uv sync --frozen --group dev`.
+- PR CI (`.github/workflows/pr-quality.yml` on `main`/`develop`): matrix jobs for `uv run ruff check .`, `uv run ty check`, `uv run python scripts/analyze_dependencies.py --path prdiffer` (Architecture), `uv run pytest tests -v --tb=short` after `uv sync --frozen --group dev`.
 - Pre-push: type-check + lint only (not full pytest) via versioned hooks.
 
 ## CONVENTIONS

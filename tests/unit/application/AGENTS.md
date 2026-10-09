@@ -27,7 +27,7 @@ tests/unit/application/
 | **Auth / JWT / lockout** | `components/test_authentication.py` | Largest suite |
 | **Webhooks** | `test_webhook_handler.py` | Cache invalidation orchestration |
 | **Health / metrics HTTP** | `test_health_endpoints.py`, components | `/health`, metrics |
-| **Layer checks** | `test_architecture.py` | Application layer expectations |
+| **Layer checks** | `test_architecture.py` | Loads `scripts/analyze_dependencies.py` by path; real tree clean + tmp fixture trees prove engine and CLI reject every import form |
 
 ## CONVENTIONS
 - Mock infrastructure ports and factories; focus on orchestration, auth gates, error translation — not domain math.
