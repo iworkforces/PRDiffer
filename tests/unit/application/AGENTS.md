@@ -21,7 +21,7 @@ tests/unit/application/
 ## WHERE TO LOOK
 | Task | Location | Notes |
 |------|----------|-------|
-| **MCP tools** | `test_tool_registry.py` | `get_pr_diff`, `approve_pr`, `describe_pr` (GitHub+GitLab); empty/whitespace reject; ops-not-configured metrics; nested NS; E5020 → ToolError JSON |
+| **MCP tools** | `test_tool_registry.py` | `get_pr_diff`, `approve_pr`, `describe_pr` (GitHub+GitLab); empty/whitespace reject; ops-not-configured metrics; nested NS; E5020 → ToolError JSON; `head_sha` in diff output; `expected_head_sha` validation + E1011 ToolError JSON |
 | **Factory GitLab wiring** | `test_factory_gitlab_ops_wiring.py` | Dual-role reader auto-wires `gitlab_pr_operations`; explicit ops wins; reader-only leaves ops None |
 | **PR URL multi-provider** | `utils/test_pr_url_parser.py` | `parse_pr_target` GitHub + GitLab (custom hosts) |
 | **Auth / JWT / lockout** | `components/test_authentication.py` | Largest suite |

@@ -39,13 +39,14 @@ prdiffer/application/
 - **Inventory** (all accept GitHub PR + GitLab MR URLs except `health`):
   | Tool | Purpose | Provider-aware |
   |------|---------|----------------|
-  | `get_pr_diff` | Strict full-context diff | Yes |
-  | `approve_pr` | Approve + non-empty compliment | Yes |
+  | `get_pr_diff` | Strict full-context diff + snapshot `head_sha` | Yes |
+  | `approve_pr` | Approve + non-empty compliment; optional `expected_head_sha` | Yes |
   | `describe_pr` | Update description body | Yes |
   | `health` | Health/metrics (via `HealthEndpoints`) | No |
 - Routing for VCS tools: `parse_pr_target` → GitHub repository class or injected `GitLabPROperationsProtocol` (`base_url` for custom hosts).
 - Composition: `create_mcp_server` may promote dual-role `gitlab_reader` to `gitlab_pr_operations` when ops are not passed explicitly (`_is_gitlab_pr_operations` TypeGuard).
 - Empty/whitespace-only compliment or description → `ValidationError` (E1001) after `.strip()` without provider calls.
+- `approve_pr` keeps `pr_url` + `compliment` as its only required inputs. An optional `expected_head_sha` is normalized with `require_git_object_sha` (40/64 hex) before any provider call (malformed → E1001) and forwarded through the approval capability. `HeadSHAMismatchError` becomes a `ToolError` with compact JSON `{"error_code":"E1011_HEAD_SHA_MISMATCH","message","details"}` and counts as an `approve_pr` failure.
 - Failure metrics/logs use the real tool name via `operation=` on security/validation/runtime handlers.
 - GitLab domain failures (E2006/E2007/E3006/E4001–E4003/E5021/E5004/E5019) bubble with original codes; unmapped `RuntimeError` (e.g. ops not configured) remaps to provider-neutral safe message + E5002.
 - Custom routes: `GET /metrics`, `POST /webhook`.
@@ -54,6 +55,7 @@ prdiffer/application/
 ### Strict full-diff (`get_pr_diff`)
 - **All-or-nothing full-context diffs**: successful responses include every selected file with path/status/stats and **generated full-context** unified `diff` text (not hunk-only provider patches).
 - On incomplete reconstruction the tool fails with **`E5020_FULL_DIFF_INCOMPLETE`** and a stable `reason` — never a partial `files` array.
+- Every success (including empty diffs and cache hits) returns `{files, head_sha}`, where `head_sha` is the open session's `snapshot.head_sha`; the `files` item schema is unchanged.
 - At the FastMCP boundary, `FullDiffIncompleteError` becomes `ToolError` with compact JSON `{"error_code","message","details"}` (safe details only; no `files`).
 - Routing: `parse_pr_target` → GitHub or GitLab (`base_url` forwarded into use case / session for custom hosts).
 

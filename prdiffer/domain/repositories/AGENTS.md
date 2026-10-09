@@ -22,13 +22,13 @@ prdiffer/domain/repositories/
 
 ### Methods / properties
 - Properties: `repo_owner`, `repo_name`, `pr_number`
-- `approve_pr_with_comment(pr_url, compliment)` → success message (GitHub review)
+- `approve_pr_with_comment(pr_url, compliment, *, expected_head_sha=None)` → success message (GitHub review; with a SHA the adapter re-reads the head, raises `HeadSHAMismatchError` on drift, and reviews that exact commit)
 - `update_pr_description(pr_url, description)` → success message
 
 ## CONVENTIONS
 - Diffs are read through `SessionPRDiffReader` (`domain/interfaces/pr_diff_reader.py`), not this port.
 - GitHub: `infrastructure/github_repository.py` implements this interface for approve/describe MCP GitHub branch.
-- GitLab: `infrastructure/vcs_providers/gitlab_repository.py` exposes parallel methods with `(owner, repo, pr, body, *, base_url)` for MCP GitLab branch (`GitLabPROperationsProtocol`).
+- GitLab: `infrastructure/vcs_providers/gitlab_repository.py` exposes parallel methods with `(owner, repo, pr, body, *, base_url)` (approve also takes `expected_head_sha`) for MCP GitLab branch (`GitLabPROperationsProtocol`).
 - Domain use cases for approve/describe still inject this interface; MCP tools may call provider adapters directly after `parse_pr_target`.
 
 ## ANTI-PATTERNS

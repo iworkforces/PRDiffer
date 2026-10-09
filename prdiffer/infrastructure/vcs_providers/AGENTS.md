@@ -27,7 +27,7 @@ prdiffer/infrastructure/vcs_providers/
 | **GitLab inventory** | `gitlab_inventory.py` | Admit/classify; `a_mode`/`b_mode` `"0"`/`"000000"` = absent side on add/delete |
 | **GitLab runtime** | `gitlab_runtime.py` | Shared CapacityLimiter; per-call base_url/deadline; status map |
 | **GitLab ops (diff)** | `gitlab_operations.py` | Pin exact MR diff version matching `diff_refs` (`select_with_client`) |
-| **GitLab ops (MR tools)** | `gitlab_operations.py` | `approve_with_client` (**note then approve**), `update_description_with_client` |
+| **GitLab ops (MR tools)** | `gitlab_operations.py` | `approve_with_client` (**note then approve**; optional `expected_head_sha`), `update_description_with_client` |
 | **Session** | `gitlab_diff_session.py` | open → pin via `run_blocking` → build inventory/content/assemble → aclose |
 | **Register provider** | `application/provider_resolver.py` | URL parser + capability registration (`create_provider_capability_resolver`) |
 
@@ -48,6 +48,7 @@ prdiffer/infrastructure/vcs_providers/
 - **Equal-noop**: equal-content equal-mode modified → hard E5020 `DIFF_GENERATION_FAILED`.
 - Status map: 401→E2006, 403→E2007, 404→context (E4001/E4002/E4003), 429→E3006 (no local re-loop), 5xx→E5021, timeout→E5004, connection→E5019.
 - **Approve MCP path**: `notes.create({body})` **then** `merge_request.approve()` (note-first so a note failure cannot leave the MR approved while the tool errors); empty/whitespace body → ValidationError E1001 before SDK.
+- **Head-bound approve** (`expected_head_sha` supplied): read the fresh MR's `sha` (not `diff_refs`) before the note; a missing/malformed head → E5021, a different head → `HeadSHAMismatchError` (E1011) with no note. Then `notes.create` and `approve(sha=expected)` run as single attempts (`retry_transient_errors=False`, `max_retries=0`, `obey_rate_limit=False`). An approval 409 → E1011 after deleting only the note this call created (`compliment_note` = `deleted` / `cleanup_failed`); timeouts and other ambiguous failures go through the normal mapping with no cleanup and no retry. Without the SHA the path is unchanged.
 - **Describe MCP path**: set `description` + `save()`; empty/whitespace → ValidationError E1001 before SDK.
 - Async repository methods always use `GitLabRuntime.run_blocking` (never block the event loop).
 - Dual role: `GitLabVCSRepository` is both `SessionPRDiffReader` and `GitLabPROperationsProtocol` (factory may promote reader → ops).

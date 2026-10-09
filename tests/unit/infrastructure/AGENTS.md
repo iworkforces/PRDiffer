@@ -35,7 +35,8 @@ tests/unit/infrastructure/
 | **Full-diff config defaults** | `test_github_config_wiring.py`, `test_full_diff_concurrency_defaults.py` | Parallel flags, capacity |
 | **GitLab config / allowlist** | `test_gitlab_config_wiring.py` | toml defaults + `GITLAB_ALLOWED_HOSTS` |
 | **GitLab runtime / session** | `vcs_providers/test_gitlab_*.py` | Per-call deadline/base_url, allowlist, equal-noop |
-| **GitLab approve / describe** | `vcs_providers/test_gitlab_mr_operations.py` | Note-then-approve order, empty body, 401/403/429/404/5xx, nested path + custom host runtime |
+| **GitLab approve / describe** | `vcs_providers/test_gitlab_mr_operations.py` | Note-then-approve order, empty body, 401/403/429/404/5xx, nested path + custom host runtime; head-bound mismatch before the note, 409 cleanup outcomes, ambiguous failures without cleanup |
+| **GitLab single-attempt approvals** | `vcs_providers/test_gitlab_approval_retry_policy.py` | Real `gitlab.Gitlab` over a fake transport: SHA-bound note/approve/cleanup are sent once even with runtime retries enabled |
 | **Service full-context** | `test_pr_diff_service_full_context.py` | Generated full-context → PRDiff |
 | **Parallel executor** | `test_async_parallel_executor.py` | anyio task groups, ordered batches, per-batch semaphore |
 | **GitHub adapter details** | `github/` | See package AGENTS.md |
