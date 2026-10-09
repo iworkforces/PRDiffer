@@ -4,7 +4,7 @@ import logging
 import time
 from abc import abstractmethod
 from collections.abc import Callable
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
 
@@ -144,7 +144,7 @@ class BaseUnifiedRetryHandler(RetryServiceInterface):
             return self._execute_admitted(func, args, kwargs, context, permit)
 
     @contextmanager
-    def _breaker_admission(self) -> Iterator[CircuitBreakerPermit | None]:
+    def _breaker_admission(self) -> Generator[CircuitBreakerPermit | None]:
         breaker = self._circuit_breaker if self.circuit_breaker_enabled else None
         permit = breaker.acquire() if breaker is not None else None
         if breaker is not None and permit is None:
