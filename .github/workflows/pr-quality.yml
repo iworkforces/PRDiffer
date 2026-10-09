@@ -1,5 +1,5 @@
 # Quality gates for pull requests targeting protected integration branches.
-# Mirrors local start-lint.sh / start-type-check.sh / start-unittest.sh (without auto-upgrades).
+# Mirrors local start-lint.sh / start-type-check.sh / start-unittest.sh and the layer analyzer (without auto-upgrades).
 name: PR Quality
 
 on:
@@ -28,6 +28,8 @@ jobs:
             command: uv run ruff check .
           - name: Type check
             command: uv run ty check
+          - name: Architecture
+            command: uv run python scripts/analyze_dependencies.py --path prdiffer
           - name: Unit tests
             command: uv run pytest tests -v --tb=short --junitxml=junit.xml
 

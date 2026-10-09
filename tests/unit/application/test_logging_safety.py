@@ -13,6 +13,7 @@ from prdiffer.application.provider_resolver import ProviderCapabilityResolver
 from prdiffer.domain.entities.pr_diff import PRDiff
 from prdiffer.domain.entities.file_diff_response import FileDiffResponse, FileStats
 from prdiffer.domain.entities.file_patch import EDIT_TYPE
+from prdiffer.infrastructure.utils.coalescing_service import RequestCoalescingService
 
 
 def _create_pr_diff_with_content(diff_content: str) -> PRDiff:
@@ -54,6 +55,7 @@ def server_with_mock_logger(mock_logger: Mock) -> FastMCPServer:
         server_configuration=server_configuration,
         authentication=authentication,
         input_validator=input_validator,
+        request_coalescing_service=RequestCoalescingService(),
     )
 
 

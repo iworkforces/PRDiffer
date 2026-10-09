@@ -24,6 +24,7 @@ from prdiffer.domain.exceptions import (
 )
 from prdiffer.domain.interfaces.pr_diff_reader import PRDiffReadSessionInterface, PRDiffSnapshot
 from prdiffer.infrastructure.github_repository import GitHubPRDiffRepository
+from prdiffer.infrastructure.security.input_validator import InputValidator
 
 
 class ErrorScenarioPRDiffSession(PRDiffReadSessionInterface):
@@ -249,79 +250,79 @@ class TestValidationErrorScenarios:
         invalid_url = "not-a-github-url"
 
         with pytest.raises(InvalidURLError):
-            parse_pr_url(invalid_url)
+            parse_pr_url(invalid_url, InputValidator())
 
     def test_malformed_github_url(self, server):
         malformed_url = "https://github.com/invalid-format"
 
         with pytest.raises(InvalidURLError):
-            parse_pr_url(malformed_url)
+            parse_pr_url(malformed_url, InputValidator())
 
     def test_url_with_command_injection(self, server):
         malicious_url = "https://github.com/owner/repo/pull/123; rm -rf /"
 
         with pytest.raises((SuspiciousOperationError, InvalidURLError)):
-            parse_pr_url(malicious_url)
+            parse_pr_url(malicious_url, InputValidator())
 
     def test_url_with_sql_injection(self, server):
         malicious_url = "https://github.com/owner/repo/pull/123' OR '1'='1"
 
         with pytest.raises((SuspiciousOperationError, InvalidURLError)):
-            parse_pr_url(malicious_url)
+            parse_pr_url(malicious_url, InputValidator())
 
     def test_url_with_path_traversal(self, server):
         malicious_url = "https://github.com/owner/../etc/passwd/pull/123"
 
         with pytest.raises((SuspiciousOperationError, InvalidRepositoryError, InvalidURLError)):
-            parse_pr_url(malicious_url)
+            parse_pr_url(malicious_url, InputValidator())
 
     def test_empty_url(self, server):
         empty_url = ""
 
         with pytest.raises((InvalidURLError, InputSanitizationError)):
-            parse_pr_url(empty_url)
+            parse_pr_url(empty_url, InputValidator())
 
     def test_none_url(self, server):
         none_url = None
 
         with pytest.raises(InvalidURLError, match="must be a string"):
-            parse_pr_url(cast(str, none_url))
+            parse_pr_url(cast(str, none_url), InputValidator())
 
     def test_whitespace_only_url(self, server):
         whitespace_url = "   \t\n  "
 
         with pytest.raises(InvalidURLError, match="whitespace-only"):
-            parse_pr_url(whitespace_url)
+            parse_pr_url(whitespace_url, InputValidator())
 
     def test_non_string_url(self, server):
         non_string_url = 12345
 
         with pytest.raises(InvalidURLError, match="must be a string"):
-            parse_pr_url(cast(str, non_string_url))
+            parse_pr_url(cast(str, non_string_url), InputValidator())
 
     def test_invalid_pr_number(self, server):
         invalid_url = "https://github.com/owner/repo/pull/abc"
 
         with pytest.raises((InvalidURLError, InvalidPRNumberError)):
-            parse_pr_url(invalid_url)
+            parse_pr_url(invalid_url, InputValidator())
 
     def test_negative_pr_number(self, server):
         invalid_url = "https://github.com/owner/repo/pull/-1"
 
         with pytest.raises((InvalidURLError, InvalidPRNumberError)):
-            parse_pr_url(invalid_url)
+            parse_pr_url(invalid_url, InputValidator())
 
     def test_zero_pr_number(self, server):
         invalid_url = "https://github.com/owner/repo/pull/0"
 
         with pytest.raises((InvalidURLError, InvalidPRNumberError)):
-            parse_pr_url(invalid_url)
+            parse_pr_url(invalid_url, InputValidator())
 
     def test_exceeds_max_pr_number(self, server):
         invalid_url = "https://github.com/owner/repo/pull/999999999999"
 
         with pytest.raises((InvalidURLError, InvalidPRNumberError)):
-            parse_pr_url(invalid_url)
+            parse_pr_url(invalid_url, InputValidator())
 
 
 @pytest.mark.integration

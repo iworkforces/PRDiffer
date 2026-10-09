@@ -59,9 +59,9 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
         rate_limiter: RateLimiterProtocol,
         metrics_tracker: MetricsTrackerProtocol,
         provider_resolver: ProviderCapabilityResolver,
+        input_validator: InputValidatorProtocol,
+        request_coalescing_service: RequestCoalescingProtocol,
         authentication: AuthenticationProtocol | None = None,
-        input_validator: InputValidatorProtocol | None = None,
-        request_coalescing_service: RequestCoalescingProtocol | None = None,
         pr_diff_request_timeout_seconds: float | None = None,
     ):
         self._cache_service = cache_service
@@ -72,21 +72,8 @@ class ToolRegistry(CoalescedPRDiffExecutionMixin):
         self._pr_diff_request_timeout_seconds = pr_diff_request_timeout_seconds
         self._authentication = authentication
 
-        if input_validator is None:
-            from prdiffer.infrastructure.factories.infrastructure_factory import get_infrastructure_factory
-
-            self._input_validator = get_infrastructure_factory().create_input_validator()
-        else:
-            self._input_validator = input_validator
-
-        if request_coalescing_service is None:
-            from prdiffer.infrastructure.utils.coalescing_service import (
-                get_request_coalescing_service,
-            )
-
-            self._request_coalescing = get_request_coalescing_service()
-        else:
-            self._request_coalescing = request_coalescing_service
+        self._input_validator = input_validator
+        self._request_coalescing = request_coalescing_service
 
     def _generate_request_id(self) -> str:
         return self._metrics_tracker.generate_request_id()

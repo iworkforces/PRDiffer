@@ -38,8 +38,16 @@ from prdiffer.domain.exceptions import (
 from prdiffer.domain.error_codes import E1001_INVALID_URL, E2002_AUTH_FAILED
 from fastmcp.exceptions import ToolError
 from prdiffer.domain.exceptions import (
-    GitLabAPIError, ResourceError, ProcessingError, CacheError, ConfigurationError, SecurityError,
-    InvalidRepositoryError, InvalidPRNumberError, InputSanitizationError, SuspiciousOperationError,
+    GitLabAPIError,
+    ResourceError,
+    ProcessingError,
+    CacheError,
+    ConfigurationError,
+    SecurityError,
+    InvalidRepositoryError,
+    InvalidPRNumberError,
+    InputSanitizationError,
+    SuspiciousOperationError,
     ProviderCapabilityUnavailableError,
 )
 import anyio
@@ -49,9 +57,19 @@ ProviderName = Literal["github", "gitlab"]
 
 
 ERROR_CASES = [
-    (kind, None, None) for kind in (
-        AuthenticationError, RateLimitError, GitHubAPIError, GitLabAPIError, ValidationError,
-        ResourceError, ProcessingError, CacheError, ConfigurationError, SecurityError, TimeoutError,
+    (kind, None, None)
+    for kind in (
+        AuthenticationError,
+        RateLimitError,
+        GitHubAPIError,
+        GitLabAPIError,
+        ValidationError,
+        ResourceError,
+        ProcessingError,
+        CacheError,
+        ConfigurationError,
+        SecurityError,
+        TimeoutError,
     )
 ] + [
     (InvalidURLError, ValidationError, "Invalid PR or merge request URL"),
@@ -123,8 +141,13 @@ async def test_cancelled_call_propagates_without_outcome(operation, gate, tool_r
 @pytest.mark.parametrize("operation", ["get_pr_diff", "approve_pr", "describe_pr"])
 @pytest.mark.parametrize("rejection", ["missing", "false", "lock"])
 async def test_auth_rejection_records_one_named_failure_before_provider(
-    operation, rejection, tool_registry, mock_authentication, mock_metrics_tracker,
-    mock_github_repository_class, session_reader,
+    operation,
+    rejection,
+    tool_registry,
+    mock_authentication,
+    mock_metrics_tracker,
+    mock_github_repository_class,
+    session_reader,
 ):
     if rejection == "missing":
         tool_registry._authentication = None
@@ -165,9 +188,7 @@ def test_server_transport_preserves_actual_peer_identity(monkeypatch, transport)
     if transport == "stdio":
         server.mcp.run.assert_called_once_with(transport="stdio")
     else:
-        server.mcp.run.assert_called_once_with(
-            transport=transport, port=9102, host="127.0.0.1", path="/mcp", uvicorn_config={"proxy_headers": False}
-        )
+        server.mcp.run.assert_called_once_with(transport=transport, port=9102, host="127.0.0.1", path="/mcp", uvicorn_config={"proxy_headers": False})
 
 
 @pytest.mark.parametrize("port", [1234, 5678])
@@ -214,7 +235,12 @@ async def test_http_missing_peer_fails_closed_once(tool_registry, mock_authentic
 
 @pytest.mark.parametrize("transport", ["http", "stdio"])
 async def test_real_source_lock_blocks_all_tools_before_all_providers(
-    monkeypatch, tool_registry, mock_metrics_tracker, mock_github_repository_class, session_reader, transport,
+    monkeypatch,
+    tool_registry,
+    mock_metrics_tracker,
+    mock_github_repository_class,
+    session_reader,
+    transport,
 ):
     monkeypatch.setenv("MCP_AUTH_ENABLED", "true")
     monkeypatch.setenv("MCP_API_KEYS", "valid_key_12345678901")
@@ -487,12 +513,8 @@ def mock_github_repository_class():
 
 @dataclass
 class RecordingGitLabPROps:
-    approve_calls: list[tuple[str, str, int, str, str | None]] = field(
-        default_factory=list[tuple[str, str, int, str, str | None]]
-    )
-    describe_calls: list[tuple[str, str, int, str, str | None]] = field(
-        default_factory=list[tuple[str, str, int, str, str | None]]
-    )
+    approve_calls: list[tuple[str, str, int, str, str | None]] = field(default_factory=list[tuple[str, str, int, str, str | None]])
+    describe_calls: list[tuple[str, str, int, str, str | None]] = field(default_factory=list[tuple[str, str, int, str, str | None]])
 
     async def approve_pr_with_comment(
         self,
@@ -931,9 +953,7 @@ class TestGetPRDiffProviderDispatch:
                     "ffffffffffffffffffffffffffffffffffffffff"
                 )
                 assert session_identity.validation_token == (
-                    "7:dddddddddddddddddddddddddddddddddddddddd:"
-                    "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee:"
-                    "ffffffffffffffffffffffffffffffffffffffff"
+                    "7:dddddddddddddddddddddddddddddddddddddddd:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee:ffffffffffffffffffffffffffffffffffffffff"
                 )
                 assert session_identity.schema_version == 1
             case unreachable:
@@ -1126,9 +1146,7 @@ class TestApproveDescribeProviderDispatch:
         mock_github_repository_class.assert_called_once_with("owner", "repo", 17)
         instance = mock_github_repository_class.return_value
         instance.approve_pr_with_comment.assert_awaited_once()
-        success_calls = [
-            call for call in mock_metrics_tracker.track_request.call_args_list if call.args[:2] == ("approve_pr", True)
-        ]
+        success_calls = [call for call in mock_metrics_tracker.track_request.call_args_list if call.args[:2] == ("approve_pr", True)]
         assert len(success_calls) == 1
 
     async def test_approve_pr_routes_gitlab_to_gitlab_operations(
@@ -1403,9 +1421,7 @@ class TestApproveDescribeProviderDispatch:
             )
 
         assert str(exc_info.value) == "E5022_PROVIDER_CAPABILITY_UNAVAILABLE"
-        fail_metrics = [
-            c for c in mock_metrics_tracker.track_request.call_args_list if c.args[:2] == ("approve_pr", False)
-        ]
+        fail_metrics = [c for c in mock_metrics_tracker.track_request.call_args_list if c.args[:2] == ("approve_pr", False)]
         assert len(fail_metrics) == 1
 
     async def test_approve_pr_forwards_nested_namespace_and_strips_compliment(
@@ -1443,9 +1459,7 @@ class TestApproveDescribeProviderDispatch:
         assert mcp.approve_pr_tool is not None
 
         # parse_pr_target also calls parse_gitlab_merge_request_parts on real URL
-        with patch(
-            "prdiffer.infrastructure.utils.url_parser.parse_gitlab_merge_request_parts"
-        ) as mock_parts:
+        with patch("prdiffer.application.utils.pr_url_parser.parse_gitlab_merge_request_parts") as mock_parts:
             mock_parts.return_value = MagicMock(
                 namespace="group/sub",
                 project="project",

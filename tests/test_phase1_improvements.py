@@ -8,6 +8,7 @@ from unittest.mock import Mock, patch
 
 from prdiffer.application.provider_resolver import ProviderCapabilityResolver
 from prdiffer.infrastructure.security.input_validator import InputValidator
+from prdiffer.infrastructure.utils.coalescing_service import RequestCoalescingService
 from prdiffer.infrastructure.utils.circuit_breaker_core import (
     CircuitBreaker,
     CircuitState,
@@ -323,6 +324,7 @@ class TestErrorMessageSanitization:
             "logger": Mock(),
             "provider_resolver": ProviderCapabilityResolver(),
             "input_validator": Mock(),
+            "request_coalescing_service": RequestCoalescingService(),
             "rate_limiter": Mock(),
             "metrics_tracker": Mock(),
             "health_monitor": Mock(),

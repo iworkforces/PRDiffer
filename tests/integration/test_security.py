@@ -19,6 +19,7 @@ from prdiffer.domain.exceptions import (
 )
 from prdiffer.domain.interfaces.pr_diff_reader import PRDiffReadSessionInterface, PRDiffSnapshot
 from prdiffer.infrastructure.github_repository import GitHubPRDiffRepository
+from prdiffer.infrastructure.security.input_validator import InputValidator
 
 
 class SecurityFakeSession(PRDiffReadSessionInterface):
@@ -110,7 +111,7 @@ class TestCommandInjectionPrevention:
 
         for url in malicious_urls:
             with pytest.raises((SuspiciousOperationError, InvalidURLError)):
-                parse_pr_url(url)
+                parse_pr_url(url, InputValidator())
 
     def test_blocks_pipe_command_injection(self, server):
         """Test that pipe command injection is blocked."""
@@ -121,7 +122,7 @@ class TestCommandInjectionPrevention:
 
         for url in malicious_urls:
             with pytest.raises((SuspiciousOperationError, InvalidURLError)):
-                parse_pr_url(url)
+                parse_pr_url(url, InputValidator())
 
     def test_blocks_command_substitution(self, server):
         """Test that command substitution is blocked."""
@@ -133,7 +134,7 @@ class TestCommandInjectionPrevention:
 
         for url in malicious_urls:
             with pytest.raises((SuspiciousOperationError, InvalidURLError)):
-                parse_pr_url(url)
+                parse_pr_url(url, InputValidator())
 
     def test_blocks_backtick_injection(self, server):
         """Test that backtick injection is blocked."""
@@ -144,7 +145,7 @@ class TestCommandInjectionPrevention:
 
         for url in malicious_urls:
             with pytest.raises((SuspiciousOperationError, InvalidURLError)):
-                parse_pr_url(url)
+                parse_pr_url(url, InputValidator())
 
     def test_blocks_redirect_injection(self, server):
         """Test that redirect injection is blocked."""
@@ -155,7 +156,7 @@ class TestCommandInjectionPrevention:
 
         for url in malicious_urls:
             with pytest.raises((SuspiciousOperationError, InvalidURLError)):
-                parse_pr_url(url)
+                parse_pr_url(url, InputValidator())
 
     def test_blocks_newline_command_injection(self, server):
         """Test that newline command injection is blocked."""
@@ -166,7 +167,7 @@ class TestCommandInjectionPrevention:
 
         for url in malicious_urls:
             with pytest.raises((SuspiciousOperationError, InvalidURLError)):
-                parse_pr_url(url)
+                parse_pr_url(url, InputValidator())
 
     def test_blocks_variable_expansion(self, server):
         """Test that variable expansion is blocked."""
@@ -177,7 +178,7 @@ class TestCommandInjectionPrevention:
 
         for url in malicious_urls:
             with pytest.raises((SuspiciousOperationError, InvalidURLError)):
-                parse_pr_url(url)
+                parse_pr_url(url, InputValidator())
 
 
 @pytest.mark.integration
@@ -222,7 +223,7 @@ class TestSQLInjectionPrevention:
 
         for url in malicious_inputs:
             with pytest.raises((SuspiciousOperationError, InvalidURLError)):
-                parse_pr_url(url)
+                parse_pr_url(url, InputValidator())
 
     def test_blocks_union_select_injection(self, server):
         """Test that UNION SELECT injection is blocked."""
@@ -233,7 +234,7 @@ class TestSQLInjectionPrevention:
 
         for url in malicious_inputs:
             with pytest.raises((SuspiciousOperationError, InvalidURLError)):
-                parse_pr_url(url)
+                parse_pr_url(url, InputValidator())
 
     def test_blocks_or_injection(self, server):
         """Test that OR-based injection is blocked."""
@@ -244,7 +245,7 @@ class TestSQLInjectionPrevention:
 
         for url in malicious_inputs:
             with pytest.raises((SuspiciousOperationError, InvalidURLError)):
-                parse_pr_url(url)
+                parse_pr_url(url, InputValidator())
 
     def test_blocks_drop_table_injection(self, server):
         """Test that DROP TABLE injection is blocked."""
@@ -255,7 +256,7 @@ class TestSQLInjectionPrevention:
 
         for url in malicious_inputs:
             with pytest.raises((SuspiciousOperationError, InvalidURLError)):
-                parse_pr_url(url)
+                parse_pr_url(url, InputValidator())
 
     def test_blocks_insert_injection(self, server):
         """Test that INSERT injection is blocked."""
@@ -266,7 +267,7 @@ class TestSQLInjectionPrevention:
 
         for url in malicious_inputs:
             with pytest.raises((SuspiciousOperationError, InvalidURLError)):
-                parse_pr_url(url)
+                parse_pr_url(url, InputValidator())
 
     def test_blocks_update_injection(self, server):
         """Test that UPDATE injection is blocked."""
@@ -277,7 +278,7 @@ class TestSQLInjectionPrevention:
 
         for url in malicious_inputs:
             with pytest.raises((SuspiciousOperationError, InvalidURLError)):
-                parse_pr_url(url)
+                parse_pr_url(url, InputValidator())
 
     def test_blocks_delete_injection(self, server):
         """Test that DELETE injection is blocked."""
@@ -288,7 +289,7 @@ class TestSQLInjectionPrevention:
 
         for url in malicious_inputs:
             with pytest.raises((SuspiciousOperationError, InvalidURLError)):
-                parse_pr_url(url)
+                parse_pr_url(url, InputValidator())
 
 
 @pytest.mark.integration
@@ -332,7 +333,7 @@ class TestPathTraversalPrevention:
 
         for url in malicious_urls:
             with pytest.raises((SuspiciousOperationError, InvalidRepositoryError, InvalidURLError)):
-                parse_pr_url(url)
+                parse_pr_url(url, InputValidator())
 
     def test_blocks_encoded_path_traversal(self, server):
         """Test that encoded path traversal is blocked."""
@@ -343,7 +344,7 @@ class TestPathTraversalPrevention:
 
         for url in malicious_urls:
             with pytest.raises((SuspiciousOperationError, InvalidRepositoryError, InvalidURLError)):
-                parse_pr_url(url)
+                parse_pr_url(url, InputValidator())
 
     def test_blocks_absolute_path_traversal(self, server):
         """Test that absolute path traversal is blocked."""
@@ -355,7 +356,7 @@ class TestPathTraversalPrevention:
 
         for url in malicious_urls:
             with pytest.raises((SuspiciousOperationError, InvalidRepositoryError, InvalidURLError)):
-                parse_pr_url(url)
+                parse_pr_url(url, InputValidator())
 
     def test_blocks_system_directory_access(self, server):
         """Test that system directory access is blocked."""
@@ -364,7 +365,7 @@ class TestPathTraversalPrevention:
         for system_dir in system_dirs:
             url = f"https://github.com/{system_dir}repo/pull/123"
             with pytest.raises((SuspiciousOperationError, InvalidRepositoryError, InvalidURLError)):
-                parse_pr_url(url)
+                parse_pr_url(url, InputValidator())
 
     def test_blocks_windows_path_traversal(self, server):
         """Test that Windows path traversal is blocked."""
@@ -375,7 +376,7 @@ class TestPathTraversalPrevention:
 
         for url in malicious_urls:
             with pytest.raises((SuspiciousOperationError, InvalidRepositoryError, InvalidURLError)):
-                parse_pr_url(url)
+                parse_pr_url(url, InputValidator())
 
 
 @pytest.mark.integration
@@ -557,7 +558,7 @@ class TestRepositoryValidation:
         for invalid_owner in invalid_owners:
             url = f"https://github.com/{invalid_owner}/repo/pull/123"
             with pytest.raises((SuspiciousOperationError, InvalidRepositoryError, InvalidURLError)):
-                parse_pr_url(url)
+                parse_pr_url(url, InputValidator())
 
     def test_rejects_invalid_repo_names(self, server):
         """Test that invalid repo names are rejected."""
@@ -570,7 +571,7 @@ class TestRepositoryValidation:
         for invalid_repo in invalid_repos:
             url = f"https://github.com/owner/{invalid_repo}/pull/123"
             with pytest.raises((SuspiciousOperationError, InvalidRepositoryError, InvalidURLError)):
-                parse_pr_url(url)
+                parse_pr_url(url, InputValidator())
 
     def test_accepts_valid_names(self, server):
         """Test that valid repository names are accepted."""
@@ -588,7 +589,7 @@ class TestRepositoryValidation:
 
         for url in valid_urls:
             # Should not raise exception for valid URLs
-            owner, repo, pr = parse_pr_url(url)
+            owner, repo, pr = parse_pr_url(url, InputValidator())
             assert owner is not None
             assert repo is not None
             assert pr == 123

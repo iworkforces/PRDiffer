@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from typing import Literal
 
+from prdiffer.domain.entities.gitlab_merge_request_url import parse_gitlab_merge_request_parts
 from prdiffer.domain.exceptions import (
     InvalidURLError,
 )
@@ -38,13 +39,13 @@ def normalize_request_url(pr_url: object) -> str:
 
 def parse_pr_url(
     pr_url: object,
-    input_validator: InputValidatorProtocol | None = None,
+    input_validator: InputValidatorProtocol,
 ) -> tuple[str, str, int]:
     """Parse GitHub PR URL to extract repository owner, name, and PR number.
 
     Args:
         pr_url: The GitHub pull request URL to parse
-        input_validator: Optional InputValidatorProtocol instance. If None, creates one via factory.
+        input_validator: Required validator implementing InputValidatorProtocol.
 
     Returns:
         tuple[str, str, int]: (repo_owner, repo_name, pr_number)
@@ -57,39 +58,28 @@ def parse_pr_url(
         InvalidPRNumberError: If PR number is invalid
 
     Examples:
-        >>> parse_pr_url("https://github.com/owner/repo/pull/123")
+        >>> parse_pr_url("https://github.com/owner/repo/pull/123", input_validator)
         ('owner', 'repo', 123)
 
-        >>> parse_pr_url("https://github.com/owner/repo/pulls/456")
+        >>> parse_pr_url("https://github.com/owner/repo/pulls/456", input_validator)
         ('owner', 'repo', 456)
     """
     pr_url_stripped = normalize_request_url(pr_url)
-    if input_validator is None:
-        from prdiffer.infrastructure.factories.infrastructure_factory import get_infrastructure_factory
-
-        input_validator = get_infrastructure_factory().create_input_validator()
     return input_validator.validate_github_url(pr_url_stripped)
 
 
 def parse_pr_target(
     pr_url: object,
-    input_validator: InputValidatorProtocol | None = None,
+    input_validator: InputValidatorProtocol,
 ) -> PRTarget:
-    """Parse a supported PR or merge request URL into a provider-aware target."""
+    """Parse a supported PR or merge request URL using the required validator."""
     pr_url_stripped = normalize_request_url(pr_url)
-    if input_validator is None:
-        from prdiffer.infrastructure.factories.infrastructure_factory import get_infrastructure_factory
-
-        input_validator = get_infrastructure_factory().create_input_validator()
-
     if pr_url_stripped.startswith("https://github.com/"):
         repo_owner, repo_name, pr_number = parse_pr_url(pr_url_stripped, input_validator)
         return PRTarget("github", repo_owner, repo_name, pr_number, base_url=None)
 
     # GitLab.com or custom-hosted GitLab: HTTPS MR path marker.
     if pr_url_stripped.startswith("https://") and "/-/merge_requests/" in pr_url_stripped:
-        from prdiffer.infrastructure.utils.url_parser import parse_gitlab_merge_request_parts
-
         # Validator enforces suspicious-pattern checks + path/host rules.
         repo_owner, repo_name, pr_number = input_validator.validate_gitlab_url(pr_url_stripped)
         parts = parse_gitlab_merge_request_parts(pr_url_stripped)

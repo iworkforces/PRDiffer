@@ -14,6 +14,8 @@ from prdiffer.application.webhook_handler import WebhookHandler
 from prdiffer.domain.entities.pr_diff import PRDiff
 from prdiffer.domain.entities.pr_diff_cache import github_full_diff_v3_identity, gitlab_full_diff_v1_identity
 from prdiffer.infrastructure.cache.service import CacheService
+from prdiffer.infrastructure.security.input_validator import InputValidator
+from prdiffer.infrastructure.utils.coalescing_service import RequestCoalescingService
 
 
 @pytest.fixture
@@ -54,6 +56,8 @@ def mcp_server(mock_cache_service, mock_settings):
         metrics_tracker=mock_metrics_tracker,
         health_monitor=mock_health_monitor,
         server_configuration=mock_server_configuration,
+        input_validator=InputValidator(),
+        request_coalescing_service=RequestCoalescingService(),
     )
     return server
 
