@@ -12,7 +12,7 @@ app.logging_enabled = true
 app.log_format = "simple"
 
 # MCP request deadlines (must be strictly greater than github.timeout)
-mcp.pr_diff_request_timeout_seconds = 180
+mcp.pr_diff_request_timeout_seconds = 300
 
 # GitHub API settings
 github.rate_limit = 5000
