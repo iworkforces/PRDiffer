@@ -55,7 +55,7 @@ async def test_pr_scope_removes_every_snapshot_without_prefix_collisions(cache_s
         gitlab_full_diff_v1_key("owner", "repo", 12, 1, "base", "start", "head"),
         "github-full-diff-v30:owner:repo:12:base:head",
     ]
-    value = PRDiff(files=())
+    value = PRDiff(files=(), head_sha="c" * 40)
     for key in selected + retained:
         await cache_service.set(key, "sha", value)
 
@@ -75,7 +75,7 @@ async def test_repository_scope_removes_all_prs_only_in_that_repository(cache_se
     # Given multiple PR identities and an unrelated GitLab MR.
     selected = [github_full_diff_v3_key("owner", "repo", 1, "a", "b"), github_full_diff_v3_key("owner", "repo", 20, "c", "d")]
     retained = [github_full_diff_v3_key("owner", "repository", 1, "a", "b"), "owner/repository/pr/1", "gitlab:owner/repo/pr/1"]
-    value = PRDiff(files=())
+    value = PRDiff(files=(), head_sha="c" * 40)
     for key in selected + retained:
         await cache_service.set(key, "sha", value)
 
@@ -95,7 +95,7 @@ async def test_exact_invalidate_still_removes_only_one_snapshot(cache_service: C
     # Given two snapshots for the same PR.
     first = github_full_diff_v3_key("owner", "repo", 1, "base", "head-1")
     second = github_full_diff_v3_key("owner", "repo", 1, "base", "head-2")
-    value = PRDiff(files=())
+    value = PRDiff(files=(), head_sha="c" * 40)
     await cache_service.set(first, "sha", value)
     await cache_service.set(second, "sha", value)
 
@@ -113,7 +113,7 @@ async def test_expiry_and_overwrite_keep_live_original_key_index(cache_service: 
     # Given an expired snapshot and an overwritten live snapshot.
     stale = github_full_diff_v3_key("owner", "repo", 1, "base", "old")
     live = github_full_diff_v3_key("owner", "repo", 1, "base", "new")
-    value = PRDiff(files=())
+    value = PRDiff(files=(), head_sha="c" * 40)
     await cache_service.set(stale, "sha", value)
     await cache_service.set(live, "sha", value)
     stale_internal = cache_service._hash_key(stale) if cache_service._use_hashed_keys else stale
@@ -136,7 +136,7 @@ async def test_periodic_ttl_sweep_and_lru_remove_reverse_metadata(cache_service:
     stale = github_full_diff_v3_key("owner", "repo", 1, "base", "stale")
     live = github_full_diff_v3_key("owner", "repo", 2, "base", "live")
     newest = github_full_diff_v3_key("owner", "repo", 3, "base", "newest")
-    value = PRDiff(files=())
+    value = PRDiff(files=(), head_sha="c" * 40)
     await cache_service.set(stale, "sha", value)
     stale_internal = cache_service._hash_key(stale) if cache_service._use_hashed_keys else stale
     cache_service.cache[stale_internal]["timestamp"] = 0
@@ -160,7 +160,7 @@ async def test_periodic_ttl_sweep_and_lru_remove_reverse_metadata(cache_service:
 async def test_get_expiry_removes_live_key_metadata(cache_service: CacheService) -> None:
     # Given a snapshot past its TTL.
     key = github_full_diff_v3_key("owner", "repo", 1, "base", "head")
-    await cache_service.set(key, "sha", PRDiff(files=()))
+    await cache_service.set(key, "sha", PRDiff(files=(), head_sha="c" * 40))
     internal_key = cache_service._hash_key(key) if cache_service._use_hashed_keys else key
     cache_service.cache[internal_key]["timestamp"] = 0
 
@@ -177,8 +177,8 @@ async def test_get_expiry_removes_live_key_metadata(cache_service: CacheService)
 async def test_clear_removes_live_key_index(cache_service: CacheService) -> None:
     # Given a populated cache with entries for two repositories.
     key = github_full_diff_v3_key("owner", "repo", 1, "base", "head")
-    await cache_service.set(key, "sha", PRDiff(files=()))
-    await cache_service.set(github_full_diff_v3_key("elsewhere", "repo", 1, "base", "head"), "sha", PRDiff(files=()))
+    await cache_service.set(key, "sha", PRDiff(files=(), head_sha="c" * 40))
+    await cache_service.set(github_full_diff_v3_key("elsewhere", "repo", 1, "base", "head"), "sha", PRDiff(files=(), head_sha="c" * 40))
 
     # When the existing clear API is used.
     await cache_service.clear()
@@ -196,10 +196,11 @@ def payload_bytes(value: PRDiff) -> int:
 
 def unicode_diff(text: str = "é") -> PRDiff:
     return PRDiff(
+        head_sha="c" * 40,
         files=(
             FileDiffResponse(path="新.py", previous_path="旧.py", status=EDIT_TYPE.RENAMED, stats=FileStats(additions=2, deletions=1), diff=text),
             FileDiffResponse(path="二.py", status=EDIT_TYPE.MODIFIED, stats=FileStats(additions=3, deletions=4), diff="+雪\n"),
-        )
+        ),
     )
 
 
@@ -255,7 +256,7 @@ async def test_one_byte_over_budget_does_not_admit_or_evict(cache_service: Cache
     # Given a budget one byte smaller than the whole Unicode/rename payload.
     value = unicode_diff()
     cache_service._cache_max_bytes = payload_bytes(value) - 1
-    empty = PRDiff(files=())
+    empty = PRDiff(files=(), head_sha="c" * 40)
     await cache_service.set("retained", "token", empty)
     # When the otherwise valid new payload exceeds admission by just one byte.
     await cache_service.set("too-large", "token", value)

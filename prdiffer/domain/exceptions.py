@@ -5,9 +5,9 @@ providing better error handling and more informative error messages.
 """
 
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
-from .error_codes import E5001_INTERNAL_ERROR, E5020_FULL_DIFF_INCOMPLETE, E5022_PROVIDER_CAPABILITY_UNAVAILABLE
+from .error_codes import E1011_HEAD_SHA_MISMATCH, E5001_INTERNAL_ERROR, E5020_FULL_DIFF_INCOMPLETE, E5022_PROVIDER_CAPABILITY_UNAVAILABLE
 from .errors import ErrorCode
 
 
@@ -170,6 +170,36 @@ class UnsupportedFormatError(ValidationError):
     """Raised when data format is not supported."""
 
     pass
+
+
+class HeadSHAMismatchError(PRDifferException):
+    """Raised when a head-bound approval targets a PR/MR whose head has moved.
+
+    ``actual_head_sha`` is set only when the provider reported the current head.
+    ``compliment_note`` is set only when a compliment note was already posted
+    and the adapter tried to remove it: ``"deleted"`` or ``"cleanup_failed"``.
+    """
+
+    def __init__(
+        self,
+        *,
+        expected_head_sha: str,
+        actual_head_sha: str | None = None,
+        compliment_note: Literal["deleted", "cleanup_failed"] | None = None,
+    ) -> None:
+        details: dict[str, Any] = {"expected_head_sha": expected_head_sha}
+        if actual_head_sha is not None:
+            details["actual_head_sha"] = actual_head_sha
+        if compliment_note is not None:
+            details["compliment_note"] = compliment_note
+        super().__init__(
+            "Pull request head no longer matches expected_head_sha; approval was not recorded",
+            error_code=E1011_HEAD_SHA_MISMATCH,
+            details=details,
+        )
+        self.expected_head_sha = expected_head_sha
+        self.actual_head_sha = actual_head_sha
+        self.compliment_note = compliment_note
 
 
 # ============================================================================

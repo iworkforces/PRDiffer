@@ -245,7 +245,7 @@ class GitHubPRDiffSession(PRDiffReadSessionInterface):
             if repo is None or pr is None:
                 raise PRDifferException("Session closed", error_code=E5009_CONFIGURATION_ERROR)
             patches = self._service._generate_diff_content(repo, pr, snapshot=self._snapshot)
-            result = self._service._build_pr_diff_strict(patches)
+            result = self._service._build_pr_diff_strict(patches, head_sha=self._snapshot.head_sha)
             # Re-fetch metadata + merge-base; fail closed on drift before use-case cache write.
             revalidate_github_snapshot(repo, self._snapshot)
             return result

@@ -292,7 +292,7 @@ async def _seed_webhook_caches(diff_cache: CacheService) -> dict[str, tuple[str,
         "other_repo": github_full_diff_v3_identity("owner", "other", 42, "base-4", "head-4"),
         "gitlab": gitlab_full_diff_v1_identity("owner", "repo", 42, 1, "base", "start", "head"),
     }
-    entries = {label: (identity.cache_key, identity.validation_token, PRDiff()) for label, identity in identities.items()}
+    entries = {label: (identity.cache_key, identity.validation_token, PRDiff(head_sha="c" * 40)) for label, identity in identities.items()}
     for key, token, value in entries.values():
         await diff_cache.set(key, token, value)
     return entries

@@ -57,6 +57,12 @@ def _content(
 
 @pytest.mark.unit
 class TestGitLabDiffAssembler:
+    def test_empty_diff_preserves_snapshot_head(self) -> None:
+        assembler = GitLabDiffAssembler(DiffGenerator(diff_utils=DiffUtils(), parallel_enabled=False))
+        result = assembler.assemble((), (), head_sha="f" * 40)
+        assert result.files == ()
+        assert result.head_sha == "f" * 40
+
     def test_mixed_status_ordered_full_context(self) -> None:
         gen = DiffGenerator(diff_utils=DiffUtils(), parallel_enabled=False)
         assembler = GitLabDiffAssembler(gen)
@@ -76,7 +82,8 @@ class TestGitLabDiffAssembler:
             _content(4, "mode.sh", EDIT_TYPE.MODIFIED, "echo\n", "echo\n", old_mode="100644", new_mode="100755"),
             _content(5, "empty.py", EDIT_TYPE.ADDED, "", ""),
         )
-        pr_diff = assembler.assemble(inv, contents)
+        pr_diff = assembler.assemble(inv, contents, head_sha="f" * 40)
+        assert pr_diff.head_sha == "f" * 40
         assert [f.path for f in pr_diff.files] == ["a.py", "b.py", "c.py", "new.py", "mode.sh", "empty.py"]
         assert pr_diff.files[3].previous_path == "old.py"
         assert "rename from old.py" in pr_diff.files[3].diff
@@ -103,7 +110,7 @@ class TestGitLabDiffAssembler:
             ),
         )
         with pytest.raises(FullDiffIncompleteError) as exc:
-            assembler.assemble(inv, contents)
+            assembler.assemble(inv, contents, head_sha="f" * 40)
         assert exc.value.reason is FullDiffIncompleteReason.DIFF_GENERATION_FAILED
         assert exc.value.details.get("path") == "a.py"
 
@@ -122,7 +129,7 @@ class TestGitLabDiffAssembler:
                 new_mode="100755",
             ),
         )
-        pr_diff = assembler.assemble(inv, contents)
+        pr_diff = assembler.assemble(inv, contents, head_sha="f" * 40)
         assert pr_diff.files[0].diff.startswith("old mode 100644\nnew mode 100755\n")
 
     @pytest.mark.parametrize("file_count,line_size", [(1, 650_000), (2, 350_000)], ids=["single", "aggregate"])
@@ -135,7 +142,7 @@ class TestGitLabDiffAssembler:
         contents = tuple(_content(i, f"large{i}.py", EDIT_TYPE.ADDED, "", text) for i in range(file_count))
 
         # When the assembler generates the response.
-        result = assembler.assemble(inv, contents)
+        result = assembler.assemble(inv, contents, head_sha="f" * 40)
 
         # Then all files retain their exact full output, even in aggregate.
         expected = ["\n@@ -0,0 +1,1 @@\n+" + "x" * line_size for _ in range(file_count)]
@@ -151,7 +158,7 @@ class TestGitLabDiffAssembler:
         inv = (_item(0, EDIT_TYPE.ADDED, "a.py", "a.py"),)
         contents = (_content(1, "a.py", EDIT_TYPE.ADDED, "", "x\n"),)
         with pytest.raises(FullDiffIncompleteError) as exc:
-            assembler.assemble(inv, contents)
+            assembler.assemble(inv, contents, head_sha="f" * 40)
         assert exc.value.reason is FullDiffIncompleteReason.DIFF_GENERATION_FAILED
 
 

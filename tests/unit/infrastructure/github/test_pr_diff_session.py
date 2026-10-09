@@ -242,7 +242,7 @@ async def test_session_build_passes_snapshot_and_revalidates() -> None:
     limiter = anyio.CapacityLimiter(1)
     service = MagicMock()
     service._generate_diff_content.return_value = []
-    service._build_pr_diff_strict.return_value = PRDiff(files=())
+    service._build_pr_diff_strict.return_value = PRDiff(files=(), head_sha=HEAD)
 
     repo = MagicMock()
     pr = MagicMock()
@@ -266,7 +266,8 @@ async def test_session_build_passes_snapshot_and_revalidates() -> None:
         deadline_monotonic=time.monotonic() + 30,
     )
     result = await session.build_pr_diff()
-    assert result == PRDiff(files=())
+    assert result == PRDiff(files=(), head_sha=HEAD)
+    service._build_pr_diff_strict.assert_called_once_with([], head_sha=HEAD)
     service._generate_diff_content.assert_called_once()
     kwargs = service._generate_diff_content.call_args.kwargs
     assert kwargs["snapshot"].merge_base_sha == MERGE_BASE
@@ -281,7 +282,7 @@ async def test_session_build_rejects_late_worker_after_deadline() -> None:
     limiter = anyio.CapacityLimiter(1)
     service = MagicMock()
     service._generate_diff_content.return_value = []
-    service._build_pr_diff_strict.return_value = PRDiff(files=())
+    service._build_pr_diff_strict.return_value = PRDiff(files=(), head_sha=HEAD)
 
     repo = MagicMock()
     pr = MagicMock()
@@ -319,7 +320,7 @@ async def test_session_build_rejects_when_capacity_wait_exhausts_budget(monkeypa
     limiter = anyio.CapacityLimiter(1)
     service = MagicMock()
     service._generate_diff_content.return_value = []
-    service._build_pr_diff_strict.return_value = PRDiff(files=())
+    service._build_pr_diff_strict.return_value = PRDiff(files=(), head_sha=HEAD)
 
     repo = MagicMock()
     pr = MagicMock()
@@ -357,7 +358,7 @@ async def test_session_build_uses_limiter_capacity_one() -> None:
     limiter = anyio.CapacityLimiter(1)
     service = MagicMock()
     service._generate_diff_content.return_value = []
-    service._build_pr_diff_strict.return_value = PRDiff(files=())
+    service._build_pr_diff_strict.return_value = PRDiff(files=(), head_sha=HEAD)
 
     in_flight = 0
     max_in_flight = 0

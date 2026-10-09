@@ -68,7 +68,7 @@ class ErrorScenarioPRDiffSession(PRDiffReadSessionInterface):
 
 class ErrorScenarioPRDiffReader:
     def __init__(self, pr_diff: PRDiff | None = None) -> None:
-        self.build_pr_diff_return_value = pr_diff if pr_diff is not None else PRDiff(files=())
+        self.build_pr_diff_return_value = pr_diff if pr_diff is not None else PRDiff(files=(), head_sha="c" * 40)
         self.build_pr_diff_side_effect: Exception | None = None
         self.build_calls: list[tuple[str, str, int]] = []
 

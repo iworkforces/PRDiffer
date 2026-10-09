@@ -21,6 +21,7 @@ from prdiffer.domain.exceptions import (
     ProcessingError,
     ResourceError,
     SecurityError,
+    HeadSHAMismatchError,
 )
 from prdiffer.domain.error_codes import (
     E1001_INVALID_URL,
@@ -29,6 +30,7 @@ from prdiffer.domain.error_codes import (
     E1004_SUSPICIOUS_INPUT,
     E1005_INPUT_TOO_LONG,
     E1006_INVALID_PATTERN,
+    E1011_HEAD_SHA_MISMATCH,
     E2001_AUTH_REQUIRED,
     E2002_AUTH_FAILED,
     E2003_INSUFFICIENT_PERMISSIONS,
@@ -127,6 +129,22 @@ class TestValidationError:
         assert exc.error_code == E1001_INVALID_URL
         assert isinstance(exc, ValidationError)
         assert isinstance(exc, PRDifferException)
+
+
+class TestHeadSHAMismatchError:
+    """HeadSHAMismatchError carries E1011 and only the head facts that are known."""
+
+    def test_pre_check_mismatch_reports_both_heads(self):
+        exc = HeadSHAMismatchError(expected_head_sha="a" * 40, actual_head_sha="b" * 40)
+        assert exc.error_code == E1011_HEAD_SHA_MISMATCH
+        assert str(E1011_HEAD_SHA_MISMATCH) == "E1011_HEAD_SHA_MISMATCH"
+        assert exc.details == {"expected_head_sha": "a" * 40, "actual_head_sha": "b" * 40}
+        assert not isinstance(exc, ValidationError)
+
+    def test_post_note_mismatch_omits_unknown_head_and_reports_cleanup(self):
+        exc = HeadSHAMismatchError(expected_head_sha="a" * 40, compliment_note="cleanup_failed")
+        assert exc.details == {"expected_head_sha": "a" * 40, "compliment_note": "cleanup_failed"}
+        assert exc.actual_head_sha is None
 
 
 class TestAuthenticationError:
@@ -252,6 +270,8 @@ class TestErrorCodeConstants:
         assert E1004_SUSPICIOUS_INPUT.code == "E1004"
         assert E1005_INPUT_TOO_LONG.code == "E1005"
         assert E1006_INVALID_PATTERN.code == "E1006"
+        assert E1011_HEAD_SHA_MISMATCH.code == "E1011"
+        assert E1011_HEAD_SHA_MISMATCH.category.name == "INPUT_VALIDATION"
 
     def test_authentication_error_codes(self):
         """Test authentication error codes (E2xxx)."""

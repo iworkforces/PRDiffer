@@ -81,7 +81,7 @@ class TestGitLabPRDiffSession:
         content = MagicMock()
         content.fetch_all = AsyncMock(return_value=())
         assembler = MagicMock()
-        assembler.assemble.return_value = PRDiff(files=())
+        assembler.assemble.return_value = PRDiff(files=(), head_sha=snap.head_sha)
         session = GitLabPRDiffSession(
             snapshot=snap,
             operations=MagicMock(),
@@ -92,7 +92,9 @@ class TestGitLabPRDiffSession:
             deadline_monotonic=1e18,
             base_url="https://gitlab.example.com",
         )
-        await session.build_pr_diff()
+        result = await session.build_pr_diff()
+        assert result.head_sha == snap.head_sha
+        assembler.assemble.assert_called_once_with((), (), head_sha=snap.head_sha)
         content.fetch_all.assert_awaited_once()
         kwargs = content.fetch_all.await_args.kwargs
         assert kwargs["base_url"] == "https://gitlab.example.com"
@@ -104,7 +106,7 @@ class TestGitLabPRDiffSession:
         content = MagicMock()
         content.fetch_all = AsyncMock(return_value=())
         assembler = MagicMock()
-        assembler.assemble.return_value = PRDiff(files=())
+        assembler.assemble.return_value = PRDiff(files=(), head_sha=snap.head_sha)
         session = GitLabPRDiffSession(
             snapshot=snap,
             operations=MagicMock(),
@@ -160,6 +162,7 @@ class TestGitLabSessionReader:
         content.fetch_all = AsyncMock(return_value=())
         assembler = MagicMock()
         assembler.assemble.return_value = PRDiff(
+            head_sha="same",
             files=(
                 FileDiffResponse(
                     path="x.py",
@@ -167,7 +170,7 @@ class TestGitLabSessionReader:
                     stats=FileStats(additions=0, deletions=0),
                     diff="",
                 ),
-            )
+            ),
         )
 
         async def run_blocking(callback, **kwargs):  # type: ignore[no-untyped-def]

@@ -50,7 +50,7 @@ class SecurityFakeSession(PRDiffReadSessionInterface):
         return self._cache_identity
 
     async def build_pr_diff(self) -> PRDiff:
-        return PRDiff(files=())
+        return PRDiff(files=(), head_sha="c" * 40)
 
     async def aclose(self) -> None:
         return None

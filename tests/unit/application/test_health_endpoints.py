@@ -27,14 +27,14 @@ async def test_public_health_real_components_redact_identifiers(monkeypatch, fai
     monitor = HealthMonitor(tracker, limiter)
     cache = CacheService()
     key = "github-full-diff-v3:privacy-owner:privacy-repository:987654321:privacy-base-sha:privacy-head-sha"
-    await cache.set(key, "privacy-head-sha", PRDiff(files=()))
+    await cache.set(key, "privacy-head-sha", PRDiff(files=(), head_sha="c" * 40))
     coalescer = RequestCoalescingService(logger=Mock())
     entered, release = anyio.Event(), anyio.Event()
 
     async def pending():
         entered.set()
         await release.wait()
-        return PRDiff(files=())
+        return PRDiff(files=(), head_sha="c" * 40)
 
     async def run_pending():
         await coalescer.coalesce(key, pending)
@@ -49,14 +49,31 @@ async def test_public_health_real_components_redact_identifiers(monkeypatch, fai
         result = await endpoints.get_health_handler()()
         # Then: fixed aggregate keys only; internal statistics stay intact.
         assert set(result) == {
-            "status", "uptime_seconds", "uptime_human", "total_requests", "successful_requests", "failed_requests",
-            "success_rate", "current_rate", "rate_limit", "rate_limit_window", "remaining_requests",
-            "authentication", "cache", "request_coalescing",
+            "status",
+            "uptime_seconds",
+            "uptime_human",
+            "total_requests",
+            "successful_requests",
+            "failed_requests",
+            "success_rate",
+            "current_rate",
+            "rate_limit",
+            "rate_limit_window",
+            "remaining_requests",
+            "authentication",
+            "cache",
+            "request_coalescing",
         }
         assert set(result["authentication"]) == {"authentication_enabled", "api_keys_configured", "admin_api_key_configured"}
         assert set(result["cache"]) == {
-            "cache_size", "cache_bytes", "cache_max_bytes", "cache_hits", "cache_misses", "cache_expirations",
-            "cache_evictions_ttl", "cache_evictions_size",
+            "cache_size",
+            "cache_bytes",
+            "cache_max_bytes",
+            "cache_hits",
+            "cache_misses",
+            "cache_expirations",
+            "cache_evictions_ttl",
+            "cache_evictions_size",
         }
         assert result["request_coalescing"] == {"pending_count": 1, "total_waiters": 1}
         assert "privacy-" not in json.dumps(result)

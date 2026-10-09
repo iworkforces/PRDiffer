@@ -58,8 +58,14 @@ async def test_real_reader_large_full_output_through_mcp(provider: ProviderName,
             url = "https://github.com/acme/demo/pull/1"
         case "gitlab":
             snapshot = GitLabDiffSnapshot(
-                project_path="group/sub/project", iid=42, version_id=9, base_sha="base", start_sha="start", head_sha="head",
-                state="collected", real_size=file_count,
+                project_path="group/sub/project",
+                iid=42,
+                version_id=9,
+                base_sha="base",
+                start_sha="start",
+                head_sha="head",
+                state="collected",
+                real_size=file_count,
                 records=tuple(_record(path, path, new_file=True) for path in paths),
             )
             gitlab_reader, _, _, _ = _build_reader(snapshot, {(path, "head"): text.encode() for path in paths})
@@ -84,8 +90,9 @@ async def test_real_reader_large_full_output_through_mcp(provider: ProviderName,
         assert len(expected) < 600_000
 
 
-def _mixed_pr_diff() -> PRDiff:
+def _mixed_pr_diff(head_sha: str = "c" * 40) -> PRDiff:
     return PRDiff(
+        head_sha=head_sha,
         files=(
             FileDiffResponse(
                 path="mod.py",
@@ -106,7 +113,7 @@ def _mixed_pr_diff() -> PRDiff:
                 diff="rename from old_name.py\nrename to new_name.py\n",
                 previous_path="old_name.py",
             ),
-        )
+        ),
     )
 
 
@@ -196,7 +203,7 @@ class FakeSession(PRDiffReadSessionInterface):
 
 class FakeReader:
     def __init__(self, pr_diff: PRDiff | None = None, *, provider: ProviderName = "github") -> None:
-        self._pr_diff = pr_diff or PRDiff(files=())
+        self._pr_diff = pr_diff or PRDiff(files=(), head_sha=("c" if provider == "github" else "f") * 40)
         self._provider: ProviderName = provider
 
     async def open_pr_diff_session(
@@ -345,6 +352,7 @@ async def test_gitlab_nested_success_and_e5020_surface() -> None:
 
     mcp = FastMCP("test-gitlab-mcp")
     success = PRDiff(
+        head_sha="c" * 40,
         files=(
             FileDiffResponse(
                 path="new.py",
@@ -353,7 +361,7 @@ async def test_gitlab_nested_success_and_e5020_surface() -> None:
                 diff="old mode 100644\nnew mode 100755\nrename from old.py\nrename to new.py\n",
                 previous_path="old.py",
             ),
-        )
+        ),
     )
     registry = _registry(success)
     gitlab_reader = FakeReader(success, provider="gitlab")
@@ -386,9 +394,7 @@ async def test_gitlab_nested_success_and_e5020_surface() -> None:
             "ffffffffffffffffffffffffffffffffffffffff"
         )
         assert gitlab_identity.validation_token == (
-            "7:dddddddddddddddddddddddddddddddddddddddd:"
-            "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee:"
-            "ffffffffffffffffffffffffffffffffffffffff"
+            "7:dddddddddddddddddddddddddddddddddddddddd:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee:ffffffffffffffffffffffffffffffffffffffff"
         )
         assert gitlab_identity.schema_version == 1
     finally:
@@ -446,7 +452,7 @@ async def test_real_use_case_empty_success_writes_cache_once_via_coalescer() -> 
     """Real GetPRDiffUseCase + RequestCoalescingService: empty PRDiff caches once."""
     from prdiffer.infrastructure.utils.coalescing_service import RequestCoalescingService
 
-    empty = PRDiff(files=())
+    empty = PRDiff(files=(), head_sha="c" * 40)
     cache = RecordingCache()
 
     logger = MagicMock()
@@ -506,7 +512,7 @@ async def test_authoritative_empty_success_writes_cache_once() -> None:
     exercised here — assert success payload has empty files and zero error.
     """
     mcp = FastMCP("empty-ok")
-    empty = PRDiff(files=())
+    empty = PRDiff(files=(), head_sha="f" * 40)
     registry = _registry(empty)
     registry.register_tools(mcp)
     result = await mcp.call_tool("get_pr_diff", {"pr_url": "https://github.com/owner/repo/pull/1"})

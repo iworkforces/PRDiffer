@@ -51,7 +51,7 @@ def mock_settings_no_mapping():
 @pytest.fixture
 def sample_pr_diff():
     """Sample PRDiff object for testing."""
-    return PRDiff(files=())
+    return PRDiff(files=(), head_sha="c" * 40)
 
 
 class TestCacheKeyHashing:

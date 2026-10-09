@@ -23,6 +23,7 @@ MB2 = "e" * 40
 
 def _diff() -> PRDiff:
     return PRDiff(
+        head_sha="c" * 40,
         files=(
             FileDiffResponse(
                 path="a.py",
@@ -30,7 +31,7 @@ def _diff() -> PRDiff:
                 stats=FileStats(additions=1, deletions=0),
                 diff="+x",
             ),
-        )
+        ),
     )
 
 

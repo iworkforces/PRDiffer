@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
-from typing import Any, TypeGuard
+import logging
+import re
+from typing import Any, Literal, TypeGuard
 
 import gitlab
 
-from prdiffer.domain.error_codes import E1001_INVALID_URL
+from prdiffer.domain.error_codes import E1001_INVALID_URL, E5021_GITLAB_API_ERROR
 from prdiffer.domain.exceptions import (
     FullDiffIncompleteError,
     FullDiffIncompleteReason,
+    GitLabAPIError,
+    HeadSHAMismatchError,
     ValidationError,
 )
 from prdiffer.infrastructure.vcs_providers.gitlab_models import (
@@ -23,6 +27,19 @@ from prdiffer.infrastructure.vcs_providers.gitlab_runtime import (
     GitLabNotFoundKind,
     map_gitlab_exception,
 )
+
+_LOGGER = logging.getLogger(__name__)
+
+# Per-request overrides that make one SDK call exactly one HTTP attempt. ``GitLabRuntime`` injects
+# ``max_retries``/``obey_rate_limit`` with ``setdefault`` and sets the client-wide
+# ``retry_transient_errors``; explicit per-request values win in ``Gitlab.http_request``.
+_SINGLE_ATTEMPT_KWARGS: dict[str, Any] = {
+    "retry_transient_errors": False,
+    "max_retries": 0,
+    "obey_rate_limit": False,
+}
+_HEAD_SHA_PATTERN = re.compile(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})")
+_HTTP_CONFLICT = 409
 
 
 class GitLabOperations:
@@ -178,6 +195,8 @@ class GitLabOperations:
         project_path: str,
         iid: int,
         compliment: str,
+        *,
+        expected_head_sha: str | None = None,
     ) -> str:
         """Approve an MR and post the compliment as a note (blocking SDK).
 
@@ -185,6 +204,11 @@ class GitLabOperations:
         the MR approved while the tool still returns an error (GitLab has no atomic
         approve-with-body call). If approve fails after the note lands, the note remains
         (visible feedback) and the mapped error is raised.
+
+        With ``expected_head_sha`` the approval is head-bound: the freshly fetched MR
+        ``sha`` must match before the note is created, ``approve`` receives ``sha=``, and
+        every mutation is a single HTTP attempt. A definitive approval 409 deletes only
+        the note this call created and raises :class:`HeadSHAMismatchError`.
         """
         if not isinstance(compliment, str) or not compliment.strip():
             raise ValidationError(
@@ -193,6 +217,10 @@ class GitLabOperations:
             )
 
         merge_request = self._get_merge_request(client, project_path, iid)
+        if expected_head_sha is not None:
+            self._approve_head_bound(merge_request, compliment, expected_head_sha)
+            return f"Successfully approved MR !{iid} in {project_path}"
+
         try:
             # Note first: better partial state than "approved without compliment".
             merge_request.notes.create({"body": compliment})
@@ -207,6 +235,41 @@ class GitLabOperations:
             raise
 
         return f"Successfully approved MR !{iid} in {project_path}"
+
+    def _approve_head_bound(self, merge_request: Any, compliment: str, expected_head_sha: str) -> None:
+        """Head-bound approve: compare ``sha`` pre-note, then note + ``approve(sha=)`` single-attempt."""
+        current_head = _current_head_sha(merge_request)
+        if current_head != expected_head_sha.casefold():
+            raise HeadSHAMismatchError(expected_head_sha=expected_head_sha, actual_head_sha=current_head)
+
+        try:
+            note = merge_request.notes.create({"body": compliment}, **_SINGLE_ATTEMPT_KWARGS)
+        except Exception as exc:
+            mapped = map_gitlab_exception(
+                exc,
+                not_found=GitLabNotFoundContext(GitLabNotFoundKind.MERGE_REQUEST),
+            )
+            if mapped is not exc:
+                raise mapped from None
+            raise
+
+        try:
+            merge_request.approve(sha=expected_head_sha, **_SINGLE_ATTEMPT_KWARGS)
+        except Exception as exc:
+            if getattr(exc, "response_code", None) == _HTTP_CONFLICT:
+                # Definitive "head moved": the approval was not recorded, so the note is orphaned.
+                # Must run before map_gitlab_exception, which maps a bare 409 to E5021.
+                raise HeadSHAMismatchError(
+                    expected_head_sha=expected_head_sha,
+                    compliment_note=_delete_compliment_note(note),
+                ) from exc
+            mapped = map_gitlab_exception(
+                exc,
+                not_found=GitLabNotFoundContext(GitLabNotFoundKind.MERGE_REQUEST),
+            )
+            if mapped is not exc:
+                raise mapped from None
+            raise
 
     def update_description_with_client(
         self,
@@ -260,6 +323,44 @@ class GitLabOperations:
             if mapped is not exc:
                 raise mapped from None
             raise
+
+
+def _current_head_sha(merge_request: object) -> str:
+    """Return the MR head commit (``sha``, casefolded); fail closed when absent or malformed.
+
+    ``diff_refs`` is diff-version metadata and may lag the source branch head, so it is not used.
+    """
+    head = getattr(merge_request, "sha", None)
+    if not isinstance(head, str) or _HEAD_SHA_PATTERN.fullmatch(head) is None:
+        raise GitLabAPIError(
+            "GitLab merge request head SHA is missing or malformed",
+            error_code=E5021_GITLAB_API_ERROR,
+            details={"reason": "head_sha_unavailable"},
+        )
+    return head.casefold()
+
+
+def _delete_compliment_note(note: Any) -> Literal["deleted", "cleanup_failed"]:
+    """Delete exactly the note this call created (single attempt); never raises.
+
+    A note without an id is not deleted: python-gitlab would address the notes collection.
+    """
+    note_id = getattr(note, "id", None)
+    if note_id is None:
+        _LOGGER.warning("Could not delete compliment note after approval head conflict: created note has no id")
+        return "cleanup_failed"
+    try:
+        note.delete(**_SINGLE_ATTEMPT_KWARGS)
+    except Exception as exc:
+        status = getattr(exc, "response_code", None)
+        _LOGGER.warning(
+            "Could not delete compliment note %s after approval head conflict (%s, status=%s)",
+            note_id,
+            type(exc).__name__,
+            status if isinstance(status, int) else None,
+        )
+        return "cleanup_failed"
+    return "deleted"
 
 
 def parse_gitlab_real_size(raw: object) -> int | None:

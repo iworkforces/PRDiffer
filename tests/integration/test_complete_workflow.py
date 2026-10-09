@@ -44,7 +44,7 @@ class WorkflowPRDiffSession(PRDiffReadSessionInterface):
 
 class WorkflowPRDiffService:
     def __init__(self) -> None:
-        self.build_pr_diff_mock = AsyncMock(return_value=PRDiff(files=()))
+        self.build_pr_diff_mock = AsyncMock(return_value=PRDiff(files=(), head_sha="c" * 40))
 
     async def open_pr_diff_session(
         self,
@@ -119,7 +119,7 @@ class TestCompleteWorkflow:
     @pytest.fixture
     def sample_pr_diff(self):
         """Create sample PRDiff for testing."""
-        return PRDiff(files=())
+        return PRDiff(files=(), head_sha="c" * 40)
 
     def test_complete_workflow_success(
         self,
@@ -393,6 +393,7 @@ class TestWorkflowWithRealServices:
         from prdiffer.domain.entities.file_patch import EDIT_TYPE
 
         pr_diff = PRDiff(
+            head_sha="c" * 40,
             files=(
                 FileDiffResponse(
                     path="test.py",
@@ -400,7 +401,7 @@ class TestWorkflowWithRealServices:
                     stats=FileStats(additions=5, deletions=2),
                     diff="test diff content",
                 ),
-            )
+            ),
         )
 
         # Test cache set and get

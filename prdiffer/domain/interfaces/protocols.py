@@ -83,8 +83,13 @@ class GitLabPROperationsProtocol(Protocol):
         /,
         *,
         base_url: str | None = None,
+        expected_head_sha: str | None = None,
     ) -> str:
-        """Approve an MR and attach a non-empty compliment note."""
+        """Approve an MR and attach a non-empty compliment note.
+
+        With ``expected_head_sha`` the approval is bound to that commit and a
+        moved head raises ``HeadSHAMismatchError``; without it behavior is unchanged.
+        """
         ...
 
     async def update_pr_description(

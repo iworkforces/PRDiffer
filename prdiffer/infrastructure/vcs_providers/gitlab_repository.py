@@ -61,11 +61,15 @@ class GitLabVCSRepository:
         /,
         *,
         base_url: str | None = None,
+        expected_head_sha: str | None = None,
     ) -> str:
-        """Approve a GitLab MR and post the compliment as a note (off event loop)."""
+        """Approve a GitLab MR and post the compliment as a note (off event loop).
+
+        ``expected_head_sha`` binds the approval to that MR head (see ``GitLabOperations``).
+        """
         project_path = f"{owner}/{repo}"
         return await self._runtime.run_blocking(
-            lambda client: self._operations.approve_with_client(client, project_path, pr, compliment),
+            lambda client: self._operations.approve_with_client(client, project_path, pr, compliment, expected_head_sha=expected_head_sha),
             not_found=None,
             base_url=base_url,
         )

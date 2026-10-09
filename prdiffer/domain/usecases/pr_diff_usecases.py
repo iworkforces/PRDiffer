@@ -41,7 +41,7 @@ class GetPRDiffUseCase:
 
             cached_result = await self._cache_service.get(cache_key, validation_token)
             unwrapped = unwrap_pr_diff_cache_value(cached_result, key=cache_key, identity=identity) if cached_result is not None else None
-            if unwrapped is not None:
+            if unwrapped is not None and unwrapped.head_sha == session.snapshot.head_sha:
                 return unwrapped
 
             result = await session.build_pr_diff()

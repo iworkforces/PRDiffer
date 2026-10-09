@@ -123,7 +123,7 @@ class GitLabPRDiffSession(PRDiffReadSessionInterface):
             base_url=self._base_url,
             deadline_monotonic=self._deadline_monotonic,
         )
-        return self._assembler.assemble(inventory, contents)
+        return self._assembler.assemble(inventory, contents, head_sha=self._snapshot.head_sha)
 
     async def aclose(self) -> None:
         if self._closed:

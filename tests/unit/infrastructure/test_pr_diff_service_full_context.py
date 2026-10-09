@@ -40,7 +40,8 @@ def test_build_pr_diff_maps_generated_full_context() -> None:
             num_minus_lines=1,
         )
     ]
-    pr_diff = service._build_pr_diff_strict(patches)
+    pr_diff = service._build_pr_diff_strict(patches, head_sha="c" * 40)
+    assert pr_diff.head_sha == "c" * 40
     assert len(pr_diff.files) == 1
     assert "alpha" in pr_diff.files[0].diff
     assert "gamma" in pr_diff.files[0].diff
@@ -61,5 +62,12 @@ def test_build_pr_diff_identity_mismatch_is_e5020() -> None:
         FilePatchInfo(filename="a.py", edit_type=EDIT_TYPE.MODIFIED, patch="+x", num_plus_lines=1),
     ]
     with pytest.raises(FullDiffIncompleteError) as exc:
-        service._build_pr_diff_strict(patches)
+        service._build_pr_diff_strict(patches, head_sha="c" * 40)
     assert exc.value.reason is FullDiffIncompleteReason.DIFF_GENERATION_FAILED
+
+
+def test_empty_diff_preserves_snapshot_head() -> None:
+    service = GitHubPRDiffService(github_api_client=MagicMock(), diff_generator=MagicMock(), file_processor=MagicMock(), logger=MagicMock())
+    result = service._build_pr_diff_strict([], head_sha="c" * 40)
+    assert result.files == ()
+    assert result.head_sha == "c" * 40

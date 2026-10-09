@@ -12,7 +12,10 @@ from typing import Any
 import asyncer
 from github.GithubException import GithubException
 from github.PullRequest import PullRequest
+from github.PullRequestReview import PullRequestReview
+from github.Repository import Repository
 
+from prdiffer.domain.exceptions import HeadSHAMismatchError
 from prdiffer.infrastructure.security.input_validator import InputValidator
 from prdiffer.domain.services.logger import LoggerServiceInterface
 from prdiffer.infrastructure.github_repository_utils import handle_github_exception
@@ -28,6 +31,7 @@ class GitHubPROperationsMixin:
         - self._pr_number: int
         - self._logger: LoggerServiceInterface
         - self._pull_request: PullRequest | None
+        - self._repository: Repository | None
         - self._initialize_github_objects(): async method
     """
 
@@ -39,8 +43,9 @@ class GitHubPROperationsMixin:
     _pr_number: int
     _initialize_github_objects: Callable[[], Coroutine[Any, Any, None]]
     _pull_request: PullRequest | None
+    _repository: Repository | None
 
-    async def approve_pr_with_comment(self, pr_url: str, compliment: object) -> str:
+    async def approve_pr_with_comment(self, pr_url: str, compliment: object, *, expected_head_sha: str | None = None) -> str:
         """Approve a GitHub PR with a compliment comment.
 
         This method:
@@ -49,9 +54,13 @@ class GitHubPROperationsMixin:
         3. Calls pr.create_review() with event="APPROVE" and the compliment as body
         4. Returns success message or raises exceptions loudly on failures
 
+        GitHub offers no atomic compare-and-approve: a fresh head pre-check narrows
+        the race, and the review is bound to the expected commit via ``commit``.
+
         Args:
             pr_url: The full GitHub PR URL (e.g., https://github.com/owner/repo/pull/123)
             compliment: The compliment text to include in the approval review
+            expected_head_sha: If supplied, require this head and review its exact commit
 
         Returns:
             str: Success message indicating PR was approved
@@ -60,6 +69,7 @@ class GitHubPROperationsMixin:
             InvalidURLError: If PR URL format is invalid
             RuntimeError: If GitHub objects failed to initialize
             GithubException: If PR approval fails (404, 403, rate limit, etc.)
+            HeadSHAMismatchError: If the fresh PR head differs from the expected SHA
         """
 
         if not isinstance(compliment, str):
@@ -100,11 +110,28 @@ class GitHubPROperationsMixin:
             )
 
         try:
-            pull_request = self._pull_request
-            review = await asyncer.asyncify(pull_request.create_review)(
-                event="APPROVE",
-                body=compliment,
-            )
+            if expected_head_sha is None:
+                pull_request = self._pull_request
+                review = await asyncer.asyncify(pull_request.create_review)(
+                    event="APPROVE",
+                    body=compliment,
+                )
+            else:
+                repository = self._repository
+                if repository is None:
+                    raise RuntimeError(f"Failed to access repository {repo_owner}/{repo_name}")
+                expected = expected_head_sha
+                review_body = compliment
+
+                def approve_expected_head() -> PullRequestReview:
+                    fresh_pull_request = repository.get_pull(pr_number)
+                    actual_head_sha = fresh_pull_request.head.sha.casefold()
+                    if actual_head_sha != expected.casefold():
+                        raise HeadSHAMismatchError(expected_head_sha=expected, actual_head_sha=actual_head_sha)
+                    commit = repository.get_commit(expected)
+                    return fresh_pull_request.create_review(commit=commit, event="APPROVE", body=review_body)
+
+                review = await asyncer.asyncify(approve_expected_head)()
 
             self._logger.info(
                 f"Successfully approved PR #{pr_number}",

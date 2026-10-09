@@ -12,8 +12,7 @@ from prdiffer.infrastructure.utils.diff_utils import DiffUtils
 def test_build_pr_diff_strict_preserves_large_full_output(file_count: int, line_size: int) -> None:
     # Given real content and the production full-context generator.
     content = "x" * line_size + "\n"
-    patches = [FilePatchInfo(filename=f"large{i}.py", base_file="", head_file=content, patch="", edit_type=EDIT_TYPE.ADDED)
-               for i in range(file_count)]
+    patches = [FilePatchInfo(filename=f"large{i}.py", base_file="", head_file=content, patch="", edit_type=EDIT_TYPE.ADDED) for i in range(file_count)]
     service = GitHubPRDiffService(
         github_api_client=MagicMock(),
         diff_generator=DiffGenerator(diff_utils=DiffUtils(), parallel_enabled=False),
@@ -21,7 +20,7 @@ def test_build_pr_diff_strict_preserves_large_full_output(file_count: int, line_
     )
 
     # When the service assembles the generated files.
-    result = service._build_pr_diff_strict(patches)
+    result = service._build_pr_diff_strict(patches, head_sha="c" * 40)
 
     # Then every generated character and ordered file survives unchanged.
     expected = ["\n@@ -0,0 +1,1 @@\n+" + "x" * line_size for _ in range(file_count)]

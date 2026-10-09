@@ -97,6 +97,14 @@ E1010_INVALID_CONFIGURATION = ErrorCode(
     category=ErrorCategory.INPUT_VALIDATION,
 )
 
+E1011_HEAD_SHA_MISMATCH = ErrorCode(
+    code="E1011",
+    name="HEAD_SHA_MISMATCH",
+    message="Pull request head no longer matches the reviewed commit",
+    remediation="Call get_pr_diff again, review the new head, and approve with its head_sha",
+    category=ErrorCategory.INPUT_VALIDATION,
+)
+
 # =============================================================================
 # Authentication/Authorization Errors (E2xxx)
 # =============================================================================

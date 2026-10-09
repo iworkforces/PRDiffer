@@ -33,6 +33,7 @@ def reset_cache_service():
 def sample_pr_diff():
     """Create a sample PRDiff for testing."""
     return PRDiff(
+        head_sha="c" * 40,
         files=(
             FileDiffResponse(
                 path="test.py",
@@ -40,7 +41,7 @@ def sample_pr_diff():
                 stats=FileStats(additions=10, deletions=5),
                 diff="sample patch content",
             ),
-        )
+        ),
     )
 
 
@@ -179,6 +180,7 @@ class TestCacheServiceGetSet:
         cache_key = CACHE_KEY
 
         new_diff = PRDiff(
+            head_sha="c" * 40,
             files=(
                 FileDiffResponse(
                     path="new_file.py",
@@ -186,7 +188,7 @@ class TestCacheServiceGetSet:
                     stats=FileStats(additions=20, deletions=0),
                     diff="new content patch",
                 ),
-            )
+            ),
         )
         await service.set(cache_key, "abc123", sample_pr_diff)
         await service.set(cache_key, "def456", new_diff)

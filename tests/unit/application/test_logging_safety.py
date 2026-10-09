@@ -19,6 +19,7 @@ from prdiffer.infrastructure.utils.coalescing_service import RequestCoalescingSe
 def _create_pr_diff_with_content(diff_content: str) -> PRDiff:
     """Helper to create PRDiff with the new files structure."""
     return PRDiff(
+        head_sha="c" * 40,
         files=(
             FileDiffResponse(
                 path="file.py",
@@ -26,7 +27,7 @@ def _create_pr_diff_with_content(diff_content: str) -> PRDiff:
                 stats=FileStats(additions=5, deletions=2),
                 diff=diff_content,
             ),
-        )
+        ),
     )
 
 
