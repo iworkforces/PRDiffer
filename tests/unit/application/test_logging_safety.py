@@ -9,6 +9,7 @@ from unittest.mock import Mock
 import pytest
 
 from prdiffer.application.mcp_server import FastMCPServer
+from prdiffer.domain.config.mcp_server_config import MCPServerConfig
 from prdiffer.application.provider_resolver import ProviderCapabilityResolver
 from prdiffer.domain.entities.pr_diff import PRDiff
 from prdiffer.domain.entities.file_diff_response import FileDiffResponse, FileStats
@@ -46,6 +47,7 @@ def server_with_mock_logger(mock_logger: Mock) -> FastMCPServer:
     input_validator = Mock()
 
     return FastMCPServer(
+        mcp_config=MCPServerConfig(transport="http", host="127.0.0.1", port=9102, path="/mcp"),
         settings_service=settings_service,
         cache_service=cache_service,
         logger=mock_logger,

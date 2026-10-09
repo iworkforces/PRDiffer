@@ -104,6 +104,7 @@ class TestCreateMcpServerGitLabOpsWiring:
         """Patch infrastructure/application factories used by create_mcp_server."""
         infra = MagicMock()
         infra.create_settings_service.return_value = MagicMock()
+        infra.create_settings_service.return_value.get.return_value = None
         infra.create_logger_service.return_value = MagicMock()
         infra.create_cache_service.return_value = MagicMock()
         infra.create_pr_diff_service.return_value = ReaderOnly()

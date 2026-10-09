@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch, AsyncMock
 from starlette.requests import Request
 
 from prdiffer.application.mcp_server import FastMCPServer
+from prdiffer.domain.config.mcp_server_config import MCPServerConfig
 from prdiffer.application.provider_resolver import ProviderCapabilityResolver
 from prdiffer.application.webhook_handler import WebhookHandler
 from prdiffer.domain.entities.pr_diff import PRDiff
@@ -48,6 +49,7 @@ def mcp_server(mock_cache_service, mock_settings):
     mock_server_configuration.get_mcp_instructions = Mock(return_value="Test instructions")
 
     server = FastMCPServer(
+        mcp_config=MCPServerConfig(transport="http", host="127.0.0.1", port=9102, path="/mcp"),
         settings_service=mock_settings,
         cache_service=mock_cache_service,
         logger=mock_logger,

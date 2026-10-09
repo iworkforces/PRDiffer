@@ -15,6 +15,12 @@ from prdiffer.application.components.server_configuration import (
 )
 from prdiffer.domain.services.logger import LoggerServiceInterface
 from prdiffer.domain.services.settings import SettingsServiceInterface
+from prdiffer.domain.config.mcp_server_config import MCPServerConfig
+from prdiffer.domain.exceptions import ConfigurationError
+from prdiffer.domain.error_codes import E5009_CONFIGURATION_ERROR
+
+
+HTTP_CONFIG = MCPServerConfig(transport="http", host="127.0.0.1", port=9102, path="/mcp")
 
 
 class MockLogger(LoggerServiceInterface):
@@ -46,7 +52,7 @@ class TestServerConfigurationInitialization:
         """Test that ServerConfiguration can be initialized."""
         logger = MockLogger()
 
-        config = ServerConfiguration(None, logger)
+        config = ServerConfiguration(None, logger, mcp_config=HTTP_CONFIG)
 
         assert config is not None
         assert hasattr(config, "_settings_service")
@@ -59,7 +65,7 @@ class TestServerConfigurationGetMcpInstructions:
         """Test that get_mcp_instructions returns a string."""
         logger = MockLogger()
 
-        config = ServerConfiguration(None, logger)
+        config = ServerConfiguration(None, logger, mcp_config=HTTP_CONFIG)
         instructions = config.get_mcp_instructions()
 
         assert isinstance(instructions, str)
@@ -69,7 +75,7 @@ class TestServerConfigurationGetMcpInstructions:
         """Test that instructions contain tool information."""
         logger = MockLogger()
 
-        config = ServerConfiguration(None, logger)
+        config = ServerConfiguration(None, logger, mcp_config=HTTP_CONFIG)
         instructions = config.get_mcp_instructions()
 
         assert "get_pr_diff" in instructions or "pr_diff" in instructions
@@ -130,7 +136,7 @@ class TestSetupLogging:
         """Test setup_logging with DEBUG log level."""
         settings = MockSettingsService({"app": {"log_level": "debug"}})
         logger = Mock(spec=LoggerServiceInterface)
-        config = ServerConfiguration(settings, logger)
+        config = ServerConfiguration(settings, logger, mcp_config=HTTP_CONFIG)
 
         config.setup_logging()
 
@@ -142,7 +148,7 @@ class TestSetupLogging:
         """Test setup_logging with INFO log level."""
         settings = MockSettingsService({"app": {"log_level": "INFO"}})
         logger = MockLogger()
-        config = ServerConfiguration(settings, logger)
+        config = ServerConfiguration(settings, logger, mcp_config=HTTP_CONFIG)
 
         config.setup_logging()
 
@@ -153,7 +159,7 @@ class TestSetupLogging:
         """Test setup_logging with WARNING log level."""
         settings = MockSettingsService({"app": {"log_level": "warning"}})
         logger = MockLogger()
-        config = ServerConfiguration(settings, logger)
+        config = ServerConfiguration(settings, logger, mcp_config=HTTP_CONFIG)
 
         config.setup_logging()
 
@@ -164,7 +170,7 @@ class TestSetupLogging:
         """Test setup_logging with ERROR log level."""
         settings = MockSettingsService({"app": {"log_level": "ERROR"}})
         logger = MockLogger()
-        config = ServerConfiguration(settings, logger)
+        config = ServerConfiguration(settings, logger, mcp_config=HTTP_CONFIG)
 
         config.setup_logging()
 
@@ -175,7 +181,7 @@ class TestSetupLogging:
         """Test setup_logging with CRITICAL log level."""
         settings = MockSettingsService({"app": {"log_level": "critical"}})
         logger = MockLogger()
-        config = ServerConfiguration(settings, logger)
+        config = ServerConfiguration(settings, logger, mcp_config=HTTP_CONFIG)
 
         config.setup_logging()
 
@@ -186,7 +192,7 @@ class TestSetupLogging:
         """Test setup_logging with default (INFO) log level."""
         settings = MockSettingsService({})  # No log_level configured
         logger = MockLogger()
-        config = ServerConfiguration(settings, logger)
+        config = ServerConfiguration(settings, logger, mcp_config=HTTP_CONFIG)
 
         config.setup_logging()
 
@@ -197,7 +203,7 @@ class TestSetupLogging:
         """Test setup_logging with invalid log level (should not crash)."""
         settings = MockSettingsService({"app": {"log_level": "INVALID"}})
         logger = Mock(spec=LoggerServiceInterface)
-        config = ServerConfiguration(settings, logger)
+        config = ServerConfiguration(settings, logger, mcp_config=HTTP_CONFIG)
 
         config.setup_logging()
 
@@ -209,7 +215,7 @@ class TestSetupLogging:
         settings = Mock(spec=SettingsServiceInterface)
         settings.get.side_effect = Exception("Settings service error")
         logger = Mock(spec=LoggerServiceInterface)
-        config = ServerConfiguration(settings, logger)
+        config = ServerConfiguration(settings, logger, mcp_config=HTTP_CONFIG)
 
         # Should not raise exception
         config.setup_logging()
@@ -236,7 +242,7 @@ class TestGetServerInfo:
             }
         )
         logger = MockLogger()
-        config = ServerConfiguration(settings, logger)
+        config = ServerConfiguration(settings, logger, mcp_config=MCPServerConfig(transport="http", host="0.0.0.0", port=9102, path="/mcp"))
 
         info = config.get_server_info()
 
@@ -258,7 +264,7 @@ class TestGetServerInfo:
         """Test get_server_info returns default values when not configured."""
         settings = MockSettingsService({})
         logger = MockLogger()
-        config = ServerConfiguration(settings, logger)
+        config = ServerConfiguration(settings, logger, mcp_config=HTTP_CONFIG)
 
         info = config.get_server_info()
 
@@ -272,7 +278,7 @@ class TestGetServerInfo:
         settings = Mock(spec=SettingsServiceInterface)
         settings.get.side_effect = Exception("Settings service error")
         logger = Mock(spec=LoggerServiceInterface)
-        config = ServerConfiguration(settings, logger)
+        config = ServerConfiguration(settings, logger, mcp_config=HTTP_CONFIG)
 
         info = config.get_server_info()
 
@@ -291,7 +297,7 @@ class TestValidateConfiguration:
         """Test validate_configuration with valid http transport."""
         settings = MockSettingsService({"mcp": {"transport": "http", "port": 9102}})
         logger = MockLogger()
-        config = ServerConfiguration(settings, logger)
+        config = ServerConfiguration(settings, logger, mcp_config=HTTP_CONFIG)
 
         result = config.validate_configuration()
 
@@ -302,7 +308,7 @@ class TestValidateConfiguration:
         """Test validate_configuration with valid sse transport."""
         settings = MockSettingsService({"mcp": {"transport": "sse", "port": 8080}})
         logger = MockLogger()
-        config = ServerConfiguration(settings, logger)
+        config = ServerConfiguration(settings, logger, mcp_config=MCPServerConfig(transport="sse", host="127.0.0.1", port=8080, path="/mcp"))
 
         result = config.validate_configuration()
 
@@ -313,7 +319,7 @@ class TestValidateConfiguration:
         """Test validate_configuration with valid stdio transport."""
         settings = MockSettingsService({"mcp": {"transport": "stdio"}})
         logger = MockLogger()
-        config = ServerConfiguration(settings, logger)
+        config = ServerConfiguration(settings, logger, mcp_config=MCPServerConfig(transport="stdio", host="127.0.0.1", port=None, path="/mcp"))
 
         result = config.validate_configuration()
 
@@ -321,22 +327,16 @@ class TestValidateConfiguration:
         assert len(result["errors"]) == 0
 
     def test_validate_configuration_with_unknown_transport(self):
-        """Test validate_configuration with unknown transport."""
-        settings = MockSettingsService({"mcp": {"transport": "unknown"}})
-        logger = MockLogger()
-        config = ServerConfiguration(settings, logger)
-
-        result = config.validate_configuration()
-
-        assert result["valid"] is True
-        assert len(result["warnings"]) == 1
-        assert "Unknown transport 'unknown'" in result["warnings"][0]
+        """Unknown transports cannot reach the server configuration component."""
+        with pytest.raises(ConfigurationError) as raised:
+            MCPServerConfig(transport="unknown", host="127.0.0.1", port=9102, path="/mcp")
+        assert raised.value.error_code == E5009_CONFIGURATION_ERROR
 
     def test_validate_configuration_with_valid_port(self):
         """Test validate_configuration with valid port."""
         settings = MockSettingsService({"mcp": {"transport": "http", "port": 8080}})
         logger = MockLogger()
-        config = ServerConfiguration(settings, logger)
+        config = ServerConfiguration(settings, logger, mcp_config=MCPServerConfig(transport="http", host="127.0.0.1", port=8080, path="/mcp"))
 
         result = config.validate_configuration()
 
@@ -347,7 +347,7 @@ class TestValidateConfiguration:
         """Test validate_configuration with minimum port (1)."""
         settings = MockSettingsService({"mcp": {"transport": "http", "port": 1}})
         logger = MockLogger()
-        config = ServerConfiguration(settings, logger)
+        config = ServerConfiguration(settings, logger, mcp_config=MCPServerConfig(transport="http", host="127.0.0.1", port=1, path="/mcp"))
 
         result = config.validate_configuration()
 
@@ -358,7 +358,7 @@ class TestValidateConfiguration:
         """Test validate_configuration with maximum port (65535)."""
         settings = MockSettingsService({"mcp": {"transport": "http", "port": 65535}})
         logger = MockLogger()
-        config = ServerConfiguration(settings, logger)
+        config = ServerConfiguration(settings, logger, mcp_config=MCPServerConfig(transport="http", host="127.0.0.1", port=65535, path="/mcp"))
 
         result = config.validate_configuration()
 
@@ -366,60 +366,51 @@ class TestValidateConfiguration:
         assert len(result["errors"]) == 0
 
     def test_validate_configuration_with_zero_port(self):
-        """Test validate_configuration with port 0 (invalid)."""
-        settings = MockSettingsService({"mcp": {"transport": "http", "port": 0}})
-        logger = MockLogger()
-        config = ServerConfiguration(settings, logger)
-
-        result = config.validate_configuration()
-
-        assert result["valid"] is False
-        assert len(result["errors"]) == 1
-        assert "Invalid port '0'" in result["errors"][0]
+        with pytest.raises(ConfigurationError) as raised:
+            MCPServerConfig(transport="http", host="127.0.0.1", port=0, path="/mcp")
+        assert raised.value.error_code == E5009_CONFIGURATION_ERROR
 
     def test_validate_configuration_with_negative_port(self):
-        """Test validate_configuration with negative port (invalid)."""
-        settings = MockSettingsService({"mcp": {"transport": "http", "port": -1}})
-        logger = MockLogger()
-        config = ServerConfiguration(settings, logger)
-
-        result = config.validate_configuration()
-
-        assert result["valid"] is False
-        assert len(result["errors"]) == 1
+        with pytest.raises(ConfigurationError) as raised:
+            MCPServerConfig(transport="http", host="127.0.0.1", port=-1, path="/mcp")
+        assert raised.value.error_code == E5009_CONFIGURATION_ERROR
 
     def test_validate_configuration_with_too_large_port(self):
-        """Test validate_configuration with port > 65535 (invalid)."""
-        settings = MockSettingsService({"mcp": {"transport": "http", "port": 65536}})
-        logger = MockLogger()
-        config = ServerConfiguration(settings, logger)
-
-        result = config.validate_configuration()
-
-        assert result["valid"] is False
-        assert len(result["errors"]) == 1
+        with pytest.raises(ConfigurationError) as raised:
+            MCPServerConfig(transport="http", host="127.0.0.1", port=65536, path="/mcp")
+        assert raised.value.error_code == E5009_CONFIGURATION_ERROR
 
     def test_validate_configuration_with_string_port(self):
-        """Test validate_configuration with string port (invalid)."""
-        settings = MockSettingsService({"mcp": {"transport": "http", "port": "9102"}})
-        logger = MockLogger()
-        config = ServerConfiguration(settings, logger)
+        with pytest.raises(ConfigurationError) as raised:
+            MCPServerConfig(transport="http", host="127.0.0.1", port="9102", path="/mcp")
+        assert raised.value.error_code == E5009_CONFIGURATION_ERROR
 
+    def test_validate_configuration_with_boolean_port(self):
+        with pytest.raises(ConfigurationError) as raised:
+            MCPServerConfig(transport="http", host="127.0.0.1", port=True, path="/mcp")
+        assert raised.value.error_code == E5009_CONFIGURATION_ERROR
+
+    def test_validate_configuration_with_streamable_http(self):
+        config = ServerConfiguration(
+            MockSettingsService({"mcp": {"transport": "unknown"}}),
+            MockLogger(),
+            mcp_config=MCPServerConfig(transport="streamable-http", host="127.0.0.1", port=9102, path="/mcp"),
+        )
         result = config.validate_configuration()
-
-        assert result["valid"] is False
-        assert len(result["errors"]) == 1
+        assert result == {"valid": True, "warnings": [], "errors": []}
 
     def test_validate_configuration_stdio_ignores_port(self):
         """Test validate_configuration with stdio transport ignores port validation."""
         settings = MockSettingsService({"mcp": {"transport": "stdio", "port": 99999}})
         logger = MockLogger()
-        config = ServerConfiguration(settings, logger)
+        config = ServerConfiguration(settings, logger, mcp_config=MCPServerConfig(transport="stdio", host="127.0.0.1", port=None, path="/mcp"))
 
         result = config.validate_configuration()
 
         assert result["valid"] is True
         assert len(result["errors"]) == 0
+
+        assert config.get_server_info()["port"] is None
 
     def test_validate_configuration_no_github_token_warning(self):
         """Test validate_configuration warns when no GITHUB_TOKEN is set."""
@@ -431,7 +422,7 @@ class TestValidateConfiguration:
 
         settings = MockSettingsService({"mcp": {"transport": "http", "port": 9102}})
         logger = MockLogger()
-        config = ServerConfiguration(settings, logger)
+        config = ServerConfiguration(settings, logger, mcp_config=HTTP_CONFIG)
 
         result = config.validate_configuration()
 
@@ -440,15 +431,14 @@ class TestValidateConfiguration:
         assert "No GITHUB_TOKEN environment variable set" in result["warnings"][0]
 
     def test_validate_configuration_handles_exception(self):
-        """Test validate_configuration handles exceptions gracefully."""
+        """Validated startup configuration never re-reads transport settings."""
         settings = Mock(spec=SettingsServiceInterface)
         settings.get.side_effect = Exception("Settings service error")
         logger = Mock(spec=LoggerServiceInterface)
-        config = ServerConfiguration(settings, logger)
+        config = ServerConfiguration(settings, logger, mcp_config=HTTP_CONFIG)
 
         result = config.validate_configuration()
 
-        assert result["valid"] is False
-        assert len(result["errors"]) == 1
-        assert "Configuration validation failed" in result["errors"][0]
-        logger.error.assert_called_once()
+        assert result == {"valid": True, "warnings": [], "errors": []}
+        settings.get.assert_not_called()
+        logger.error.assert_not_called()

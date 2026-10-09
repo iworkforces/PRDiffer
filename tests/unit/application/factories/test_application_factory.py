@@ -66,11 +66,14 @@ class TestApplicationFactoryComponentCreation:
 
     def test_create_server_configuration(self):
         """Test that create_server_configuration returns ServerConfigurationProtocol instance."""
+        from prdiffer.domain.config.mcp_server_config import MCPServerConfig
+
         factory = ApplicationFactory()
         mock_logger = Mock(spec=LoggerServiceInterface)
         mock_settings = Mock(spec=SettingsServiceInterface)
 
         result = factory.create_server_configuration(
+            mcp_config=MCPServerConfig(transport="http", host="127.0.0.1", port=9102, path="/mcp"),
             settings_service=mock_settings,
             logger=mock_logger,
         )

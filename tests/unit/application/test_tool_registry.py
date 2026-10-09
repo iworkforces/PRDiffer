@@ -178,15 +178,15 @@ async def test_auth_rejection_records_one_named_failure_before_provider(
 @pytest.mark.parametrize("transport", ["http", "sse", "streamable-http", "stdio"])
 def test_server_transport_preserves_actual_peer_identity(monkeypatch, transport):
     from prdiffer.application.mcp_server import FastMCPServer
+    from prdiffer.domain.config.mcp_server_config import MCPServerConfig
 
     server = object.__new__(FastMCPServer)
     server._settings_service = MagicMock()
     server._logger = MagicMock()
     server.mcp = MagicMock()
-    monkeypatch.setenv("MCP_TRANSPORT", transport)
-    monkeypatch.setenv("MCP_PORT", "9102")
-    monkeypatch.setenv("MCP_HOST", "127.0.0.1")
-    monkeypatch.setenv("MCP_PATH", "/mcp")
+    server._mcp_config = MCPServerConfig(transport=transport, port=None if transport == "stdio" else 9102, host="127.0.0.1", path="/mcp")
+    monkeypatch.setenv("MCP_TRANSPORT", "invalid")
+    monkeypatch.setenv("MCP_PORT", "abc")
     server.run()
     if transport == "stdio":
         server.mcp.run.assert_called_once_with(transport="stdio")

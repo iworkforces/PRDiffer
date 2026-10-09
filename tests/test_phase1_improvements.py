@@ -318,7 +318,10 @@ class TestErrorMessageSanitization:
     @pytest.fixture
     def mock_dependencies(self):
         """Create mock dependencies for FastMCPServer."""
+        from prdiffer.domain.config.mcp_server_config import MCPServerConfig
+
         return {
+            "mcp_config": MCPServerConfig(transport="http", host="127.0.0.1", port=9102, path="/mcp"),
             "settings_service": Mock(),
             "cache_service": Mock(),
             "logger": Mock(),

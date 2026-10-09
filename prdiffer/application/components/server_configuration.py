@@ -1,8 +1,10 @@
 """Server configuration component."""
 
 import logging
+import os
 
 from typing import Any, TypedDict
+from prdiffer.domain.config.mcp_server_config import MCPServerConfig
 from prdiffer.domain.interfaces.protocols import ServerConfigurationProtocol
 from prdiffer.domain.services.settings import SettingsServiceInterface
 from prdiffer.version import __version__
@@ -22,8 +24,11 @@ class ServerConfiguration(ServerConfigurationProtocol):
         self,
         settings_service: SettingsServiceInterface,
         logger: logging.Logger | LoggerServiceInterface | None = None,
+        *,
+        mcp_config: MCPServerConfig,
     ):
         self._settings_service = settings_service
+        self._mcp_config = mcp_config
         self._logger = logger or logging.getLogger(__name__)
 
     def setup_logging(self) -> None:
@@ -47,10 +52,10 @@ class ServerConfiguration(ServerConfigurationProtocol):
                 "name": "prdiffer",
                 "version": __version__,
                 "description": "GitHub PR Diff Fetcher MCP Server",
-                "transport": self._settings_service.get("mcp.transport", "http"),
-                "port": self._settings_service.get("mcp.port", 9102),
-                "host": self._settings_service.get("mcp.host", "127.0.0.1"),
-                "path": self._settings_service.get("mcp.path", "/mcp"),
+                "transport": self._mcp_config.transport,
+                "port": self._mcp_config.port,
+                "host": self._mcp_config.host,
+                "path": self._mcp_config.path,
                 "environment": self._settings_service.get("env", "development"),
                 "debug_mode": self._settings_service.get("debug", False),
                 "features": {
@@ -82,37 +87,17 @@ class ServerConfiguration(ServerConfigurationProtocol):
         """
 
     def validate_configuration(self) -> ValidationResult:
-        """Validate server configuration."""
+        """Report warnings for the already validated startup configuration."""
         validation_results: ValidationResult = {
             "valid": True,
             "warnings": [],
             "errors": [],
         }
 
-        try:
-            transport = self._settings_service.get("mcp.transport", "http")
-            if transport not in ["stdio", "sse", "http"]:
-                validation_results["warnings"].append(f"Unknown transport '{transport}', defaulting to stdio")
-
-            if transport != "stdio":
-                port = self._settings_service.get("mcp.port", 9102)
-                if not isinstance(port, int) or port < 1 or port > 65535:
-                    validation_results["errors"].append(f"Invalid port '{port}', must be between 1-65535")
-                    validation_results["valid"] = False
-
-            import os
-
-            github_token = os.getenv("GITHUB_TOKEN")
-            if not github_token:
-                validation_results["warnings"].append(
-                    "No GITHUB_TOKEN environment variable set, API rate limits may apply. Set GITHUB_TOKEN=your_token or add to .env file"
-                )
-
-            self._logger.info(f"Configuration validation completed: {validation_results}")
-
-        except Exception as e:
-            validation_results["valid"] = False
-            validation_results["errors"].append(f"Configuration validation failed: {str(e)}")
-            self._logger.error(f"Configuration validation failed: {str(e)}")
+        if not os.getenv("GITHUB_TOKEN"):
+            validation_results["warnings"].append(
+                "No GITHUB_TOKEN environment variable set, API rate limits may apply. Set GITHUB_TOKEN=your_token or add to .env file"
+            )
+        self._logger.info(f"Configuration validation completed for {self._mcp_config.transport}: {validation_results}")
 
         return validation_results

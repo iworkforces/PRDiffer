@@ -1,5 +1,6 @@
 """Concrete infrastructure factory implementation."""
 
+from prdiffer.domain.config.mcp_server_config import TransportMode
 from prdiffer.domain.factories.infrastructure_factory import (
     InfrastructureFactoryInterface,
 )
@@ -34,9 +35,9 @@ class InfrastructureFactory(InfrastructureFactoryInterface):
         """Create settings service instance."""
         return get_settings_service()
 
-    def create_logger_service(self) -> LoggerServiceInterface:
+    def create_logger_service(self, transport: TransportMode | None = None) -> LoggerServiceInterface:
         """Create logger service instance."""
-        return get_logger()
+        return get_logger(transport=transport)
 
     def create_cache_service(self) -> CacheServiceInterface:
         """Create cache service instance."""

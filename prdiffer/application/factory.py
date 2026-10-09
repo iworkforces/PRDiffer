@@ -3,6 +3,8 @@
 from prdiffer.domain.interfaces.pr_diff_reader import SessionPRDiffReader
 from prdiffer.domain.interfaces.protocols import GitLabPROperationsProtocol
 from prdiffer.application.provider_resolver import create_provider_capability_resolver
+from prdiffer.application.startup_config import resolve_mcp_server_config
+from prdiffer.domain.config.mcp_server_config import MCPServerConfig
 
 from .mcp_server import FastMCPServer
 from prdiffer.domain.services.settings import SettingsServiceInterface
@@ -40,6 +42,7 @@ def create_mcp_server(
     gitlab_reader: SessionPRDiffReader | None = None,
     gitlab_pr_operations: GitLabPROperationsProtocol | None = None,
     logger: LoggerServiceInterface | None = None,
+    mcp_config: MCPServerConfig | None = None,
 ) -> FastMCPServer:
     """Create FastMCPServer with all dependencies properly injected."""
     infrastructure_factory = get_infrastructure_factory()
@@ -48,15 +51,18 @@ def create_mcp_server(
     if settings_service is None:
         settings_service = infrastructure_factory.create_settings_service()
 
+    if mcp_config is None:
+        mcp_config = resolve_mcp_server_config(settings_service)
+
     if logger is None:
-        logger = infrastructure_factory.create_logger_service()
+        logger = infrastructure_factory.create_logger_service(transport=mcp_config.transport)
 
     if cache_service is None:
         cache_service = infrastructure_factory.create_cache_service()
 
     rate_limiter = application_factory.create_rate_limiter(logger)
     metrics_tracker = application_factory.create_metrics_tracker(logger)
-    server_configuration = application_factory.create_server_configuration(settings_service, logger)
+    server_configuration = application_factory.create_server_configuration(settings_service, logger, mcp_config=mcp_config)
     authentication = application_factory.create_authentication(logger)
 
     health_monitor = application_factory.create_health_monitor(
@@ -98,4 +104,5 @@ def create_mcp_server(
         authentication=authentication,
         input_validator=input_validator_instance,
         request_coalescing_service=request_coalescing_instance,
+        mcp_config=mcp_config,
     )

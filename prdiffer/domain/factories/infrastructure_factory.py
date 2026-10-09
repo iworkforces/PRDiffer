@@ -9,6 +9,7 @@ Note: Application-layer component creation has been moved to ApplicationFactoryI
 
 from abc import ABC, abstractmethod
 
+from prdiffer.domain.config.mcp_server_config import TransportMode
 from prdiffer.domain.services.cache import CacheServiceInterface
 from prdiffer.domain.services.logger import LoggerServiceInterface
 from prdiffer.domain.services.settings import SettingsServiceInterface
@@ -27,7 +28,7 @@ class InfrastructureFactoryInterface(ABC):
         pass
 
     @abstractmethod
-    def create_logger_service(self) -> LoggerServiceInterface:
+    def create_logger_service(self, transport: TransportMode | None = None) -> LoggerServiceInterface:
         pass
 
     @abstractmethod

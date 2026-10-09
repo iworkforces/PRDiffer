@@ -4,6 +4,7 @@ import os
 import sys
 from datetime import datetime, timezone
 from typing import Any
+from prdiffer.domain.config.mcp_server_config import TransportMode
 from prdiffer.infrastructure.settings import get_settings_service
 from prdiffer.domain.services.logger import LoggerServiceInterface, LogLevel
 
@@ -23,19 +24,23 @@ class ConsoleLogger(LoggerServiceInterface):
     }
     RESET = "\033[0m"
 
-    def __init__(self):
+    def __init__(self, transport: TransportMode | None = None):
         self.settings_service = get_settings_service()
-        self._configure_logger()
+        self._configure_logger(transport)
 
-    def _configure_logger(self) -> None:
+    def use_transport(self, transport: TransportMode) -> None:
+        """Select the diagnostic stream without replacing root logging handlers."""
+        self._force_stderr = transport == "stdio"
+
+    def _configure_logger(self, transport: TransportMode | None = None) -> None:
         app_settings = self.settings_service.get_app_settings()
         self.enabled = app_settings.get("logging_enabled", True)
 
         log_level_str = app_settings.get("log_level", "INFO").upper()
         self.log_level = getattr(LogLevel, log_level_str, LogLevel.INFO)
 
-        transport = os.getenv("MCP_TRANSPORT") or self.settings_service.get("mcp.transport", "stdio")
-        self._force_stderr = transport == "stdio"
+        selected_transport = transport if transport is not None else os.getenv("MCP_TRANSPORT") or self.settings_service.get("mcp.transport", "stdio")
+        self._force_stderr = selected_transport == "stdio"
 
         self._log_format = self.settings_service.get("logging.format", "simple")
         self._json_pretty = self.settings_service.get("logging.json_pretty", False)
@@ -140,8 +145,10 @@ class ConsoleLogger(LoggerServiceInterface):
 _logger_instance: ConsoleLogger | None = None
 
 
-def get_logger() -> ConsoleLogger:
+def get_logger(transport: TransportMode | None = None) -> ConsoleLogger:
     global _logger_instance
     if _logger_instance is None:
-        _logger_instance = ConsoleLogger()
+        _logger_instance = ConsoleLogger(transport=transport)
+    elif transport is not None:
+        _logger_instance.use_transport(transport)
     return _logger_instance

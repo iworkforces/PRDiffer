@@ -12,6 +12,7 @@ from fastmcp.exceptions import ToolError, ValidationError as FastMCPValidationEr
 from mcp.types import TextContent
 
 from prdiffer.application.mcp_server import FastMCPServer
+from prdiffer.domain.config.mcp_server_config import MCPServerConfig
 from prdiffer.application.provider_resolver import create_provider_capability_resolver
 from prdiffer.domain.config.github_config import GitHubConfig
 from prdiffer.domain.entities.file_diff_response import FileDiffResponse, FileStats
@@ -409,6 +410,7 @@ class ContractHarness:
             gitlab_operations=self.gitlab_operations if include_gitlab_capabilities else None,
         )
         self.server = FastMCPServer(
+            mcp_config=MCPServerConfig(transport="http", host="127.0.0.1", port=9102, path="/mcp"),
             settings_service=StubSettings(),
             cache_service=self.cache,
             logger=StubLogger(),

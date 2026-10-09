@@ -3,6 +3,7 @@ from unittest.mock import Mock, patch
 import anyio
 
 from prdiffer.application.mcp_server import FastMCPServer
+from prdiffer.domain.config.mcp_server_config import MCPServerConfig
 from prdiffer.application.provider_resolver import ProviderCapabilityResolver
 
 
@@ -31,6 +32,7 @@ def test_health_status_includes_cache_and_coalescing():
 
     with patch("prdiffer.application.mcp_server.FastMCP"):
         server = FastMCPServer(
+            mcp_config=MCPServerConfig(transport="http", host="127.0.0.1", port=9102, path="/mcp"),
             settings_service=settings_service,
             cache_service=cache_service,
             logger=logger,
