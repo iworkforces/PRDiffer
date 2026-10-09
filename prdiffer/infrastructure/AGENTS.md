@@ -16,7 +16,7 @@ prdiffer/infrastructure/
 ├── logging/                    # ConsoleLogger, exception sanitization
 ├── security/                   # InputValidator, InjectionDetector, InputSanitizer
 ├── services/                   # GitHubPRDiffService (~194)
-├── utils/                      # Retry, CB, parallel, coalescing, diff limits, URL, metrics
+├── utils/                      # Retry, CB, parallel, coalescing, diff generation, URL, metrics
 ├── vcs_providers/              # GitLab strict pipeline + MR ops (gitlab_*.py)
 ├── github_repository.py        # GitHubPRDiffRepository — approve/describe adapter (~190)
 ├── github_repository_operations.py  # PR ops
@@ -29,9 +29,9 @@ prdiffer/infrastructure/
 |------|----------|-------|
 | **DI / singletons** | `factories/infrastructure_factory.py` | `InfrastructureFactory`; module-level `get_*_service()` singletons |
 | **Wire services** | `factories/infrastructure_factory.py` | GitHubConfig + GitLabRuntime/session reader |
-| **Settings** | `settings.py` → `GitHubConfig` / `GitLabConfig` | 30s provider / 180s request; `max_total_chars` 600k; host/file env overrides |
+| **Settings** | `settings.py` → `GitHubConfig` / `GitLabConfig` | 30s provider / 180s request; host/file env overrides |
 | **PR write adapter (GitHub)** | `github_repository.py` | Approve + describe (`GitHubPROperationsMixin`) |
-| **Full-diff orchestration (GitHub)** | `services/pr_diff_service.py` | Maps `GeneratedFileDiff` → `FileDiffResponse`, size limits, session path |
+| **Full-diff orchestration (GitHub)** | `services/pr_diff_service.py` | Maps `GeneratedFileDiff` → `FileDiffResponse`, session path |
 | **GitHub API + content** | `github/` | Client (retry/CB), inventory, git tree/blob content, ordered processing |
 | **GitLab strict full-diff** | `vcs_providers/gitlab_*.py` | Runtime, ops, inventory, content, assembler, session |
 | **GitLab approve / describe** | `vcs_providers/gitlab_operations.py`, `gitlab_repository.py` | MR note-then-approve and description update for MCP tools |
@@ -42,7 +42,7 @@ prdiffer/infrastructure/
 | **Coalescing** | `utils/coalescing_service.py` | Deduplicate in-flight requests |
 | **Cache** | `cache/service.py` | PRDiff snapshot cache (strict identity keys, TTL/LRU, webhook-scoped invalidation) |
 | **Security** | `security/input_validator.py` | Orchestrates detector + sanitizer; GitHub + GitLab URL validation |
-| **Diff size hard limits** | `utils/diff_limits.py` | Strict rejection (no truncation); default aggregate 600k chars |
+| **Per-file diff line limit** | `utils/diff_utils.py` | `diff.max_diff_size` overflow raises E5020 `RESPONSE_SIZE_LIMIT`; no truncation |
 
 ## CONVENTIONS
 
@@ -66,7 +66,6 @@ prdiffer/infrastructure/
 - Authoritative GitLab config: `SettingsService.get_gitlab_config()` → frozen slotted `GitLabConfig`.
   - Priority for allowlist: `GITLAB_ALLOWED_HOSTS` env (CSV) → `settings.toml` `gitlab.allowed_hosts` → default `gitlab.com`.
   - Priority for file admission: `MAX_FILES_ALLOWED` env → `gitlab.max_files_allowed` / `app.max_files_allowed` → default `50`.
-  - Priority for RESPONSE_SIZE_LIMIT budget: `MAX_TOTAL_CHARS` env → `gitlab.max_total_chars` / `diff.max_total_chars` → default `600_000`.
   - Priority for GitHub ignore list: `GITHUB_IGNORE_PATTERNS` env (CSV, replaces) → `settings.toml` `github.ignore_patterns`.
 - Manual settings cache with `RLock` (Dynaconf unhashable → no `@lru_cache`); `clear_cache` drops GitHub and GitLab config caches.
 - Parallel performance flags default **true** (bounded by `max_concurrent` / `diff_max_workers`).
@@ -87,7 +86,7 @@ files hold docstrings only.
 - NO bypassing retry/CB for GitHub rate limits without reason.
 - NO logging secrets or raw tokens.
 - NO unbounded file downloads / unbounded parallel fan-out against VCS APIs.
-- NO truncating full-diff public content — hard-fail via `diff_limits` / E5020.
+- NO truncating full-diff public content; incomplete results hard-fail with E5020.
 - NO shared mutable request deadline/base_url on process-wide `GitLabRuntime`.
 - NO open host + token SSRF — always `ensure_host_allowed` before client create.
 - NO blocking python-gitlab on the event loop (always `run_blocking` / `to_thread`).

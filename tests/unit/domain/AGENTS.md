@@ -9,7 +9,7 @@ tests/unit/domain/
 ├── usecases/                         # Use case orchestration + purity + session dispatch
 ├── services/                         # Interface contracts
 ├── interfaces/                       # Protocol tests
-├── config/                           # GitHubConfig + GitLabConfig (max_total_chars 600k)
+├── config/                           # GitHubConfig + GitLabConfig
 ├── factories/                        # Factory interface tests
 ├── test_error_codes.py
 ├── test_errors.py
@@ -24,7 +24,7 @@ tests/unit/domain/
 | **E5020 incomplete full-diff** | `test_full_diff_incomplete_error.py` | Reason enum (9 values), exception contract |
 | **GitLab cache identity** | `test_gitlab_pr_diff_cache.py` | Host-aware `gitlab-full-diff-v1` key/token/immutability |
 | **GitLabConfig** | `config/test_gitlab_config.py` | Defaults, allowlist, `is_host_allowed` |
-| **GitHubConfig defaults** | `config/test_github_config.py` | Size limits incl. `max_total_chars` 600k |
+| **GitHubConfig defaults** | `config/test_github_config.py` | Size limits |
 | **Strict identity entity** | `entities/test_pr_diff_cache.py` | `StrictPRDiffCacheIdentity` + GitHub identity |
 | **Session use case** | `usecases/test_session_pr_diff_usecase.py` | Open → identity → cache/build → aclose |
 | **Entities** | `entities/` | `FilePatchInfo`, `FileDiffResponse.previous_path`, `PRDiff`, typed content |

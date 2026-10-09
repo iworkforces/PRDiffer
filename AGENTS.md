@@ -66,7 +66,7 @@ PRDiffer/
 | GeneratedFileDiff | Entity | `domain/entities/generated_file_diff.py` | Ordered full-context generation result |
 | StrictPRDiffCacheIdentity | Entity | `domain/entities/pr_diff_cache.py` | Provider-neutral key + validation token |
 | FullDiffIncompleteError | Exception | `domain/exceptions.py` | E5020 fail-closed completeness (incl. `SNAPSHOT_CHANGED`) |
-| GitHubConfig | Config | `domain/config/github_config.py` | Timeouts, size limits (`max_total_chars` 600k), parallel flags (~266) |
+| GitHubConfig | Config | `domain/config/github_config.py` | Timeouts, size limits, parallel flags (~266) |
 | GitLabConfig | Config | `domain/config/gitlab_config.py` | Limits + `allowed_hosts` (~129) |
 | SessionPRDiffReader | Interface | `domain/interfaces/pr_diff_reader.py` | Session-capable reader contract (`open_pr_diff_session`) |
 | GetPRDiffUseCase | Use case | `domain/usecases/pr_diff_usecases.py` | Session open → cache by snapshot identity → build → close (+ optional `base_url`) (~60) |
@@ -103,7 +103,7 @@ PRDiffer/
 ### Full-diff completeness (strict)
 - Selected files must all succeed or raise **E5020** with `FullDiffIncompleteReason` (incl. `SNAPSHOT_CHANGED` on post-build metadata drift).
 - No truncation notices / partial payloads on size limit (`RESPONSE_SIZE_LIMIT`).
-- Aggregate public budget: `diff.max_total_chars` default **600_000** (`DEFAULT_MAX_TOTAL_CHARS`).
+- Per-file line limit: `diff.max_diff_size` defaults to **100_000** lines; overflow raises E5020 `RESPONSE_SIZE_LIMIT` in `diff_utils.py`.
 - Content cache keys: `(repo_full_name, path, ref)`; unavailable results are not cached as success.
 - PR-diff response cache: **GitHub** `github-full-diff-v3:{owner}:{repo}:{pr}:{merge_base}:{head}` (token `merge_base:head`; value is the bare `PRDiff`); **GitLab** `gitlab-full-diff-v1:{host}:…` (host/port-aware).
 - Parallel fetch/generation defaults **on** (`performance.parallel_* = true`); capacity uses `github.max_concurrent` / `gitlab.max_concurrent` (disable flags for serialized capacity 1).
@@ -125,9 +125,9 @@ PRDiffer/
 ### Configuration
 - **Dynaconf** via `settings.toml` + optional `.secrets.toml`.
 - Manual caching with `RLock` in `SettingsService` (Dynaconf unhashable → no `@lru_cache`).
-- Env overrides: `GITHUB_TOKEN`, `GITLAB_TOKEN`, `GITLAB_ALLOWED_HOSTS` (CSV), `MCP_AUTH_ENABLED`, `MCP_API_KEYS`, `MCP_TRANSPORT`, `MCP_PORT`, `MCP_HOST`, `MAX_FILES_ALLOWED`, `MAX_TOTAL_CHARS` (E5020 `RESPONSE_SIZE_LIMIT` budget), `GITHUB_IGNORE_PATTERNS`.
+- Env overrides: `GITHUB_TOKEN`, `GITLAB_TOKEN`, `GITLAB_ALLOWED_HOSTS` (CSV), `MCP_AUTH_ENABLED`, `MCP_API_KEYS`, `MCP_TRANSPORT`, `MCP_PORT`, `MCP_HOST`, `MAX_FILES_ALLOWED`, `GITHUB_IGNORE_PATTERNS`.
 - Copy `.env.example` → `.env`; `start-prdiffer-mcp-server.sh` sources `.env`.
-- `GitHubConfig` frozen dataclass: `timeout` (30), `pr_diff_request_timeout_seconds` (180), `max_total_chars` (600_000), size limits, `parallel_*` default true.
+- `GitHubConfig` frozen dataclass: `timeout` (30), `pr_diff_request_timeout_seconds` (180), size limits, `parallel_*` default true.
 - `GitLabConfig` frozen slotted: same timeout shape + `allowed_hosts` default `("gitlab.com",)`.
 - **Ruff** configured in `pyproject.toml` (E/F/W/Q, line-length 160, double quotes, target py314).
 

@@ -37,7 +37,6 @@ A running PRDiffer server must be configured in the agent's MCP settings:
 | `GITLAB_TOKEN` | GitLab API — **read** (`read_api` + `read_repository`) for `get_pr_diff`; **write** (`api` or equivalent) for `approve_pr` / `describe_pr` |
 | `GITLAB_ALLOWED_HOSTS` | CSV bare hostnames (default `gitlab.com`). Required for custom/self-hosted GitLab |
 | `MAX_FILES_ALLOWED` | Selected-file admission cap (default 50) |
-| `MAX_TOTAL_CHARS` | Aggregate full-diff char budget; over → `E5020` `RESPONSE_SIZE_LIMIT` (default 600000) |
 
 If the server has `MCP_AUTH_ENABLED=true`, pass a valid `api_key` on every tool call.
 

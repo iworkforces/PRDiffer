@@ -34,7 +34,6 @@ prdiffer/domain/config/
 | `timeout` | 30 | Provider/GitHub SDK timeout (seconds) |
 | `pr_diff_request_timeout_seconds` | 180.0 | Absolute request/coalescing deadline; must be `> timeout` |
 | `max_file_size_bytes` | 10_485_760 (10 MiB) | Content size admission |
-| `max_total_chars` | 600_000 | Aggregate public diff char budget |
 | `max_files_allowed` | 50 | Selected-file admission limit |
 | `parallel_file_fetch_enabled` | `true` | GitHub session tree/blob capacity; 1 when off |
 | `parallel_diff_generation_enabled` | `true` | Parallel ordered full-context generation |
@@ -52,7 +51,6 @@ Also: retry/circuit-breaker knobs, `ignore_patterns` / `valid_extensions` as tup
 | `obey_rate_limit` | `true` | python-gitlab rate-limit obedience |
 | `max_file_size_bytes` | 10_485_760 | Content size admission |
 | `max_files_allowed` | 50 | From `app.max_files_allowed` when wired |
-| `max_total_chars` | 600_000 | From `diff.max_total_chars` when wired |
 | `pr_diff_request_timeout_seconds` | 180.0 | From `mcp.pr_diff_request_timeout_seconds` when wired |
 | `allowed_hosts` | `("gitlab.com",)` | Bare hostnames only; opt-in custom hosts via settings |
 
@@ -69,7 +67,6 @@ Helpers: `is_host_allowed(host)` (casefold; strips `:port`).
 - Runtime overrides (infrastructure, not this package) via `SettingsService` / `.env` (see `.env.example`):
   - `GITLAB_ALLOWED_HOSTS` CSV for host allowlist
   - `MAX_FILES_ALLOWED` positive int for selected-file admission (`app.max_files_allowed`)
-  - `MAX_TOTAL_CHARS` positive int for aggregate public-diff budget (`diff.max_total_chars`, E5020 `RESPONSE_SIZE_LIMIT`)
   - `GITHUB_IGNORE_PATTERNS` CSV replaces `github.ignore_patterns` (GitHub only)
 
 ## ANTI-PATTERNS

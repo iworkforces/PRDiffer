@@ -34,7 +34,7 @@ prdiffer/domain/
 | **App component Protocols** | `interfaces/protocols.py` | RateLimiter, Auth, Metrics, Health, `GitLabPROperationsProtocol`, … (~210) |
 | **Error codes** | `error_codes.py` + `errors.py` | Structured E-codes |
 | **Full-diff incomplete** | `exceptions.py` | `FullDiffIncompleteError` + `FullDiffIncompleteReason` |
-| **GitHub config VO** | `config/github_config.py` | Size limits (`max_total_chars` 600k), parallel flags default `true` |
+| **GitHub config VO** | `config/github_config.py` | Size limits, parallel flags default `true` |
 | **GitLab config VO** | `config/gitlab_config.py` | Limits + `allowed_hosts` (default `gitlab.com`) |
 | **Factory contracts** | `factories/` | Dependency inversion for outer layers |
 
@@ -92,7 +92,6 @@ prdiffer/domain/
 - Success responses are complete by construction (no completeness boolean).
 - `FileDiffResponse.previous_path` only for `EDIT_TYPE.RENAMED`.
 - Content union: available empty text ≠ deterministic unavailability; operational failures raise.
-- Aggregate response budget: `max_total_chars` default **600_000** (E5020/`RESPONSE_SIZE_LIMIT` on overflow).
 - Cache: `github-full-diff-v3` (merge-base+head) and host-aware `gitlab-full-diff-v1:{host}:…` keys hold bare `PRDiff` values; `unwrap_pr_diff_cache_value` requires the exact session identity key.
 - Sessions expose `StrictPRDiffCacheIdentity` (provider-neutral key + validation token). GitHub snapshot: `base_tip_sha` + `merge_base_sha` + `head_sha` + authoritative count; post-build drift → E5020 `SNAPSHOT_CHANGED`.
 

@@ -32,7 +32,7 @@ tests/
 | **GitHub adapters / full-diff** | `unit/infrastructure/github/` | Inventory, git tree/blob content, ordered processor, generator, session |
 | **GitLab strict full-diff** | `unit/infrastructure/vcs_providers/`, `test_gitlab_*.py` | Runtime, session, assembler, inventory |
 | **GitLab MR approve/describe** | `unit/infrastructure/vcs_providers/test_gitlab_mr_operations.py` | Note-then-approve, empty body, error map, nested path, custom host |
-| **PR diff service / limits** | `unit/infrastructure/` | `test_pr_diff_service*`, `test_diff_limits`, concurrency defaults |
+| **PR diff service** | `unit/infrastructure/` | `test_pr_diff_service*`, concurrency defaults |
 | **MCP tools / auth** | `unit/application/` | Tool registry (GitHub+GitLab dispatch, E5020 ToolError JSON), components |
 | **Factory GitLab ops wiring** | `unit/application/test_factory_gitlab_ops_wiring.py` | Auto-wire reader → `gitlab_pr_operations` |
 | **Strict MCP surface** | `integration/test_full_diff_mcp_surface.py` | In-process FastMCP (`get_pr_diff`) |
