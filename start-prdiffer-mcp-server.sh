@@ -22,7 +22,6 @@ set -euo pipefail
 #   GITLAB_TOKEN           GitLab personal access token (one provider token is required)
 #   GITLAB_ALLOWED_HOSTS   Comma-separated GitLab host allowlist (default: gitlab.com)
 #   MAX_FILES_ALLOWED      Selected-file limit (default: settings.toml value 50)
-#   MAX_TOTAL_CHARS        Aggregate diff budget (default: settings.toml value 600000)
 #   GITHUB_IGNORE_PATTERNS Comma-separated GitHub ignore globs
 #   PID_FILE               PID file location (default: .prdiffer-server.pid)
 #   ENV_FILE               Trusted shell environment file (default: project .env)

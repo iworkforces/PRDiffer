@@ -175,7 +175,6 @@ def _build_stack(
     service._file_processor = processor
     service._diff_generator = generator
     service._logger = SimpleNamespace(error=lambda *a, **k: None, info=lambda *a, **k: None, debug=lambda *a, **k: None, warning=lambda *a, **k: None)
-    service._diff_max_total_chars = 600_000
     service._pr_diff_request_timeout_seconds = 180.0
     service._github_timeout_seconds = 30
     service._parallel_file_fetch_enabled = True
@@ -318,7 +317,6 @@ async def test_page_two_inventory_failure_no_cache() -> None:
     service._file_processor = processor
     service._diff_generator = DiffGenerator(diff_utils=DiffUtils(), parallel_enabled=False)
     service._logger = SimpleNamespace(error=lambda *a, **k: None, info=lambda *a, **k: None, debug=lambda *a, **k: None, warning=lambda *a, **k: None)
-    service._diff_max_total_chars = 600_000
     service._pr_diff_request_timeout_seconds = 180.0
     service._github_timeout_seconds = 30
     service._parallel_file_fetch_enabled = True
@@ -407,7 +405,6 @@ async def test_truncated_tree_no_cache() -> None:
     service._file_processor = processor
     service._diff_generator = DiffGenerator(diff_utils=DiffUtils(), parallel_enabled=False)
     service._logger = SimpleNamespace(error=lambda *a, **k: None, info=lambda *a, **k: None, debug=lambda *a, **k: None, warning=lambda *a, **k: None)
-    service._diff_max_total_chars = 600_000
     service._pr_diff_request_timeout_seconds = 180.0
     service._github_timeout_seconds = 30
     service._parallel_file_fetch_enabled = True

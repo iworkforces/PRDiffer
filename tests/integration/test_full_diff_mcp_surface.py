@@ -26,6 +26,64 @@ from prdiffer.domain.exceptions import FullDiffIncompleteError, FullDiffIncomple
 ProviderName = Literal["github", "gitlab"]
 
 
+@pytest.mark.integration
+@pytest.mark.anyio
+@pytest.mark.parametrize("provider", ["github", "gitlab"])
+@pytest.mark.parametrize("file_count,line_size", [(1, 650_000), (2, 350_000)], ids=["single", "aggregate"])
+async def test_real_reader_large_full_output_through_mcp(provider: ProviderName, file_count: int, line_size: int) -> None:
+    from prdiffer.infrastructure.security.input_validator import InputValidator
+    from prdiffer.infrastructure.vcs_providers.gitlab_models import GitLabDiffSnapshot
+    from tests.integration.test_github_strict_full_diff import HEAD, MERGE_BASE, FakeFile, _build_stack, _tree_item
+    from tests.integration.test_gitlab_strict_full_diff import _build_reader, _record
+
+    # Given fake network data feeding real sessions, processors, and generators.
+    paths = [f"large{i}.py" for i in range(file_count)]
+    text = "x" * line_size + "\n"
+    registry = _registry()
+    registry._input_validator = InputValidator()
+    match provider:
+        case "github":
+            shas = [str(i + 1) * 40 for i in range(file_count)]
+            github_reader, _, _, _ = _build_stack(
+                files=[FakeFile(path, "added") for path in paths],
+                trees={MERGE_BASE: [], HEAD: [_tree_item(path, "100644", "blob", sha) for path, sha in zip(paths, shas, strict=True)]},
+                blobs={sha: text.encode() for sha in shas},
+            )
+            registry._provider_resolver = create_provider_capability_resolver(
+                github_reader=github_reader,
+                github_repository_factory=MagicMock(),
+                gitlab_reader=None,
+                gitlab_operations=None,
+            )
+            url = "https://github.com/acme/demo/pull/1"
+        case "gitlab":
+            snapshot = GitLabDiffSnapshot(
+                project_path="group/sub/project", iid=42, version_id=9, base_sha="base", start_sha="start", head_sha="head",
+                state="collected", real_size=file_count,
+                records=tuple(_record(path, path, new_file=True) for path in paths),
+            )
+            gitlab_reader, _, _, _ = _build_reader(snapshot, {(path, "head"): text.encode() for path in paths})
+            registry._provider_resolver.register_strict_diff("gitlab", StrictDiffCapability(gitlab_reader, "gitlab"))
+            url = "https://gitlab.com/group/sub/project/-/merge_requests/42"
+        case unreachable:
+            assert_never(unreachable)
+    mcp = FastMCP("large-real-reader")
+    registry.register_tools(mcp)
+
+    # When the registered MCP tool executes the real reader path.
+    result = await mcp.call_tool("get_pr_diff", {"pr_url": url})
+
+    # Then output has exactly the source-derived full diff, in inventory order.
+    payload = result.structured_content
+    assert payload is not None
+    expected = "new file mode 100644\n@@ -0,0 +1,1 @@\n+" + "x" * line_size
+    assert [file["path"] for file in payload["files"]] == paths
+    assert [file["diff"] for file in payload["files"]] == [expected] * file_count
+    assert len(expected) * file_count > 600_000
+    if file_count > 1:
+        assert len(expected) < 600_000
+
+
 def _mixed_pr_diff() -> PRDiff:
     return PRDiff(
         files=(

@@ -10,7 +10,6 @@ from prdiffer.domain.config.gitlab_config import (
     DEFAULT_MAX_FILE_SIZE_BYTES,
     DEFAULT_MAX_FILES_ALLOWED,
     DEFAULT_MAX_RETRIES,
-    DEFAULT_MAX_TOTAL_CHARS,
     DEFAULT_PR_DIFF_REQUEST_TIMEOUT_SECONDS,
     GitLabConfig,
 )
@@ -27,7 +26,6 @@ class TestGitLabConfigDefaults:
         assert config.obey_rate_limit is True
         assert config.max_file_size_bytes == DEFAULT_MAX_FILE_SIZE_BYTES == 10_485_760
         assert config.max_files_allowed == DEFAULT_MAX_FILES_ALLOWED == 50
-        assert config.max_total_chars == DEFAULT_MAX_TOTAL_CHARS == 600_000
         assert config.pr_diff_request_timeout_seconds == DEFAULT_PR_DIFF_REQUEST_TIMEOUT_SECONDS == 180.0
 
 
@@ -57,7 +55,6 @@ class TestGitLabConfigValidation:
             ({"max_concurrent": -2}, "max_concurrent"),
             ({"max_file_size_bytes": 0}, "max_file_size_bytes"),
             ({"max_files_allowed": 0}, "max_files_allowed"),
-            ({"max_total_chars": 0}, "max_total_chars"),
             ({"pr_diff_request_timeout_seconds": 0}, "pr_diff_request_timeout_seconds"),
             ({"pr_diff_request_timeout_seconds": -1.0}, "pr_diff_request_timeout_seconds"),
         ],

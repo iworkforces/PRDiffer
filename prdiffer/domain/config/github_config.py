@@ -16,7 +16,6 @@ from .github_config_interface import GitHubConfigDict, GitHubConfigInterface
 DEFAULT_GITHUB_TIMEOUT_SECONDS = 30
 DEFAULT_PR_DIFF_REQUEST_TIMEOUT_SECONDS = 180.0
 DEFAULT_MAX_FILE_SIZE_BYTES = 10_485_760  # 10 MiB
-DEFAULT_MAX_TOTAL_CHARS = 600_000
 
 
 def _require_positive(name: str, value: object) -> None:
@@ -64,7 +63,6 @@ class GitHubConfig(GitHubConfigInterface):
     max_diff_size: int = 100000
 
     max_file_size_bytes: int = DEFAULT_MAX_FILE_SIZE_BYTES
-    max_total_chars: int = DEFAULT_MAX_TOTAL_CHARS
     # Bounded concurrency defaults (CapacityLimiter / max_concurrent when enabled).
     parallel_file_fetch_enabled: bool = True
     parallel_diff_generation_enabled: bool = True
@@ -88,7 +86,6 @@ class GitHubConfig(GitHubConfigInterface):
             ("chunk_size", self.chunk_size),
             ("max_diff_size", self.max_diff_size),
             ("max_file_size_bytes", self.max_file_size_bytes),
-            ("max_total_chars", self.max_total_chars),
             ("pr_diff_request_timeout_seconds", self.pr_diff_request_timeout_seconds),
             ("max_concurrent", self.max_concurrent),
         ):
@@ -147,7 +144,6 @@ class GitHubConfig(GitHubConfigInterface):
             chunk_size=config.get("chunk_size", 1000),
             max_diff_size=config.get("max_diff_size", 100000),
             max_file_size_bytes=int(config.get("max_file_size_bytes", DEFAULT_MAX_FILE_SIZE_BYTES)),
-            max_total_chars=int(config.get("max_total_chars", DEFAULT_MAX_TOTAL_CHARS)),
             parallel_file_fetch_enabled=bool(config.get("parallel_file_fetch_enabled", True)),
             parallel_diff_generation_enabled=bool(config.get("parallel_diff_generation_enabled", True)),
             pr_diff_request_timeout_seconds=float(config.get("pr_diff_request_timeout_seconds", DEFAULT_PR_DIFF_REQUEST_TIMEOUT_SECONDS)),
@@ -182,7 +178,6 @@ class GitHubConfig(GitHubConfigInterface):
             "chunk_size": self.chunk_size,
             "max_diff_size": self.max_diff_size,
             "max_file_size_bytes": self.max_file_size_bytes,
-            "max_total_chars": self.max_total_chars,
             "parallel_file_fetch_enabled": self.parallel_file_fetch_enabled,
             "parallel_diff_generation_enabled": self.parallel_diff_generation_enabled,
             "pr_diff_request_timeout_seconds": self.pr_diff_request_timeout_seconds,

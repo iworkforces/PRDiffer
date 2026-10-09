@@ -56,9 +56,9 @@ gitlab.max_file_size_bytes = 10485760  # 10MB — binary/oversize fail closed (E
 # opt-in custom-hosted instances by adding hostnames here (e.g. "gitlab.example.com").
 # Override at runtime via GITLAB_ALLOWED_HOSTS=host1,host2 in .env (see .env.example).
 gitlab.allowed_hosts = ["gitlab.com"]
-# max_files_allowed / max_total_chars / pr_diff_request_timeout_seconds also resolve
-# from app.max_files_allowed, diff.max_total_chars, mcp.pr_diff_request_timeout_seconds
-# when gitlab.* overrides are absent. Runtime: MAX_FILES_ALLOWED / MAX_TOTAL_CHARS in .env.
+# max_files_allowed / pr_diff_request_timeout_seconds also resolve from
+# app.max_files_allowed / mcp.pr_diff_request_timeout_seconds when gitlab.*
+# overrides are absent. Runtime file-admission override: MAX_FILES_ALLOWED in .env.
 
 # Performance optimization feature flags (dotted keys under [default]; not a Dynaconf env)
 # Bounded concurrency (indexed batch, session CapacityLimiter, max_concurrent).
@@ -146,11 +146,6 @@ file_processor.max_workers = 4  # Maximum workers for parallel file processing
 diff.large_file_threshold = 5000     # Lines - threshold for chunked processing
 diff.chunk_size = 1000               # Lines per chunk for large files
 diff.max_diff_size = 100000          # Maximum lines per file - larger files fail with E5020 RESPONSE_SIZE_LIMIT
-
-# Diff size limits (strict: oversize fails closed, never truncates)
-# Aggregate public-diff char budget (E5020 RESPONSE_SIZE_LIMIT). Runtime override
-# via MAX_TOTAL_CHARS in .env (see .env.example / start-prdiffer-mcp-server.sh).
-diff.max_total_chars = 600000
 
 # Request coalescing settings
 request_coalescing.max_waiters = 100

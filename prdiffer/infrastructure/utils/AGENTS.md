@@ -14,7 +14,6 @@ prdiffer/infrastructure/utils/
 ├── error_classifier.py         # Retryability classification (~151)
 ├── rate_limit_parser.py        # Retry-After / rate headers (~183)
 ├── api_health_tracker.py       # Sliding window health (~131)
-├── diff_limits.py              # Strict size hard limits (~67)
 ├── diff_utils.py               # DiffServiceInterface impl
 ├── pattern_matcher.py          # Ignore/extension patterns
 ├── url_parser.py               # GitHub PR + GitLab MR URL parsing (~281; custom hosts)
@@ -29,7 +28,7 @@ prdiffer/infrastructure/utils/
 | **Fan-out** | `parallel/executor.py` | anyio task groups + per-batch semaphores |
 | **Indexed identity** | `execute_indexed_batch` | Ordered outcomes; strict `IndexedBatchError` |
 | **Coalesce** | `coalescing_service.py` | Deduplicate concurrent work |
-| **Full-diff size** | `diff_limits.py` | `assert_*` → E5020 RESPONSE_SIZE_LIMIT |
+| **Per-file diff line limit** | `diff_utils.py` | `max_diff_size` → E5020 `RESPONSE_SIZE_LIMIT` |
 | **GitLab/GitHub URLs** | `url_parser.py` | `parse_github_*`, `parse_gitlab_merge_request_parts` (nested NS + host) |
 
 ## CONVENTIONS
@@ -48,5 +47,5 @@ prdiffer/infrastructure/utils/
 - NO shared mutable globals without locks.
 - NO blind retry of all exceptions (especially content 404s).
 - NO completion-order append for identity-sensitive full-diff batches.
-- NO truncating diffs in `diff_limits` helpers — hard-fail only.
+- NO truncating diffs; per-file line-limit failures raise E5020.
 - NO re-export shim modules/packages (e.g. `utils/coalescing/`, `utils/circuit_breaker/`, `utils/performance.py`).

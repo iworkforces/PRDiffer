@@ -14,13 +14,12 @@ prdiffer/infrastructure/services/
 |------|----------|-------|
 | **High-level PR diff** | `pr_diff_service.py` | Orchestrates GitHub API + inventory + processor + generator + cache |
 | **Session path** | `open_pr_diff_session` | Delegates to `github/pr_diff_session.GitHubSessionPRDiffReader` |
-| **Strict assembly** | `_build_pr_diff_strict` | `GeneratedFileDiff` → `FileDiffResponse`; size limits |
+| **Strict assembly** | `_build_pr_diff_strict` | `GeneratedFileDiff` → `FileDiffResponse` |
 | **Inventory** | `_generate_diff_content` | Snapshot-bound `prepare_selected_inventory` then ordered tree/blob processing |
 
 ## CONVENTIONS
 - Structurally implements `SessionPRDiffReader` (`open_pr_diff_session`); composes `github/` rather than duplicating logic.
 - Maps ordered `GeneratedFileDiff` results to `FileDiffResponse` (`path`, `status`, `stats`, `diff`, `previous_path`).
-- Enforces per-file and aggregate public-diff character limits via `utils/diff_limits` (hard fail, no truncation).
 - No method-level caching; `GetPRDiffUseCase` caches by session snapshot identity.
 - Full-diff incompleteness raises `FullDiffIncompleteError` → **E5020**; unexpected generation defects → E5003.
 - `diff_generator` / `file_processor` are required keyword args; `GitHubAPIClient` defaults when omitted (factory-wired from `GitHubConfig`).

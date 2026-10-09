@@ -109,7 +109,6 @@ class InfrastructureFactory(InfrastructureFactoryInterface):
             diff_generator=diff_generator,
             file_processor=file_processor,
             logger=logger_service,
-            max_total_chars=config.max_total_chars,
             github_timeout_seconds=config.timeout,
             pr_diff_request_timeout_seconds=config.pr_diff_request_timeout_seconds,
         )
@@ -145,7 +144,6 @@ class InfrastructureFactory(InfrastructureFactoryInterface):
         content = GitLabContentFetcher(runtime, config, parallel_enabled=True)
         assembler = GitLabDiffAssembler(
             DiffGenerator(diff_utils=DiffUtils(), parallel_enabled=config.max_concurrent > 1),
-            config,
         )
         session_reader = GitLabSessionPRDiffReader(
             operations=operations,

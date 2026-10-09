@@ -19,7 +19,6 @@ class TestGitHubConfigNewDefaults:
         assert config.timeout == 30
         assert config.pr_diff_request_timeout_seconds == 180.0
         assert config.max_file_size_bytes == 10_485_760
-        assert config.max_total_chars == 600_000
         assert config.parallel_file_fetch_enabled is True
         assert config.parallel_diff_generation_enabled is True
         assert config.github_worker_capacity == 4
@@ -46,7 +45,6 @@ class TestSettingsTomlDefaults:
     def test_real_settings_resolve_timeouts_and_parallel_flags(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # Blank env (not delenv): Dynaconf load_dotenv must not re-inject developer .env values.
         monkeypatch.setenv("MAX_FILES_ALLOWED", "")
-        monkeypatch.setenv("MAX_TOTAL_CHARS", "")
         monkeypatch.setenv("GITHUB_IGNORE_PATTERNS", "")
         service = SettingsService(settings_files=["settings.toml"])
         service.clear_cache()
@@ -54,7 +52,6 @@ class TestSettingsTomlDefaults:
         assert config.timeout == 30
         assert config.pr_diff_request_timeout_seconds == 180.0
         assert config.max_file_size_bytes == 10_485_760
-        assert config.max_total_chars == 600_000
         assert config.max_files_allowed == 50
         assert len(config.ignore_patterns) > 0
         assert "*.lock" in config.ignore_patterns
@@ -77,21 +74,6 @@ class TestSettingsTomlDefaults:
         service.clear_cache()
         config = service.get_github_config()
         assert config.max_files_allowed == 50
-
-    def test_max_total_chars_env_overrides_toml(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """MAX_TOTAL_CHARS wins over diff.max_total_chars — E5020 RESPONSE_SIZE_LIMIT budget."""
-        monkeypatch.setenv("MAX_TOTAL_CHARS", "  800000  ")
-        service = SettingsService(settings_files=["settings.toml"])
-        service.clear_cache()
-        config = service.get_github_config()
-        assert config.max_total_chars == 800_000
-
-    def test_empty_max_total_chars_env_falls_back_to_toml(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("MAX_TOTAL_CHARS", "   ")
-        service = SettingsService(settings_files=["settings.toml"])
-        service.clear_cache()
-        config = service.get_github_config()
-        assert config.max_total_chars == 600_000
 
     def test_github_ignore_patterns_env_overrides_toml(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """GITHUB_IGNORE_PATTERNS (CSV) replaces settings.toml — used by .env / start script."""
@@ -130,7 +112,6 @@ class TestFactoryWiresExactSentinels:
             timeout=15,
             pr_diff_request_timeout_seconds=90.0,
             max_file_size_bytes=1_000_000,
-            max_total_chars=12_345,
             max_files_allowed=7,
             max_concurrent=3,
             parallel_file_fetch_enabled=False,
@@ -156,7 +137,6 @@ class TestFactoryWiresExactSentinels:
         ):
             service = factory.create_pr_diff_service()
 
-        assert service._diff_max_total_chars == 12_345
         assert service._pr_diff_request_timeout_seconds == 90.0
         assert service._github_timeout_seconds == 15
         assert service._file_processor is not None
