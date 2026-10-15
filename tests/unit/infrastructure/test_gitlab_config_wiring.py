@@ -33,7 +33,7 @@ class TestSettingsTomlGitLabDefaults:
         service.clear_cache()
         config = service.get_gitlab_config()
         assert config.timeout == 30
-        assert config.pr_diff_request_timeout_seconds == 180.0
+        assert config.pr_diff_request_timeout_seconds == 300.0
         assert config.max_file_size_bytes == 10_485_760
         assert config.max_files_allowed == 50
         assert config.max_concurrent == 4

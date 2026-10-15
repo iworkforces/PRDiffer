@@ -6,9 +6,6 @@ Contains PR approval and description update operations.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Coroutine
-from typing import Any
-
 import asyncer
 from github.GithubException import GithubException
 from github.PullRequest import PullRequest
@@ -41,9 +38,12 @@ class GitHubPROperationsMixin:
     _repo_owner: str
     _repo_name: str
     _pr_number: int
-    _initialize_github_objects: Callable[[], Coroutine[Any, Any, None]]
     _pull_request: PullRequest | None
     _repository: Repository | None
+
+    async def _initialize_github_objects(self) -> None:
+        """Require the host repository to initialize its GitHub objects."""
+        raise NotImplementedError
 
     async def approve_pr_with_comment(self, pr_url: str, compliment: object, *, expected_head_sha: str | None = None) -> str:
         """Approve a GitHub PR with a compliment comment.

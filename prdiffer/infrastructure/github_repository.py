@@ -113,7 +113,7 @@ class GitHubPRDiffRepository(GitHubPROperationsMixin, PRDiffRepositoryInterface)
         """Pull request number."""
         return self._pr_number
 
-    async def _initialize_github_objects(self):
+    async def _initialize_github_objects(self) -> None:
         """Lazy initialization of GitHub client, repository, and PR objects."""
         if self._initialized:
             return

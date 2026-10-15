@@ -50,7 +50,7 @@ class TestSettingsTomlDefaults:
         service.clear_cache()
         config = service.get_github_config()
         assert config.timeout == 30
-        assert config.pr_diff_request_timeout_seconds == 180.0
+        assert config.pr_diff_request_timeout_seconds == 300.0
         assert config.max_file_size_bytes == 10_485_760
         assert config.max_files_allowed == 50
         assert len(config.ignore_patterns) > 0

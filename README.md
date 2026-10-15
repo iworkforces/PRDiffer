@@ -2,7 +2,7 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.14.4%2B-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![PR Quality](https://github.com/iWorkforces/PRDiffer/actions/workflows/pr-quality.yml/badge.svg)](https://github.com/iWorkforces/PRDiffer/actions/workflows/pr-quality.yml)
+[![PR Quality](https://github.com/iworkforces/PRDiffer/actions/workflows/pr-quality.yml/badge.svg)](https://github.com/iworkforces/PRDiffer/actions/workflows/pr-quality.yml)
 
 A Model Context Protocol (MCP) server that provides comprehensive GitHub Pull Request diff analysis with full file context for AI assistants and code review tools.
 
@@ -33,7 +33,7 @@ PRDiffer is an MCP server that extracts and analyzes GitHub PR diffs, providing 
 
 ```bash
 # Clone the repository
-git clone https://github.com/iWorkforces/PRDiffer.git
+git clone https://github.com/iworkforces/PRDiffer.git
 cd PRDiffer
 
 # Provision the locked project environment
@@ -97,20 +97,20 @@ PRDiffer ships with an **[Agent Skill](https://skills.sh)** that teaches AI codi
 ### Install the Skill
 
 ```bash
-npx skills add iWorkforces/PRDiffer
+npx skills add iworkforces/PRDiffer
 ```
 
 This installs the skill to all detected AI coding agents. For specific agents:
 
 ```bash
 # Claude Code only
-npx skills add iWorkforces/PRDiffer -a claude-code
+npx skills add iworkforces/PRDiffer -a claude-code
 
 # OpenCode only
-npx skills add iWorkforces/PRDiffer -a opencode
+npx skills add iworkforces/PRDiffer -a opencode
 
 # Multiple agents
-npx skills add iWorkforces/PRDiffer -a claude-code -a opencode -a cursor
+npx skills add iworkforces/PRDiffer -a claude-code -a opencode -a cursor
 ```
 
 ### Supported Agents
