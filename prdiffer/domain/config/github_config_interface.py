@@ -45,30 +45,65 @@ class GitHubConfigDict(TypedDict, total=False):
 
 @runtime_checkable
 class GitHubConfigInterface(Protocol):
-    """Protocol for GitHub configuration objects.
+    """Read-only protocol for GitHub configuration objects.
 
     Protocol is used instead of ABC to work better with dataclasses,
     as dataclass fields automatically provide the required attributes.
     """
 
-    rate_limit: int
-    timeout: int
-    max_retries: int
-    retry_delay: float
-    retry_on_404: bool
-    retry_on_403: bool
-    retry_on_500: bool
-    circuit_breaker_enabled: bool
-    diff_parallel_threshold: int
-    diff_max_workers: int
-    ignore_patterns: tuple[str, ...]
-    valid_extensions: tuple[str, ...]
-    max_files_allowed: int
-    max_file_size_bytes: int
-    parallel_file_fetch_enabled: bool
-    parallel_diff_generation_enabled: bool
-    pr_diff_request_timeout_seconds: float
-    max_concurrent: int
+    @property
+    def rate_limit(self) -> int: ...
+
+    @property
+    def timeout(self) -> int: ...
+
+    @property
+    def max_retries(self) -> int: ...
+
+    @property
+    def retry_delay(self) -> float: ...
+
+    @property
+    def retry_on_404(self) -> bool: ...
+
+    @property
+    def retry_on_403(self) -> bool: ...
+
+    @property
+    def retry_on_500(self) -> bool: ...
+
+    @property
+    def circuit_breaker_enabled(self) -> bool: ...
+
+    @property
+    def diff_parallel_threshold(self) -> int: ...
+
+    @property
+    def diff_max_workers(self) -> int: ...
+
+    @property
+    def ignore_patterns(self) -> tuple[str, ...]: ...
+
+    @property
+    def valid_extensions(self) -> tuple[str, ...]: ...
+
+    @property
+    def max_files_allowed(self) -> int: ...
+
+    @property
+    def max_file_size_bytes(self) -> int: ...
+
+    @property
+    def parallel_file_fetch_enabled(self) -> bool: ...
+
+    @property
+    def parallel_diff_generation_enabled(self) -> bool: ...
+
+    @property
+    def pr_diff_request_timeout_seconds(self) -> float: ...
+
+    @property
+    def max_concurrent(self) -> int: ...
 
     def to_dict(self) -> "GitHubConfigDict":
         """Convert configuration to dictionary."""

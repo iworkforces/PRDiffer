@@ -10,7 +10,7 @@ from typing import Any, Unpack, cast
 
 from prdiffer.domain.exceptions import ConfigurationError
 
-from .github_config_interface import GitHubConfigDict, GitHubConfigInterface
+from .github_config_interface import GitHubConfigDict
 
 # Defaults match settings.toml / plan contracts.
 DEFAULT_GITHUB_TIMEOUT_SECONDS = 30
@@ -24,7 +24,7 @@ def _require_positive(name: str, value: object) -> None:
 
 
 @dataclass(frozen=True)
-class GitHubConfig(GitHubConfigInterface):
+class GitHubConfig:
     """Centralized configuration for GitHub API interactions.
 
     Immutable dataclass containing all GitHub-related settings.
