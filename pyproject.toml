@@ -18,9 +18,9 @@ classifiers = [
     "Topic :: Software Development :: Version Control :: Git",
 ]
 dependencies = [
-    "fastmcp>=4.1.0",
+    "fastmcp>=4.1.1",
     "pydantic>=2.14.1",
-    "fastapi[standard]>=0.143.2",
+    "fastapi[standard]>=0.146.0",
     "uvicorn[standard]>=0.54.0",
     "pygithub>=2.10.0",
     "asyncer>=0.0.18",
@@ -30,7 +30,7 @@ dependencies = [
     "mcp>=2.3.0",
     "uvloop>=0.23.0",
     "httptools>=0.9.0",
-    "starlette>=1.8.0",
+    "starlette>=1.9.0",
     "httpx[http2]>=0.28.1",
     "jinja2>=3.1.6",
     "python-multipart>=0.0.32",
@@ -79,7 +79,7 @@ dev = [
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
     "pytest-xdist>=3.8.0",
-    "ty>=0.0.88",
+    "ty>=0.0.89",
     "vulture>=2.16",
     "pyright>=1.1.414",
 ]
