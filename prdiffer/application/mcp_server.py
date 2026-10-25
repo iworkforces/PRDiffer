@@ -68,7 +68,7 @@ class FastMCPServer:
         self._logger.info("Initializing FastMCP server", component="mcp_server")
 
         self.mcp = FastMCP(
-            name="prdiffer",
+            name="prdiffer-mcp",
             instructions=self._server_configuration.get_mcp_instructions(),
             version=__version__,
         )
