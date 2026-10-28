@@ -75,7 +75,7 @@ File `opencode.json`:
 {
   "$schema": "https://opencode.ai/config.json",
   "mcp": {
-    "prdiffer": {
+    "prdiffer-mcp": {
       "type": "remote",
       "url": "http://127.0.0.1:9102/mcp",
       "enabled": true
