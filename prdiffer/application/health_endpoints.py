@@ -92,7 +92,7 @@ class HealthEndpoints:
                 )
                 return JSONResponse(
                     {
-                        "server": "prdiffer",
+                        "server": "prdiffer-mcp",
                         "error": "Failed to get metrics",
                         "message": "Internal server error",
                     },

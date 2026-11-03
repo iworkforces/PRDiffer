@@ -157,7 +157,7 @@ For Claude Desktop, configure the MCP server in your `claude_desktop_config.json
 ```json
 {
   "mcpServers": {
-    "prdiffer": {
+    "prdiffer-mcp": {
       "command": "uv",
       "args": [
         "--directory",

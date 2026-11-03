@@ -49,7 +49,7 @@ class ServerConfiguration(ServerConfigurationProtocol):
         """Get server information and configuration."""
         try:
             return {
-                "name": "prdiffer",
+                "name": "prdiffer-mcp",
                 "version": __version__,
                 "description": "GitHub PR Diff Fetcher MCP Server",
                 "transport": self._mcp_config.transport,
@@ -68,7 +68,7 @@ class ServerConfiguration(ServerConfigurationProtocol):
         except Exception as e:
             self._logger.error(f"Failed to get server info: {str(e)}")
             return {
-                "name": "prdiffer",
+                "name": "prdiffer-mcp",
                 "version": "unknown",
                 "description": "GitHub PR Diff Fetcher MCP Server",
                 "error": str(e),

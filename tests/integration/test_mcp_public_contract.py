@@ -370,7 +370,7 @@ class ImmediateCoalescer:
 
 class HealthyMonitor:
     def check_health(self) -> dict[str, str]:
-        return {"status": "healthy", "service": "prdiffer"}
+        return {"status": "healthy", "service": "prdiffer-mcp"}
 
 
 class StubServerConfiguration:
@@ -378,7 +378,7 @@ class StubServerConfiguration:
         return None
 
     def get_server_info(self) -> dict[str, str]:
-        return {"name": "prdiffer"}
+        return {"name": "prdiffer-mcp"}
 
     def get_mcp_instructions(self) -> str:
         return "Contract test server"

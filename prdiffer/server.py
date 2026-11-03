@@ -24,7 +24,7 @@ def parse_args() -> argparse.Namespace:
         Parsed command-line arguments
     """
     parser = argparse.ArgumentParser(
-        prog="prdiffer",
+        prog="prdiffer-mcp",
         description=(
             "MCP Server for GitHub PR Review Process with Full Contexts. "
             "Precedence: CLI > MCP_* env (including project .env) > active Dynaconf mcp.* > defaults."

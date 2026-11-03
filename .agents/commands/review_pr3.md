@@ -87,7 +87,7 @@ Review the pull request identified by `$1`. `$1` is the sole argument and is
    present, `status`, `stats`, and complete full-context `diff`. Do not
    partition, sample, truncate, or omit files, statuses, or file types.
 4. In the same assistant turn, launch exactly five independent `Agent` tool
-   calls, explicitly selecting the read-only `Oracle` agent for each call.
+   calls, explicitly selecting the read-only `Explore` agent for each call.
    Do not launch them sequentially. Give all five the same immutable snapshot.
    Assign exactly one of these lens names and bounded responsibilities to each
    reviewer:
@@ -119,7 +119,7 @@ Review the pull request identified by `$1`. `$1` is the sole argument and is
    The five backticked strings above are the exact assigned `reviewer_lens`
    values.
 
-   Each `Oracle` reviewer prompt must require the reviewer to:
+   Each `Explore` reviewer prompt must require the reviewer to:
 
    - Review every snapshot file first to last, including the complete
      full-context `diff`, not merely hunks or changed lines.
@@ -219,7 +219,7 @@ Review the pull request identified by `$1`. `$1` is the sole argument and is
    otherwise check its complete response against this contract and correct any
    violation. It must not return the response until the YAML shape, exact
    labels, label counts and order, blank lines, and evidence sequence all pass.
-5. Wait for all five `Oracle` reviewer results. Parse each complete reviewer
+5. Wait for all five `Explore` reviewer results. Parse each complete reviewer
    response under the universal two-phase YAML policy before accessing any field.
    Validate its exact top-level, candidate, and evidence key sets against the
    YAML schema above, and require every evidence path to be a snapshot path or a

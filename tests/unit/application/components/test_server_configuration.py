@@ -246,7 +246,7 @@ class TestGetServerInfo:
 
         info = config.get_server_info()
 
-        assert info["name"] == "prdiffer"
+        assert info["name"] == "prdiffer-mcp"
         assert "version" in info
         assert info["description"] == "GitHub PR Diff Fetcher MCP Server"
         assert info["transport"] == "http"
@@ -282,7 +282,7 @@ class TestGetServerInfo:
 
         info = config.get_server_info()
 
-        assert info["name"] == "prdiffer"
+        assert info["name"] == "prdiffer-mcp"
         assert info["version"] == "unknown"
         assert info["description"] == "GitHub PR Diff Fetcher MCP Server"
         assert "error" in info
